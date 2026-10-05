@@ -13,6 +13,7 @@ using FeedEater.Search;
 using FeedEater.Signals;
 using FeedEater.Storage;
 using FeedEater.Telegram;
+using FeedEater.Ui;
 
 namespace FeedEater;
 
@@ -110,6 +111,10 @@ public static class ServiceRegistration
                 services.AddHostedService<TelegramPoller>();
             }
         }
+
+        services.AddSingleton(sp => new UiSession(configuration["Mcp:Token"], sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<LoginThrottle>();
+        services.AddSingleton<UiHandlers>();
 
         services.AddFeedEaterMcp();
         return services;

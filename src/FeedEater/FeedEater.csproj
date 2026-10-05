@@ -12,6 +12,7 @@
   <ItemGroup>
     <!-- Embedded as FeedEater.Migrations.<file>; DatabaseMigrator filters on ".Migrations." -->
     <EmbeddedResource Include="../../db/migrations/*.sql" LinkBase="Migrations" />
+    <EmbeddedResource Include="Ui/assets/app.css" LogicalName="FeedEater.Ui.app.css" />
     <InternalsVisibleTo Include="FeedEater.Tests" />
   </ItemGroup>
 

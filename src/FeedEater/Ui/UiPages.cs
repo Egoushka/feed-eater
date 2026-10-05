@@ -1,0 +1,480 @@
+using System.Globalization;
+using System.Text;
+using FeedEater.Digest;
+using FeedEater.Storage;
+using static FeedEater.Ui.Html;
+
+namespace FeedEater.Ui;
+
+/// <summary>What every page needs: the anti-forgery value for its forms, the display zone and an optional fixed notice.</summary>
+public sealed record PageContext(string Csrf, TimeZoneInfo Zone, string? Notice);
+
+public sealed record Figures(decimal MonthSpend, decimal Budget, double? WeekUpRate, VoteCounts Yesterday);
+
+public sealed record RunPanel(bool Enabled, bool Sent, string? Pending, ForceResult? Last);
+
+public sealed record SourceRow(SourceStats Stats, string? Flag)
+{
+    public double? Rate => Stats.Up + Stats.Down == 0 ? null : (double)Stats.Up / (Stats.Up + Stats.Down);
+}
+
+/// <summary>
+/// Server-rendered pages. Every dynamic value goes through <see cref="Html.E"/>; links to feed URLs go through
+/// <see cref="Html.External"/>. There is no script, so the page needs no inline handler and the CSP allows none.
+/// </summary>
+public static class UiPages
+{
+    private static readonly (string Path, string Label)[] Nav =
+    [
+        ("/ui", "Today"), ("/ui/search", "Search"), ("/ui/digests", "Digests"),
+        ("/ui/sources", "Sources"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
+    ];
+
+    private static readonly Dictionary<string, string> Notices = new()
+    {
+        ["filed"] = "Filed in Plane.",
+        ["file-failed"] = "Not filed: Plane did not accept it, or the item has no suggestion.",
+        ["queued"] = "Digest queued; it starts within a minute.",
+        ["queued-resend"] = "Queued: today's digest will be sent again within a minute.",
+        ["digest-off"] = "The digest job is off: Telegram is not configured.",
+    };
+
+    public static string Login(string? error)
+    {
+        var body = new StringBuilder("<main id=\"main\" class=\"narrow\"><h1>feed-eater</h1>");
+        if (error is not null)
+        {
+            body.Append($"<p class=\"notice bad\" role=\"alert\">{E(error)}</p>");
+        }
+
+        body.Append(
+            """
+            <form method="post" action="/ui/login" class="stack">
+              <label for="token">Access token</label>
+              <input id="token" name="token" type="password" autocomplete="current-password" required autofocus>
+              <button type="submit" class="primary">Sign in</button>
+            </form></main>
+            """);
+        return Shell("Sign in", body.ToString());
+    }
+
+    public static string Message(PageContext p, string title, string text) =>
+        Layout(p, title, null, $"<h1>{E(title)}</h1><p>{E(text)}</p>");
+
+    public static string Today(PageContext p, DigestRow? digest, IReadOnlyList<ItemView> items, Figures figures, RunPanel run)
+    {
+        var h = new StringBuilder();
+        h.Append("<h1>Today</h1>");
+        Stats(h, figures);
+        RunControls(h, p, run);
+        if (digest is null)
+        {
+            h.Append("<p class=\"empty\">No digest yet.</p>");
+        }
+        else
+        {
+            DigestBody(h, p, digest, items, "/ui");
+        }
+
+        return Layout(p, "Today", "/ui", h.ToString());
+    }
+
+    public static string DigestPage(PageContext p, DigestRow digest, IReadOnlyList<ItemView> items) =>
+        Layout(p, $"Digest {digest.LocalDate}", "/ui/digests", DigestHtml(p, digest, items, $"/ui/digest/{digest.LocalDate}"));
+
+    private static string DigestHtml(PageContext p, DigestRow digest, IReadOnlyList<ItemView> items, string back)
+    {
+        var h = new StringBuilder($"<h1>Digest {E(digest.LocalDate)}</h1>");
+        DigestBody(h, p, digest, items, back);
+        return h.ToString();
+    }
+
+    private static void DigestBody(StringBuilder h, PageContext p, DigestRow digest, IReadOnlyList<ItemView> items, string back)
+    {
+        h.Append($"<p class=\"meta\"><span class=\"badge {StatusClass(digest.Status)}\">{E(digest.Status)}</span> ")
+            .Append(N(items.Count)).Append(" shown of ").Append(N(digest.Candidates)).Append(" new items, ")
+            .Append(N(digest.Triaged)).Append(" triaged");
+        if (digest.SentAt is { } sent)
+        {
+            h.Append(" · sent ").Append(E(Local(p, sent)));
+        }
+
+        h.Append("</p>");
+        foreach (var line in (digest.Note ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            h.Append($"<p class=\"notice warn\">{E(line)}</p>");
+        }
+
+        if (digest.Error is not null && digest.Status != "sent")
+        {
+            h.Append($"<p class=\"notice bad\">Last error: {E(digest.Error)}</p>");
+        }
+
+        if (items.Count == 0)
+        {
+            h.Append("<p class=\"empty\">No highlights in this digest.</p>");
+            return;
+        }
+
+        h.Append("<ol class=\"cards\">");
+        foreach (var v in items)
+        {
+            h.Append("<li>");
+            Card(h, p, v, back, full: false);
+            h.Append("</li>");
+        }
+
+        h.Append("</ol>");
+    }
+
+    public static string Search(PageContext p, SearchQuery q, IReadOnlyList<string> projects, IReadOnlyList<SearchHit>? hits)
+    {
+        var h = new StringBuilder("<h1>Search</h1>");
+        h.Append(
+            $"""
+            <form method="get" action="/ui/search" class="filters">
+              <div class="field wide"><label for="q">Query</label><input id="q" name="q" type="search" value="{E(q.Text)}" maxlength="300"></div>
+              <div class="field"><label for="project">Project or topic</label><select id="project" name="project">{Option("", "any", q.Project)}{string.Concat(projects.Select(k => Option(k, k, q.Project)))}</select></div>
+              <div class="field"><label for="kind">Kind</label><select id="kind" name="kind">{Option("", "any", q.Kind)}{Option("improve", "improve", q.Kind)}{Option("new", "new", q.Kind)}{Option("fyi", "fyi", q.Kind)}</select></div>
+              <div class="field"><label for="from">From</label><input id="from" name="from" type="date" value="{E(q.From)}"></div>
+              <div class="field"><label for="to">To</label><input id="to" name="to" type="date" value="{E(q.To)}"></div>
+              <button type="submit" class="primary">Search</button>
+            </form>
+            """);
+        if (hits is null)
+        {
+            h.Append("<p class=\"empty\">Type a query to search the archive by meaning and keywords.</p>");
+        }
+        else if (hits.Count == 0)
+        {
+            h.Append("<p class=\"empty\">Nothing found.</p>");
+        }
+        else
+        {
+            h.Append($"<p class=\"meta\">{N(hits.Count)} results</p><ol class=\"results\">");
+            foreach (var hit in hits)
+            {
+                h.Append("<li><div class=\"result\">")
+                    .Append($"<a class=\"title\" href=\"/ui/item/{N(hit.Id)}\">{E(hit.Title)}</a>")
+                    .Append("<p class=\"meta\">").Append(Meta(p, hit.Feed, hit.Project, hit.Kind, hit.PublishedAt));
+                if (hit.Vote is { } vote)
+                {
+                    h.Append(" · ").Append(vote > 0 ? "👍" : "👎");
+                }
+
+                h.Append("</p>");
+                if (hit.Summary is not null)
+                {
+                    h.Append($"<p>{E(hit.Summary)}</p>");
+                }
+
+                h.Append("</div></li>");
+            }
+
+            h.Append("</ol>");
+        }
+
+        return Layout(p, "Search", "/ui/search", h.ToString());
+    }
+
+    public static string Item(PageContext p, ItemView v)
+    {
+        var h = new StringBuilder();
+        Card(h, p, v, $"/ui/item/{N(v.Id)}", full: true);
+        if (v.Relevance is { } relevance)
+        {
+            h.Append($"<p class=\"meta\">Triage: relevance {N(relevance)}{(string.IsNullOrEmpty(v.Reason) ? "" : " · " + E(v.Reason))}</p>");
+        }
+
+        h.Append("<h2>Text</h2>");
+        h.Append(v.Content.Length == 0 ? "<p class=\"empty\">No text stored.</p>" : $"<pre class=\"content\">{E(v.Content)}</pre>");
+        return Layout(p, v.Title, "/ui/search", h.ToString());
+    }
+
+    public static string Digests(PageContext p, IReadOnlyList<DigestRow> rows)
+    {
+        var h = new StringBuilder("<h1>Digests</h1>");
+        if (rows.Count == 0)
+        {
+            h.Append("<p class=\"empty\">No digests yet.</p>");
+        }
+        else
+        {
+            h.Append("<div class=\"scroll\"><table><thead><tr><th>Date</th><th>Status</th><th class=\"num\">Shown</th><th class=\"num\">Candidates</th><th class=\"num\">Triaged</th><th>Sent</th></tr></thead><tbody>");
+            foreach (var d in rows)
+            {
+                h.Append($"<tr><td><a href=\"/ui/digest/{E(d.LocalDate)}\">{E(d.LocalDate)}</a></td>")
+                    .Append($"<td><span class=\"badge {StatusClass(d.Status)}\">{E(d.Status)}</span></td>")
+                    .Append($"<td class=\"num\">{N(d.ItemIds.Length)}</td><td class=\"num\">{N(d.Candidates)}</td><td class=\"num\">{N(d.Triaged)}</td>")
+                    .Append($"<td>{(d.SentAt is { } at ? E(Local(p, at)) : "–")}</td></tr>");
+            }
+
+            h.Append("</tbody></table></div>");
+        }
+
+        return Layout(p, "Digests", "/ui/digests", h.ToString());
+    }
+
+    public static string Sources(PageContext p, IReadOnlyList<SourceRow> rows, string sort, bool desc, bool flaggedOnly)
+    {
+        var h = new StringBuilder("<h1>Sources</h1><p class=\"meta\">Items published in the last 30 days, per Miniflux feed. Use it to decide which feeds to prune.</p>");
+        h.Append(flaggedOnly
+            ? "<p><a href=\"" + SourcesUrl(sort, desc, false) + "\">Show all feeds</a></p>"
+            : "<p><a href=\"" + SourcesUrl(sort, desc, true) + "\">Show only flagged feeds</a></p>");
+        if (rows.Count == 0)
+        {
+            h.Append("<p class=\"empty\">No feeds.</p>");
+            return Layout(p, "Sources", "/ui/sources", h.ToString());
+        }
+
+        h.Append("<div class=\"scroll\"><table><thead><tr>");
+        foreach (var (key, label, numeric) in new[]
+        {
+            ("feed", "Feed", false), ("items", "Items", true), ("candidates", "Candidates", true), ("shown", "Shown", true),
+            ("up", "👍", true), ("down", "👎", true), ("rate", "👍 rate", true), ("flag", "Flag", false),
+        })
+        {
+            var current = key == sort;
+            var aria = current ? (desc ? " aria-sort=\"descending\"" : " aria-sort=\"ascending\"") : "";
+            var nextDesc = current ? !desc : numeric;
+            h.Append($"<th{aria}{(numeric ? " class=\"num\"" : "")}><a href=\"{SourcesUrl(key, nextDesc, flaggedOnly)}\">{E(label)}</a></th>");
+        }
+
+        h.Append("</tr></thead><tbody>");
+        foreach (var r in rows)
+        {
+            var s = r.Stats;
+            h.Append($"<tr><td>{E(s.Title)}{(string.IsNullOrEmpty(s.Category) ? "" : $" <span class=\"muted\">{E(s.Category)}</span>")}</td>")
+                .Append($"<td class=\"num\">{N(s.Items)}</td><td class=\"num\">{N(s.Candidates)}</td><td class=\"num\">{N(s.Shown)}</td>")
+                .Append($"<td class=\"num\">{N(s.Up)}</td><td class=\"num\">{N(s.Down)}</td><td class=\"num\">{Percent(r.Rate)}</td>")
+                .Append($"<td>{(r.Flag is null ? "" : $"<span class=\"badge warn\">{E(r.Flag)}</span>")}</td></tr>");
+        }
+
+        h.Append("</tbody></table></div>");
+        return Layout(p, "Sources", "/ui/sources", h.ToString());
+    }
+
+    public static string Ideas(PageContext p, IReadOnlyList<Idea> ideas)
+    {
+        var h = new StringBuilder("<h1>Ideas</h1>");
+        if (ideas.Count == 0)
+        {
+            h.Append("<p class=\"empty\">Nothing filed yet. Press 💡 on a digest item that has a suggestion.</p>");
+        }
+        else
+        {
+            h.Append("<div class=\"scroll\"><table><thead><tr><th>Filed</th><th>Plane project</th><th>Idea</th><th>Source item</th></tr></thead><tbody>");
+            foreach (var i in ideas)
+            {
+                h.Append($"<tr><td>{E(Local(p, i.At))}</td><td><span class=\"badge\">{E(i.PlaneProject)}</span></td><td>{E(i.Title)}</td>")
+                    .Append($"<td><a href=\"/ui/item/{N(i.ItemId)}\">Item {N(i.ItemId)}</a></td></tr>");
+            }
+
+            h.Append("</tbody></table></div>");
+        }
+
+        return Layout(p, "Ideas", "/ui/ideas", h.ToString());
+    }
+
+    public static string Usage(PageContext p, decimal month, decimal budget, IReadOnlyList<DaySpend> days, IReadOnlyList<PurposeSpend> purposes, decimal total)
+    {
+        var h = new StringBuilder("<h1>Usage</h1>");
+        h.Append($"<p class=\"big\">{Money(month)} <span class=\"muted\">this month</span></p>");
+        if (budget > 0)
+        {
+            h.Append($"<p><meter min=\"0\" max=\"{Number(budget)}\" value=\"{Number(Math.Min(month, budget))}\" aria-label=\"Month spend against budget\"></meter> {Money(month)} of {Money(budget)} ({Percent((double)(month / budget))})</p>");
+        }
+
+        h.Append($"<h2>By day, last 30 days · {Money(total)}</h2>");
+        if (days.Count == 0)
+        {
+            h.Append("<p class=\"empty\">No spend recorded.</p>");
+        }
+        else
+        {
+            var max = days.Max(d => d.Cost);
+            h.Append("<div class=\"scroll\"><table><thead><tr><th>Day</th><th class=\"num\">Spend</th><th class=\"num\">Tokens</th><th></th></tr></thead><tbody>");
+            foreach (var d in days)
+            {
+                h.Append($"<tr><td>{d.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}</td><td class=\"num\">{Money(d.Cost)}</td><td class=\"num\">{d.Tokens.ToString("N0", CultureInfo.InvariantCulture)}</td>")
+                    .Append($"<td><meter min=\"0\" max=\"{Number(max)}\" value=\"{Number(d.Cost)}\" aria-label=\"Spend on {d.Day.ToString("d MMM", CultureInfo.InvariantCulture)}\"></meter></td></tr>");
+            }
+
+            h.Append("</tbody></table></div>");
+        }
+
+        h.Append("<h2>By purpose and model</h2>");
+        if (purposes.Count == 0)
+        {
+            h.Append("<p class=\"empty\">No calls recorded.</p>");
+        }
+        else
+        {
+            h.Append("<div class=\"scroll\"><table><thead><tr><th>Purpose</th><th>Model</th><th class=\"num\">Calls</th><th class=\"num\">Spend</th></tr></thead><tbody>");
+            foreach (var s in purposes)
+            {
+                h.Append($"<tr><td>{E(s.Purpose)}</td><td>{E(s.Model)}</td><td class=\"num\">{N(s.Calls)}</td><td class=\"num\">{Money(s.Cost)}</td></tr>");
+            }
+
+            h.Append("</tbody></table></div>");
+        }
+
+        return Layout(p, "Usage", "/ui/usage", h.ToString());
+    }
+
+    private static void Stats(StringBuilder h, Figures f)
+    {
+        h.Append("<dl class=\"stats\">")
+            .Append($"<div><dt>Spend this month</dt><dd>{Money(f.MonthSpend)}{(f.Budget > 0 ? $" <span class=\"muted\">of {Money(f.Budget)}</span>" : "")}</dd></div>")
+            .Append($"<div><dt>7-day 👍 rate</dt><dd>{Percent(f.WeekUpRate)}</dd></div>")
+            .Append($"<div><dt>Yesterday</dt><dd>👍 {N(f.Yesterday.Up)} · 👎 {N(f.Yesterday.Down)}</dd></div></dl>");
+    }
+
+    private static void RunControls(StringBuilder h, PageContext p, RunPanel run)
+    {
+        h.Append("<section class=\"panel\" aria-labelledby=\"run-h\"><h2 id=\"run-h\">Run the digest</h2>");
+        if (!run.Enabled)
+        {
+            h.Append("<p class=\"muted\">The digest job is off: Telegram is not configured.</p></section>");
+            return;
+        }
+
+        if (run.Pending is not null)
+        {
+            h.Append($"<p role=\"status\"><span class=\"badge warn\">queued</span> {E(run.Pending)} run requested; it starts within a minute.</p>");
+        }
+        else if (run.Last is { } last)
+        {
+            h.Append($"<p role=\"status\">Last forced run, {E(Local(p, last.At))}: {E(last.Text)}</p>");
+        }
+
+        h.Append($"<form method=\"post\" action=\"/ui/digest/run\" class=\"inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{E(p.Csrf)}\"><input type=\"hidden\" name=\"mode\" value=\"run\"><button type=\"submit\" class=\"primary\">Run digest now</button></form>");
+        if (run.Sent)
+        {
+            h.Append(
+                $"""
+                <details class="confirm"><summary>Send today's digest again</summary>
+                  <form method="post" action="/ui/digest/run" class="stack">
+                    <input type="hidden" name="_csrf" value="{E(p.Csrf)}"><input type="hidden" name="mode" value="resend">
+                    <p>Today's digest was already sent. This sends the same messages to Telegram a second time.</p>
+                    <button type="submit" class="danger">Yes, send it again</button>
+                  </form></details>
+                """);
+        }
+
+        h.Append("</section>");
+    }
+
+    private static void Card(StringBuilder h, PageContext p, ItemView v, string back, bool full)
+    {
+        h.Append($"<article class=\"card\" id=\"item-{N(v.Id)}\">");
+        var title = External(v.Url, v.Title);
+        h.Append(full ? $"<h1>{title}</h1>" : $"<h3>{title}</h3>");
+        h.Append("<p class=\"meta\">").Append(Meta(p, v.Feed, v.Project ?? v.ProfileKey, v.Kind, v.PublishedAt));
+        if (!full)
+        {
+            h.Append($" · <a href=\"/ui/item/{N(v.Id)}\">Open</a>");
+        }
+
+        h.Append("</p>");
+        if (v.Summary is not null)
+        {
+            h.Append($"<p>{E(v.Summary)}</p>");
+        }
+
+        if (v.Why is not null)
+        {
+            h.Append($"<p class=\"why\">{E(v.Why)}</p>");
+        }
+
+        if (v.Suggestion is not null)
+        {
+            h.Append($"<p class=\"suggestion\"><strong>Suggestion</strong> {E(v.Suggestion)}</p>");
+        }
+
+        h.Append($"<form method=\"post\" action=\"/ui/vote\" class=\"actions\"><input type=\"hidden\" name=\"_csrf\" value=\"{E(p.Csrf)}\">")
+            .Append($"<input type=\"hidden\" name=\"item\" value=\"{N(v.Id)}\"><input type=\"hidden\" name=\"back\" value=\"{E(back)}#item-{N(v.Id)}\">")
+            .Append($"<button type=\"submit\" name=\"v\" value=\"up\" aria-pressed=\"{(v.Vote == 1 ? "true" : "false")}\">👍 Like</button>")
+            .Append($"<button type=\"submit\" name=\"v\" value=\"down\" aria-pressed=\"{(v.Vote == -1 ? "true" : "false")}\">👎 Dislike</button>");
+        if (v.FiledIn is not null)
+        {
+            h.Append($"<span class=\"badge good\">Filed in {E(v.FiledIn)}</span>");
+        }
+        else if (v.Suggestion is not null)
+        {
+            h.Append("<button type=\"submit\" name=\"v\" value=\"idea\">💡 File to Plane</button>");
+        }
+
+        h.Append("</form></article>");
+    }
+
+    private static string Meta(PageContext p, string feed, string? project, string? kind, DateTime published)
+    {
+        var parts = new List<string> { $"<span>{E(feed)}</span>" };
+        if (!string.IsNullOrEmpty(project))
+        {
+            parts.Add($"<span class=\"badge\">{E(project)}</span>");
+        }
+
+        if (!string.IsNullOrEmpty(kind))
+        {
+            parts.Add($"<span class=\"badge kind-{(kind is "improve" or "new" or "fyi" ? kind : "other")}\">{E(kind)}</span>");
+        }
+
+        parts.Add($"<time datetime=\"{published.ToString("O", CultureInfo.InvariantCulture)}\">{E(Local(p, published))}</time>");
+        return string.Join(" · ", parts);
+    }
+
+    private static string Layout(PageContext p, string title, string? active, string body)
+    {
+        var nav = new StringBuilder("<nav aria-label=\"Main\">");
+        foreach (var (path, label) in Nav)
+        {
+            nav.Append($"<a href=\"{path}\"{(path == active ? " aria-current=\"page\"" : "")}>{label}</a>");
+        }
+
+        nav.Append("</nav>");
+        var notice = p.Notice is not null && Notices.TryGetValue(p.Notice, out var text)
+            ? $"<p class=\"notice good\" role=\"status\">{E(text)}</p>"
+            : "";
+        return Shell(title,
+            $"""
+            <header class="top"><span class="brand">feed-eater</span>{nav}
+              <form method="post" action="/ui/logout"><input type="hidden" name="_csrf" value="{E(p.Csrf)}"><button type="submit" class="link">Sign out</button></form>
+            </header>
+            <main id="main">{notice}{body}</main>
+            """);
+    }
+
+    private static string Shell(string title, string body) =>
+        $"""
+        <!doctype html>
+        <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+        <meta name="color-scheme" content="dark light"><meta name="referrer" content="same-origin">
+        <title>{E(title)} · feed-eater</title><link rel="stylesheet" href="/ui/app.css"></head>
+        <body><a class="skip" href="#main">Skip to content</a>{body}</body></html>
+        """;
+
+    private static string SourcesUrl(string sort, bool desc, bool flagged) =>
+        $"/ui/sources?sort={sort}&amp;dir={(desc ? "desc" : "asc")}{(flagged ? "&amp;flag=1" : "")}";
+
+    private static string Option(string value, string label, string? selected) =>
+        $"<option value=\"{E(value)}\"{((selected ?? "") == value ? " selected" : "")}>{E(label)}</option>";
+
+    private static string StatusClass(string status) => status switch { "sent" => "good", "failed" => "bad", _ => "warn" };
+
+    private static string Local(PageContext p, DateTime utc) =>
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), p.Zone).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+    private static string Local(PageContext p, DateTimeOffset at) => Local(p, at.UtcDateTime);
+
+    private static string N(long n) => n.ToString(CultureInfo.InvariantCulture);
+
+    private static string Number(decimal d) => d.ToString("0.##########", CultureInfo.InvariantCulture);
+
+    private static string Money(decimal d) => "$" + (d >= 0.01m || d == 0 ? d.ToString("0.00", CultureInfo.InvariantCulture) : d.ToString("0.0000", CultureInfo.InvariantCulture));
+
+    private static string Percent(double? rate) => rate is { } r ? Math.Round(r * 100, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture) + "%" : "–";
+}
+
+public sealed record SearchQuery(string Text, string? Project, string? Kind, string? From, string? To);
