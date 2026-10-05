@@ -14,6 +14,7 @@ public sealed class Ingestor(
     : PollingLoop(health, time, logger)
 {
     public const string LoopName = "miniflux";
+    public const string EmbedName = "embeddings";
 
     private const int RetryChars = 2000;
     private readonly HashSet<long> skipped = [];
@@ -24,8 +25,26 @@ public sealed class Ingestor(
     protected override async Task PollAsync(CancellationToken ct)
     {
         var added = await IngestAsync(ct);
-        var embedded = await EmbedPendingAsync(ct);
-        Logger.LogInformation("Ingested {Added} entries, embedded {Embedded}", added, embedded);
+        var embedded = await EmbedSafelyAsync(ct);
+        var assigned = await items.AssignProfileKeysAsync(ct);
+        Logger.LogInformation("Ingested {Added} entries, embedded {Embedded}, assigned {Assigned} profile keys", added, embedded, assigned);
+    }
+
+    /// <summary>An embedding outage is its own health entry, so it is not reported as a Miniflux outage; the next poll retries.</summary>
+    private async Task<int> EmbedSafelyAsync(CancellationToken ct)
+    {
+        try
+        {
+            var done = await EmbedPendingAsync(ct);
+            Health.Succeeded(EmbedName);
+            return done;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or BudgetExceededException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            Logger.LogWarning(ex, "Embedding failed; items stay unembedded until the next poll");
+            Health.Failed(EmbedName, ex.Message);
+            return 0;
+        }
     }
 
     internal async Task<int> IngestAsync(CancellationToken ct)

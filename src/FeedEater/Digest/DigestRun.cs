@@ -65,6 +65,11 @@ public sealed class DigestRun(
             notes.Add("Miniflux was unreachable at the last poll; some items may be missing");
         }
 
+        if (health.IsDown(Ingestor.EmbedName))
+        {
+            notes.Add("Embeddings were unavailable at the last poll; new items may be missing");
+        }
+
         var zone = o.Zone;
         var localDay = TimeZoneInfo.ConvertTime(now, zone).Date;
         var dayStart = new DateTimeOffset(localDay, zone.GetUtcOffset(localDay));

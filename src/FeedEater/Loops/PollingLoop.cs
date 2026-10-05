@@ -12,6 +12,7 @@ public abstract class PollingLoop(LoopHealth health, TimeProvider time, ILogger 
     // Subclasses use these instead of their own copies: capturing a parameter that is also passed to the base is CS9107.
     protected TimeProvider Time => time;
     protected ILogger Logger => logger;
+    protected LoopHealth Health => health;
 
     public static TimeSpan Backoff(TimeSpan interval, int failures) =>
         TimeSpan.FromSeconds(Math.Min(interval.TotalSeconds * Math.Pow(2, failures - 1), MaxBackoff.TotalSeconds));

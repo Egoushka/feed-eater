@@ -158,6 +158,30 @@ public sealed class ItemStore(FeedDb db)
             }, cancellationToken: ct));
     }
 
+    /// <summary>
+    /// Gives every embedded item without a profile_key its nearest profile (cosine), so backfilled and older items match the
+    /// project filter. Batched; a no-op without profiles. Returns how many rows were assigned.
+    /// </summary>
+    public async Task<int> AssignProfileKeysAsync(CancellationToken ct)
+    {
+        const int Batch = 1000;
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        var total = 0;
+        while (true)
+        {
+            var n = await c.ExecuteAsync(new CommandDefinition(
+                """
+                update items i set profile_key = (select p.key from profiles p order by p.embedding <=> i.embedding limit 1)
+                where i.id in (select id from items where profile_key is null and embedding is not null and exists (select 1 from profiles) limit @batch)
+                """, new { batch = Batch }, cancellationToken: ct));
+            total += n;
+            if (n < Batch)
+            {
+                return total;
+            }
+        }
+    }
+
     public async Task SetContentAsync(long id, string content, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);

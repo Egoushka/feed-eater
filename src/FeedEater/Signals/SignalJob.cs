@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -22,13 +23,34 @@ public sealed class SignalJob(
     internal async Task<int> CollectAsync(CancellationToken ct)
     {
         var fresh = new List<(NewSignal Signal, string Text)>();
+        var sources = new List<(string Name, Func<CancellationToken, Task<List<(NewSignal, string)>>> Fetch)>();
         if (Settings.Karakeep.Token.Length > 0)
         {
-            fresh.AddRange((await NewBookmarksAsync(ct)).AsEnumerable().Reverse());
+            sources.Add(("karakeep", NewBookmarksAsync));
         }
 
+        sources.Add(("github", NewStarsAsync));
+
         // Oldest first: a run that dies midway leaves a stored prefix, so the next run's newest-first scan still reaches the rest.
-        fresh.AddRange((await NewStarsAsync(ct)).AsEnumerable().Reverse());
+        var failed = new List<Exception>();
+        foreach (var (name, fetch) in sources)
+        {
+            try
+            {
+                fresh.AddRange((await fetch(ct)).AsEnumerable().Reverse());
+            }
+            catch (Exception ex) when (ex is HttpRequestException or JsonException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+            {
+                Logger.LogWarning(ex, "Signals from {Source} unavailable; the next daily run catches up", name);
+                failed.Add(ex);
+            }
+        }
+
+        if (failed.Count == sources.Count)
+        {
+            throw new AggregateException("Every signal source failed", failed);
+        }
+
         foreach (var chunk in fresh.Chunk(Settings.Llm.EmbedBatch))
         {
             var vectors = await llm.EmbedAsync(chunk.Select(c => c.Text).ToList(), "signal", ct);

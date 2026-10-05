@@ -50,4 +50,40 @@ public sealed class SearchTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal([lab], byProject.Select(h => h.Id));
         Assert.Equal([other], byKind.Select(h => h.Id));
     }
+
+    [Fact]
+    public async Task Items_without_a_profile_key_get_their_nearest_profile_and_then_match_the_project_filter()
+    {
+        var store = new ItemStore(pg.Db);
+        await new ProfileStore(pg.Db).ReplaceAllAsync(
+        [
+            new Profile { Key = "homelab", Kind = "project", Description = "d", Embedding = TestVectors.OneHot(0) },
+            new Profile { Key = "chargehand", Kind = "project", Description = "d", Embedding = TestVectors.OneHot(1) },
+        ], DateTimeOffset.UtcNow, default);
+        var old = await Seed.ItemAsync(pg, 1, "hnsw backfilled", TestVectors.Blend(1, 5, 0.2f));
+        var lab = await Seed.ItemAsync(pg, 1, "hnsw backfilled too", TestVectors.OneHot(0));
+
+        Assert.Empty(await store.SearchAsync(null, "hnsw", "chargehand", null, null, null, 10, default));
+        Assert.Equal(2, await store.AssignProfileKeysAsync(default));
+        Assert.Equal(0, await store.AssignProfileKeysAsync(default));
+
+        Assert.Equal([old], (await store.SearchAsync(null, "hnsw", "chargehand", null, null, null, 10, default)).Select(h => h.Id));
+        Assert.Equal([lab], (await store.SearchAsync(null, "hnsw", "homelab", null, null, null, 10, default)).Select(h => h.Id));
+    }
+
+    [Fact]
+    public async Task Assigning_profile_keys_does_nothing_without_profiles_and_keeps_existing_keys()
+    {
+        var store = new ItemStore(pg.Db);
+        var id = await Seed.ItemAsync(pg, 1, "x", TestVectors.OneHot(0));
+
+        Assert.Equal(0, await store.AssignProfileKeysAsync(default));
+
+        await new ProfileStore(pg.Db).ReplaceAllAsync(
+            [new Profile { Key = "homelab", Kind = "project", Description = "d", Embedding = TestVectors.OneHot(0) }], DateTimeOffset.UtcNow, default);
+        await store.SetScoresAsync([new FeedEater.Ranking.Scored(id, 1, "kept")], default);
+
+        Assert.Equal(0, await store.AssignProfileKeysAsync(default));
+        Assert.Equal("kept", (await store.GetAsync(id, default))!.ProfileKey);
+    }
 }

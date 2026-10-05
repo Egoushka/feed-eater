@@ -73,7 +73,7 @@ public static class ServiceRegistration
         services.AddHttpClient<GitHubStarsClient>((sp, http) =>
         {
             http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.1");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.2");
         });
 
         services.AddHttpClient<HindsightClient>((sp, http) =>
@@ -92,9 +92,16 @@ public static class ServiceRegistration
             services.AddHostedService<Ingestor>();
             services.AddHostedService<ProfileBuilder>();
             services.AddHostedService<SignalJob>();
-            services.AddHostedService<DigestJob>();
+
+            // Without a bot token a digest would pay for triage and then fail to send.
+            var telegram = settings.Telegram.Token.Length > 0;
+            if (telegram)
+            {
+                services.AddHostedService<DigestJob>();
+            }
+
             services.AddHostedService<WeeklyRetain>();
-            if (settings.Telegram.Token.Length > 0)
+            if (telegram)
             {
                 services.AddHostedService<TelegramPoller>();
             }

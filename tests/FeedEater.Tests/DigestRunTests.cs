@@ -21,6 +21,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private static readonly string LongText = string.Join(' ', Enumerable.Repeat("Postgres async I/O details.", 80));
 
     private readonly List<string> _sent = [];
+    private readonly LoopHealth _health = new(new FakeTimeProvider(Now));
     private int _telegramCalls;
     private int _failTelegramAt;
     private int _chatCalls;
@@ -103,7 +104,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new MinifluxClient(miniflux.Client("http://miniflux/")),
             new TelegramClient(telegram.Client("http://tg/botT/")),
-            new LoopHealth(time), options, time, NullLogger<DigestRun>.Instance);
+            _health, options, time, NullLogger<DigestRun>.Instance);
         return (run, digests, miniflux);
     }
 
@@ -139,6 +140,30 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(chatCalls, _chatCalls);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
         Assert.Single(miniflux.Calls, c => c.Uri.Contains("/v1/entries/202/fetch-content", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_embedding_outage_is_not_reported_as_a_Miniflux_outage()
+    {
+        await SeedAsync();
+        _health.Failed(Ingestor.EmbedName, "LiteLLM down");
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+        Assert.Contains("Embeddings were unavailable", _sent[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("Miniflux was unreachable", _sent[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_Miniflux_outage_is_reported_as_one()
+    {
+        await SeedAsync();
+        _health.Failed(Ingestor.LoopName, "refused");
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+        Assert.Contains("Miniflux was unreachable", _sent[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("Embeddings were unavailable", _sent[0], StringComparison.Ordinal);
     }
 
     [Fact]
