@@ -51,7 +51,8 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var feedback = new FeedbackStore(pg.Db);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), new PlaneClient(planeStub.Client("http://plane/"), options), options, TimeProvider.System);
         var handler = new CallbackHandler(telegram, feedback, filer, items, options, NullLogger<CallbackHandler>.Instance);
-        var poller = new TelegramPoller(telegram, handler, new CursorStore(pg.Db), new LoopHealth(TimeProvider.System), TimeProvider.System, NullLogger<TelegramPoller>.Instance);
+        var commands = new CommandHandler(telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), options);
+        var poller = new TelegramPoller(telegram, handler, commands, new CursorStore(pg.Db), new LoopHealth(TimeProvider.System), TimeProvider.System, NullLogger<TelegramPoller>.Instance);
         return (poller, planeStub);
     }
 
@@ -226,5 +227,38 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(-1, (await new ItemStore(pg.Db).GetAsync(id, default))!.Vote);
         Assert.Equal("12", await new CursorStore(pg.Db).GetAsync("telegram:offset", default));
+    }
+
+    private static string Message(long updateId, long from, string text) =>
+        $$$"""{"update_id":{{{updateId}}},"message":{"message_id":8,"from":{"id":{{{from}}}},"chat":{"id":{{{from}}}},"text":"{{{text}}}"}}""";
+
+    [Theory]
+    [InlineData("/digest", "run")]
+    [InlineData("/digest@feed_bot", "run")]
+    [InlineData("/digest resend", "resend")]
+    public async Task The_digest_command_from_the_owner_queues_a_forced_run_and_replies(string text, string mode)
+    {
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 42, text)}}]}""";
+
+        await poller.TickAsync(default);
+
+        var today = new DigestTrigger(new CursorStore(pg.Db), Options.Create(new FeedEaterOptions()), TimeProvider.System).Today();
+        Assert.Equal($"{mode}:{today}", await new CursorStore(pg.Db).GetAsync("digest:force", default));
+        Assert.Contains("Queued", Assert.Single(_telegram, t => t.Method == "sendMessage").Body, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(999, "/digest")]
+    [InlineData(42, "hello")]
+    public async Task Other_senders_and_other_text_queue_nothing(long from, string text)
+    {
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, from, text)}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Null(await new CursorStore(pg.Db).GetAsync("digest:force", default));
+        Assert.DoesNotContain(_telegram, t => t.Method == "sendMessage");
     }
 }

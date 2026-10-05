@@ -86,6 +86,8 @@ public static class ServiceRegistration
         services.AddSingleton<DigestRun>();
         services.AddSingleton<IdeaFiler>();
         services.AddSingleton<CallbackHandler>();
+        services.AddSingleton<CommandHandler>();
+        services.AddSingleton<DigestTrigger>();
 
         if (settings.RunJobs)
         {

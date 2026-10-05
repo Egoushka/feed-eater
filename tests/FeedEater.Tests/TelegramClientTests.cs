@@ -50,13 +50,14 @@ public sealed class TelegramClientTests
     }
 
     [Fact]
-    public async Task Get_updates_parses_callbacks_and_skips_other_updates()
+    public async Task Get_updates_parses_callbacks_and_messages_and_skips_other_updates()
     {
         var (client, handler) = Build(
             """
             {"ok":true,"result":[
               {"update_id":10,"callback_query":{"id":"cb1","from":{"id":42},"message":{"message_id":7,"chat":{"id":42}},"data":"v:5:u"}},
-              {"update_id":11,"message":{"message_id":8,"text":"hi"}}
+              {"update_id":11,"message":{"message_id":8,"text":"hi"}},
+              {"update_id":12,"message":{"message_id":9,"from":{"id":42},"chat":{"id":42},"text":"/digest"}}
             ]}
             """);
 
@@ -64,7 +65,9 @@ public sealed class TelegramClientTests
 
         Assert.Equal(new TgCallback("cb1", 42, 42, 7, "v:5:u"), updates[0].Callback);
         Assert.Null(updates[1].Callback);
-        Assert.Contains("\"allowed_updates\":[\"callback_query\"]", handler.Calls.Single().Body, StringComparison.Ordinal);
+        Assert.Null(updates[1].Message);
+        Assert.Equal(new TgMessage(42, 42, "/digest"), updates[2].Message);
+        Assert.Contains("\"allowed_updates\":[\"callback_query\",\"message\"]", handler.Calls.Single().Body, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -12,6 +12,7 @@ public abstract class ScheduledJob(CursorStore cursors, IOptions<FeedEaterOption
 {
     protected override TimeSpan Interval => TimeSpan.FromMinutes(1);
     protected FeedEaterOptions Settings => options.Value;
+    protected CursorStore Cursors => cursors;
 
     /// <summary>The run key for this moment, or null when nothing is due.</summary>
     protected abstract string? DueKey(DateTime localNow);
