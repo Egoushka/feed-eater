@@ -15,6 +15,13 @@ public sealed record VoteCounts
     public int Down { get; init; }
 }
 
+public sealed record RatingTotals
+{
+    public int Up { get; init; }
+    public int Down { get; init; }
+    public int Ideas { get; init; }
+}
+
 public sealed record Idea
 {
     public long ItemId { get; init; }
@@ -44,6 +51,23 @@ public sealed class FeedbackStore(FeedDb db)
             insert into votes (item_id, value, at) values (@itemId, @value, now())
             on conflict (item_id) do update set value = excluded.value, at = excluded.at
             """, new { itemId, value }, cancellationToken: ct));
+    }
+
+    public async Task ClearVoteAsync(long itemId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        await c.ExecuteAsync(new CommandDefinition("delete from votes where item_id = @itemId", new { itemId }, cancellationToken: ct));
+    }
+
+    public async Task<RatingTotals> TotalsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.QuerySingleAsync<RatingTotals>(new CommandDefinition(
+            """
+            select (select count(*) from votes where value = 1)::int as up,
+                   (select count(*) from votes where value = -1)::int as down,
+                   (select count(*) from ideas)::int as ideas
+            """, cancellationToken: ct));
     }
 
     /// <summary>Newest first: 👍 items and items filed as ideas (an item that is both counts once), and positive signals (Karakeep saves, GitHub stars).</summary>
