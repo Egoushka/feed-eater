@@ -1,4 +1,4 @@
-# Handoff — feed-eater (2026-10-05, Tasks 0–16 merged, Task 17 Steps 1–2 and 4 done)
+# Handoff — feed-eater (2026-10-05, Tasks 0–16 merged, Task 17 deployed except Telegram token and Miniflux cleanup)
 
 ## Goal
 
@@ -76,3 +76,30 @@ The spec won over the plan wherever they disagreed.
 - Branch: `dotnet test FeedEater.slnx` is green (127/127).
 - After deploy: `hz deployed <sha> --wait 10m`, then `FEED_MCP_TOKEN=... ./selftest.sh http://100.64.0.2:8104`, then
   the first digest in Telegram by 08:00 Kyiv.
+
+## Task 17 deploy (homelab-gitops, 2026-10-05, later session)
+
+- Deployed: PRs Egoushka/homelab-gitops#572 (stack), #573 (TELEGRAM_USER_ID was a JSON list `[id]`; now bare), #574
+  (Miniflux base URL `http://miniflux:8080/`, because Miniflux publishes only 127.0.0.1:8092 on the host).
+  `feed-eater` is healthy at `100.64.0.2:8104`; `selftest.sh` prints ok for all 5 tools; ingest is running (5,214 items after ~6 min).
+- Subnet is `10.211.36.0/24` (the plan's 10.211.35 belongs to router-actions). MCP is a target `feed` on `/mcp/homelab`, no
+  separate `/mcp/feed` route. Also needed in the PR: `policy/budget.yaml` (896m), a `policy/baseline/homepage-tile.txt` line,
+  `FEED_MCP_TOKEN=ci` in `.github/workflows/ci.yml`, and a regenerated `db-dump.targets`.
+- Secrets: `feed-eater/.env.enc` holds everything except `TELEGRAM_BOT_TOKEN`. LITELLM_KEY (alias feed-eater, $10/30d) was
+  generated against `100.64.0.2:4000`. The Mac has no age key; set secrets in `/root/gitops-work` on hedzer, `scp` the `.enc` back, PR it.
+- `miniflux` ingest signal removed from `ingest.py` and cron.
+
+## Still open
+
+1. **TELEGRAM_BOT_TOKEN** (Yehor, BotFather, then `/start` the bot). Without it the digest and button handling never start.
+   On hedzer: `cd /root/gitops-work && git pull --ff-only && ./scripts/secret.sh set feed-eater TELEGRAM_BOT_TOKEN "$T"`,
+   `scp` the `.enc` into a homelab-gitops worktree, PR with `automerge`, then `hz deployed <sha> --wait 10m`.
+2. Verify the backfill: `hz sql feed-eater-db "select count(*) from items"` and the embedding count; `hz logs feed-eater`.
+3. Step 9 (Miniflux source cleanup: Hacker News URL, Reddit top feeds), each approved by Yehor.
+4. Step 10: four-week validation in `docs/specs/2026-10-05-validation.md`.
+5. First digest in Telegram by 08:00 Kyiv, only after item 1.
+
+## Update (later)
+
+- `TELEGRAM_BOT_TOKEN` is deployed (homelab-gitops#575); `@feed_hrabovsky_bot` accepts it. Ingest finished (10,776 items), embedding backfill running. Open item 1 above is done; first digest by 08:00 Kyiv needs `/start` sent to the bot.
+- Step 9 done: Miniflux feeds 13 (Hacker News, `hnrss.org/frontpage?points=100`), 17 and 16 (r/homelab, r/selfhosted `top/.rss?t=day`) updated; no parse errors.
