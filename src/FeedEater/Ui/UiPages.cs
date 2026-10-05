@@ -12,7 +12,7 @@ public sealed record PageContext(string Csrf, TimeZoneInfo Zone, string? Notice)
 public sealed record Figures(decimal MonthSpend, decimal Budget, double? WeekUpRate, VoteCounts Yesterday);
 
 /// <summary>The /ui/posts filters as the page shows them; <see cref="Url"/> is the only way a filtered link is built, so nothing raw is reflected.</summary>
-public sealed record PostsQuery(string? Category, long? Feed, string? Project, string? Kind, bool Unrated, bool Summary, int Days)
+public sealed record PostsQuery(string? Category, long? Feed, string? Project, string? Kind, bool Unrated, bool Summary, int Days, bool ShowMuted = false)
 {
     public static readonly int[] DayChoices = [1, 7, 30, 90];
 
@@ -33,6 +33,7 @@ public sealed record PostsQuery(string? Category, long? Feed, string? Project, s
         Add("kind", Kind);
         Add("unrated", Unrated ? "1" : null);
         Add("summary", Summary ? "1" : null);
+        Add("muted", ShowMuted ? "1" : null);
         Add("days", Days == 7 ? null : Days.ToString(CultureInfo.InvariantCulture));
         Add("before", before);
         return parts.Count == 0 ? "/ui/posts" : "/ui/posts?" + string.Join('&', parts);
@@ -131,7 +132,7 @@ public static class UiPages
         IReadOnlyList<ItemView> posts, string? nextBefore, bool paged)
     {
         var h = new StringBuilder("<h1>Posts</h1>");
-        var active = new[] { q.Category is not null, q.Feed is not null, q.Project is not null, q.Kind is not null, q.Unrated, q.Summary, q.Days != 7 }.Count(x => x);
+        var active = new[] { q.Category is not null, q.Feed is not null, q.Project is not null, q.Kind is not null, q.Unrated, q.Summary, q.ShowMuted, q.Days != 7 }.Count(x => x);
         var badge = active > 0 ? $" <span class=\"badge\">{N(active)} active</span>" : "";
         h.Append($"<details class=\"filterbox\"><summary>Filters{badge}</summary>");
         h.Append(
@@ -145,6 +146,7 @@ public static class UiPages
               <div class="checks">
                 <label class="check"><input type="checkbox" name="unrated" value="1"{(q.Unrated ? " checked" : "")}> Unrated only</label>
                 <label class="check"><input type="checkbox" name="summary" value="1"{(q.Summary ? " checked" : "")}> With AI summary only</label>
+                <label class="check"><input type="checkbox" name="muted" value="1"{(q.ShowMuted ? " checked" : "")}> Show muted feeds</label>
               </div>
               <button type="submit" class="primary">Apply</button>
             </form></details>
@@ -358,10 +360,10 @@ public static class UiPages
 
     public static string Sources(PageContext p, IReadOnlyList<SourceRow> rows, string sort, bool desc, bool flaggedOnly)
     {
-        var h = new StringBuilder("<h1>Sources</h1><p class=\"meta\">Items published in the last 30 days, per Miniflux feed. Use it to decide which feeds to prune.</p>");
+        var h = new StringBuilder("<h1>Sources</h1><p class=\"meta\">Items published in the last 30 days, per Miniflux feed. Muting a feed keeps it ingested and searchable but leaves it out of digests and the Today brief.</p>");
         h.Append(flaggedOnly
-            ? "<p><a href=\"" + SourcesUrl(sort, desc, false) + "\">Show all feeds</a></p>"
-            : "<p><a href=\"" + SourcesUrl(sort, desc, true) + "\">Show only flagged feeds</a></p>");
+            ? "<p><a href=\"" + E(SourcesPath(sort, desc, false)) + "\">Show all feeds</a></p>"
+            : "<p><a href=\"" + E(SourcesPath(sort, desc, true)) + "\">Show only flagged feeds</a></p>");
         if (rows.Count == 0)
         {
             h.Append("<p class=\"empty\">No feeds.</p>");
@@ -371,24 +373,28 @@ public static class UiPages
         h.Append("<div class=\"scroll\"><table><thead><tr>");
         foreach (var (key, label, numeric) in new[]
         {
-            ("feed", "Feed", false), ("items", "Items", true), ("candidates", "Candidates", true), ("shown", "Shown", true),
+            ("feed", "Feed", false), ("items", "Items", true), ("perweek", "Posts/week", true), ("candidates", "Candidates", true), ("shown", "Shown", true),
             ("up", "👍", true), ("down", "👎", true), ("rate", "👍 rate", true), ("flag", "Flag", false),
         })
         {
             var current = key == sort;
             var aria = current ? (desc ? " aria-sort=\"descending\"" : " aria-sort=\"ascending\"") : "";
             var nextDesc = current ? !desc : numeric;
-            h.Append($"<th{aria}{(numeric ? " class=\"num\"" : "")}><a href=\"{SourcesUrl(key, nextDesc, flaggedOnly)}\">{E(label)}</a></th>");
+            h.Append($"<th{aria}{(numeric ? " class=\"num\"" : "")}><a href=\"{E(SourcesPath(key, nextDesc, flaggedOnly))}\">{E(label)}</a></th>");
         }
 
-        h.Append("</tr></thead><tbody>");
+        h.Append("<th><span class=\"visually-hidden\">Mute</span></th></tr></thead><tbody>");
+        var back = SourcesPath(sort, desc, flaggedOnly);
         foreach (var r in rows)
         {
             var s = r.Stats;
-            h.Append($"<tr><td>{E(s.Title)}{(string.IsNullOrEmpty(s.Category) ? "" : $" <span class=\"muted\">{E(s.Category)}</span>")}</td>")
-                .Append($"<td class=\"num\">{N(s.Items)}</td><td class=\"num\">{N(s.Candidates)}</td><td class=\"num\">{N(s.Shown)}</td>")
+            h.Append($"<tr><td>{E(s.Title)}{(string.IsNullOrEmpty(s.Category) ? "" : $" <span class=\"muted\">{E(s.Category)}</span>")}{(s.Muted ? " <span class=\"badge\">muted</span>" : "")}</td>")
+                .Append($"<td class=\"num\">{N(s.Items)}</td><td class=\"num\">{s.PostsPerWeek.ToString("0.0", CultureInfo.InvariantCulture)}</td><td class=\"num\">{N(s.Candidates)}</td><td class=\"num\">{N(s.Shown)}</td>")
                 .Append($"<td class=\"num\">{N(s.Up)}</td><td class=\"num\">{N(s.Down)}</td><td class=\"num\">{Percent(r.Rate)}</td>")
-                .Append($"<td>{(r.Flag is null ? "" : $"<span class=\"badge warn\">{E(r.Flag)}</span>")}</td></tr>");
+                .Append($"<td>{(r.Flag is null ? "" : $"<span class=\"badge warn\">{E(r.Flag)}</span>")}</td>")
+                .Append($"<td><form method=\"post\" action=\"/ui/feeds/mute\" class=\"inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{E(p.Csrf)}\"><input type=\"hidden\" name=\"feed\" value=\"{N(s.FeedId)}\">")
+                .Append($"<input type=\"hidden\" name=\"mute\" value=\"{(s.Muted ? "0" : "1")}\"><input type=\"hidden\" name=\"back\" value=\"{E(back)}\">")
+                .Append($"<button type=\"submit\" class=\"quiet\" aria-label=\"{(s.Muted ? "Unmute" : "Mute")} {E(s.Title)}\">{(s.Muted ? "Unmute" : "Mute")}</button></form></td></tr>");
         }
 
         h.Append("</tbody></table></div>");
@@ -621,8 +627,8 @@ public static class UiPages
         <body><a class="skip" href="#main">Skip to content</a>{body}</body></html>
         """;
 
-    private static string SourcesUrl(string sort, bool desc, bool flagged) =>
-        $"/ui/sources?sort={sort}&amp;dir={(desc ? "desc" : "asc")}{(flagged ? "&amp;flag=1" : "")}";
+    private static string SourcesPath(string sort, bool desc, bool flagged) =>
+        $"/ui/sources?sort={sort}&dir={(desc ? "desc" : "asc")}{(flagged ? "&flag=1" : "")}";
 
     private static string Option(string value, string label, string? selected) =>
         $"<option value=\"{E(value)}\"{((selected ?? "") == value ? " selected" : "")}>{E(label)}</option>";

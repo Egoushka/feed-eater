@@ -158,3 +158,5 @@ button.quiet:hover { color: var(--fg); border-color: var(--edge); }
 .filterbox summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
 .filterbox .filters { margin-top: var(--space-2); }
 .also { font-size: 0.875rem; color: var(--muted); margin: 0 0 var(--space-2); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+td .inline { margin: 0; }

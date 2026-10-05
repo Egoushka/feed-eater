@@ -6,7 +6,7 @@ namespace FeedEater.Storage;
 
 public sealed record ClusterMember(long Id, string Title, string Url, string Feed);
 
-public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl);
+public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl, bool Muted = false);
 
 public sealed record NewItem(
     long EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content);
@@ -38,6 +38,7 @@ public record ItemView
     public string Url { get; init; } = "";
     public string Feed { get; init; } = "";
     public string? Category { get; init; }
+    public bool FeedMuted { get; init; }
     public DateTime PublishedAt { get; init; }
     public string Content { get; init; } = "";
     public string? ProfileKey { get; init; }
@@ -62,7 +63,7 @@ public sealed record RatedItem : ItemView
     public DateTime RatedAt { get; init; }
 }
 
-public sealed record PostFilter(DateTimeOffset Since, string? Category, long? FeedId, string? Project, string? Kind, bool UnratedOnly, bool SummaryOnly);
+public sealed record PostFilter(DateTimeOffset Since, string? Category, long? FeedId, string? Project, string? Kind, bool UnratedOnly, bool SummaryOnly, bool ShowMuted = false);
 
 /// <summary>Keyset position: microseconds since the Unix epoch plus the item id, so ties on the timestamp cannot repeat or skip rows.</summary>
 public sealed record PageCursor(long Micros, long Id)
@@ -99,11 +100,15 @@ public sealed record SourceStats
     public long FeedId { get; init; }
     public string Title { get; init; } = "";
     public string? Category { get; init; }
+    public bool Muted { get; init; }
     public int Items { get; init; }
     public int Candidates { get; init; }
     public int Shown { get; init; }
     public int Up { get; init; }
     public int Down { get; init; }
+
+    /// <summary>The window is 30 days, so a week is 7/30 of it.</summary>
+    public double PostsPerWeek => Items * 7.0 / 30;
 }
 
 public sealed class ItemStore(FeedDb db)
@@ -173,7 +178,7 @@ public sealed class ItemStore(FeedDb db)
     /// Items published inside the window that are embedded, not duplicates and not triaged before <paramref name="triagedBefore"/>
     /// (the start of today). Same-day retries see today's triaged items again and reuse the stored result; items over the
     /// triage cap stay untriaged and can return while still inside the window. One item per story: the earliest published of
-    /// its cluster, and none when any member of the cluster was triaged on an earlier day.
+    /// its cluster outside muted feeds, and none when any member of the cluster was triaged on an earlier day.
     /// </summary>
     public async Task<IReadOnlyList<Candidate>> CandidatesAsync(DateTimeOffset publishedAfter, DateTimeOffset triagedBefore, CancellationToken ct)
     {
@@ -185,6 +190,7 @@ public sealed class ItemStore(FeedDb db)
                    i.embedding::real[] as embedding
             from items i left join feeds f on f.id = i.feed_id
             where i.published_at > @publishedAfter and i.duplicate_of is null and i.embedding is not null
+              and not coalesce(f.muted, false)
               and not exists (
                   select 1 from items m join triage t on t.item_id = m.id
                   where (m.id = coalesce(i.cluster_of, i.id) or m.cluster_of = coalesce(i.cluster_of, i.id)) and t.at < @triagedBefore)
@@ -246,7 +252,7 @@ public sealed class ItemStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.QuerySingleOrDefaultAsync<ItemView>(new CommandDefinition(
             $"""
-            select i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, i.published_at, i.content, i.profile_key,
+            select i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, coalesce(f.muted, false) as feed_muted, i.published_at, i.content, i.profile_key,
                    t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
                    coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in, {AlsoColumn}
             from items i
@@ -269,7 +275,7 @@ public sealed class ItemStore(FeedDb db)
         return (await c.QueryAsync<SourceStats>(new CommandDefinition(
             """
             with shown as (select distinct unnest(item_ids) as id from digests)
-            select f.id as feed_id, f.title, f.category,
+            select f.id as feed_id, f.title, f.category, f.muted,
                    count(i.id)::int as items,
                    (count(i.id) filter (where i.score is not null))::int as candidates,
                    count(s.id)::int as shown,
@@ -279,14 +285,14 @@ public sealed class ItemStore(FeedDb db)
             left join items i on i.feed_id = f.id and i.published_at >= @since and i.duplicate_of is null
             left join shown s on s.id = i.id
             left join votes v on v.item_id = i.id
-            group by f.id, f.title, f.category
+            group by f.id, f.title, f.category, f.muted
             order by f.title
             """, new { since = since.UtcDateTime }, cancellationToken: ct))).ToList();
     }
 
     private const string CardColumns =
         $"""
-        i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, i.published_at, left(i.content, 600) as content, i.profile_key,
+        i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, coalesce(f.muted, false) as feed_muted, i.published_at, left(i.content, 600) as content, i.profile_key,
         t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
         coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in, {AlsoColumn}
         """;
@@ -315,13 +321,14 @@ public sealed class ItemStore(FeedDb db)
               and (@kind::text is null or coalesce(r.kind, t.kind) = @kind)
               and (not @unrated or v.item_id is null)
               and (not @summaryOnly or r.item_id is not null)
+              and (@showMuted or not coalesce(f.muted, false))
             order by i.published_at desc, i.id desc
             limit @limit
             """,
             new
             {
                 since = f.Since.UtcDateTime, micros = before?.Micros, cursorId = before?.Id ?? 0L, f.Category, f.FeedId, f.Project, f.Kind,
-                unrated = f.UnratedOnly, summaryOnly = f.SummaryOnly, limit,
+                unrated = f.UnratedOnly, summaryOnly = f.SummaryOnly, showMuted = f.ShowMuted, limit,
             }, cancellationToken: ct))).ToList();
     }
 
@@ -356,11 +363,19 @@ public sealed class ItemStore(FeedDb db)
             "select distinct category from feeds where category is not null and category <> '' order by category", cancellationToken: ct))).ToList();
     }
 
+    /// <summary>False when no such feed exists.</summary>
+    public async Task<bool> SetFeedMutedAsync(long feedId, bool muted, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteAsync(new CommandDefinition(
+            "update feeds set muted = @muted where id = @feedId", new { feedId, muted }, cancellationToken: ct)) > 0;
+    }
+
     public async Task<IReadOnlyList<Feed>> FeedsAsync(CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<Feed>(new CommandDefinition(
-            "select id, title, category, site_url from feeds order by title", cancellationToken: ct))).ToList();
+            "select id, title, category, site_url, muted from feeds order by title", cancellationToken: ct))).ToList();
     }
 
     /// <summary>The digest's items in its order; items without a read result are skipped.</summary>

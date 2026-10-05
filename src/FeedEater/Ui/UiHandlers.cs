@@ -126,10 +126,11 @@ public sealed class UiHandlers(
             query["kind"].ToString() is "improve" or "new" or "fyi" ? query["kind"].ToString() : null,
             query["unrated"] == "1",
             query["summary"] == "1",
-            int.TryParse(query["days"], NumberStyles.None, CultureInfo.InvariantCulture, out var days) && PostsQuery.DayChoices.Contains(days) ? days : 7);
+            int.TryParse(query["days"], NumberStyles.None, CultureInfo.InvariantCulture, out var days) && PostsQuery.DayChoices.Contains(days) ? days : 7,
+            query["muted"] == "1");
         var before = PageCursor.Parse(query["before"]);
         var rows = await items.PostsAsync(
-            new PostFilter(time.GetUtcNow().AddDays(-q.Days), q.Category, q.Feed, q.Project, q.Kind, q.Unrated, q.Summary), before, PageSize + 1, ct);
+            new PostFilter(time.GetUtcNow().AddDays(-q.Days), q.Category, q.Feed, q.Project, q.Kind, q.Unrated, q.Summary, q.ShowMuted), before, PageSize + 1, ct);
         var shown = rows.Take(PageSize).ToList();
         var next = rows.Count > PageSize ? PageCursor.Of(shown[^1].PublishedAt, shown[^1].Id).ToString() : null;
         var projects = (await profiles.AllAsync(ct)).Select(x => x.Key).ToList();
@@ -160,7 +161,7 @@ public sealed class UiHandlers(
     public async Task<IResult> SourcesAsync(HttpContext ctx, CancellationToken ct)
     {
         var query = ctx.Request.Query;
-        var sort = query["sort"].ToString() is "feed" or "items" or "candidates" or "shown" or "up" or "down" or "rate" or "flag" ? query["sort"].ToString() : "items";
+        var sort = query["sort"].ToString() is "feed" or "items" or "perweek" or "candidates" or "shown" or "up" or "down" or "rate" or "flag" ? query["sort"].ToString() : "items";
         var desc = query["dir"].ToString() != "asc";
         var flaggedOnly = query["flag"].ToString() == "1";
         var rows = (await items.SourceStatsAsync(time.GetUtcNow().AddDays(-30), ct)).Select(s => new SourceRow(s, Flag(s))).ToList();
@@ -215,6 +216,17 @@ public sealed class UiHandlers(
             default:
                 return Results.BadRequest();
         }
+    }
+
+    public async Task<IResult> MuteFeedAsync(HttpContext ctx, CancellationToken ct)
+    {
+        var form = await ctx.Request.ReadFormAsync(ct);
+        if (!long.TryParse(form["feed"], NumberStyles.None, CultureInfo.InvariantCulture, out var feed) || form["mute"].ToString() is not ("0" or "1"))
+        {
+            return Results.BadRequest();
+        }
+
+        return await items.SetFeedMutedAsync(feed, form["mute"] == "1", ct) ? SeeOther(ctx, SafeBack(form["back"])) : NotFound(Context(ctx));
     }
 
     public async Task<IResult> RunDigestAsync(HttpContext ctx, CancellationToken ct)
@@ -272,6 +284,7 @@ public sealed class UiHandlers(
 
         double? Key(SourceRow r) => sort switch
         {
+            "perweek" => r.Stats.PostsPerWeek,
             "candidates" => r.Stats.Candidates,
             "shown" => r.Stats.Shown,
             "up" => r.Stats.Up,

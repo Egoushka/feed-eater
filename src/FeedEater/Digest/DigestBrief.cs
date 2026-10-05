@@ -6,7 +6,7 @@ public sealed record BriefLine(string Project, int Count, string Text, long Item
 
 /// <summary>
 /// "The day in brief" for the UI: one line per project, built from what the digest's reads already say. No model call:
-/// each read summary is already a model-written sentence, so another call would only paraphrase it at a cost per digest.
+/// items from muted feeds are left out; each read summary is already a model-written sentence, so another call would only paraphrase it at a cost per digest.
 /// </summary>
 public static class DigestBrief
 {
@@ -15,7 +15,7 @@ public static class DigestBrief
 
     /// <summary>Largest project groups first (ties by first appearance); each line is the group's first item's summary.</summary>
     public static IReadOnlyList<BriefLine> Build(IReadOnlyList<ItemView> items) => items
-        .Where(i => !string.IsNullOrWhiteSpace(i.Summary))
+        .Where(i => !i.FeedMuted && !string.IsNullOrWhiteSpace(i.Summary))
         .Select((item, position) => (item, position))
         .GroupBy(x => string.IsNullOrEmpty(x.item.Project) ? "other" : x.item.Project)
         .OrderByDescending(g => g.Count()).ThenBy(g => g.Min(x => x.position))

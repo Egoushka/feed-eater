@@ -738,4 +738,63 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("Also in:", item, StringComparison.Ordinal);
         Assert.DoesNotContain("<script", posts, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task The_sources_page_mutes_and_unmutes_a_feed_and_shows_posts_per_week()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            await PostAsync(1, $"busy {i}", i + 1);
+        }
+
+        await PostAsync(2, "quiet", 1);
+        var cookie = await LoginAsync();
+        var items = new ItemStore(pg.Db);
+
+        var page = await GetAsync("/ui/sources?sort=perweek&dir=desc", cookie);
+        Assert.Contains("Posts/week", page, StringComparison.Ordinal);
+        Assert.Contains("0.7", page, StringComparison.Ordinal);   // 3 posts in 30 days
+        Assert.True(page.IndexOf("Feed 1", StringComparison.Ordinal) < page.IndexOf("Feed 2", StringComparison.Ordinal));
+        Assert.Contains("aria-label=\"Mute Feed 1\"", page, StringComparison.Ordinal);
+
+        var mute = await PostAsync("/ui/feeds/mute", cookie, ("feed", "1"), ("mute", "1"), ("back", "/ui/sources?sort=perweek&dir=desc"));
+        Assert.Equal("/ui/sources?sort=perweek&dir=desc", mute.Headers.Location!.OriginalString);
+        Assert.True((await items.FeedsAsync(default)).Single(f => f.Id == 1).Muted);
+        var after = await GetAsync("/ui/sources", cookie);
+        Assert.Contains("<span class=\"badge\">muted</span>", after, StringComparison.Ordinal);
+        Assert.Contains("aria-label=\"Unmute Feed 1\"", after, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("busy 0", await GetAsync("/ui/posts", cookie), StringComparison.Ordinal);
+        Assert.Contains("busy 0", await GetAsync("/ui/posts?muted=1", cookie), StringComparison.Ordinal);
+        Assert.Contains("Show muted feeds", await GetAsync("/ui/posts", cookie), StringComparison.Ordinal);
+
+        await PostAsync("/ui/feeds/mute", cookie, ("feed", "1"), ("mute", "0"));
+        Assert.False((await items.FeedsAsync(default)).Single(f => f.Id == 1).Muted);
+        Assert.Equal(HttpStatusCode.NotFound, (await PostAsync("/ui/feeds/mute", cookie, ("feed", "99"), ("mute", "1"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/ui/feeds/mute", cookie, ("feed", "1"), ("mute", "maybe"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Muting_needs_the_same_csrf_protection_as_other_posts()
+    {
+        await PostAsync(1, "x", 1);
+        var cookie = await LoginAsync();
+
+        var response = await _http.SendAsync(Req(HttpMethod.Post, "/ui/feeds/mute", cookie, "https://evil.example", [new("feed", "1"), new("mute", "1"), new("_csrf", "x")]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False((await new ItemStore(pg.Db).FeedsAsync(default)).Single().Muted);
+    }
+
+    [Fact]
+    public async Task The_today_brief_skips_items_from_muted_feeds()
+    {
+        var (item, _) = await SeedDigestAsync();
+        await new ItemStore(pg.Db).SetFeedMutedAsync(1, true, default);
+
+        var page = await GetAsync("/ui", await LoginAsync());
+
+        Assert.DoesNotContain("The day in brief", page, StringComparison.Ordinal);
+        Assert.Contains("Postgres 19 lands", page, StringComparison.Ordinal);   // the digest itself is history and stays
+    }
 }
