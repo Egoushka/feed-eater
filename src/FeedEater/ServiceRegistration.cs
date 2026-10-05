@@ -9,6 +9,7 @@ using FeedEater.Memory;
 using FeedEater.Mcp;
 using FeedEater.Plane;
 using FeedEater.Profiles;
+using FeedEater.Search;
 using FeedEater.Signals;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -86,6 +87,7 @@ public static class ServiceRegistration
         services.AddSingleton<DigestRun>();
         services.AddSingleton<IdeaFiler>();
         services.AddSingleton<CallbackHandler>();
+        services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<CommandHandler>();
         services.AddSingleton<DigestTrigger>();
 

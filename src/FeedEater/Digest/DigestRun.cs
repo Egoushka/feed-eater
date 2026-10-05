@@ -267,11 +267,8 @@ public sealed class DigestRun(
         var now = time.GetUtcNow();
         var votes = await feedback.VotesSinceAsync(now.AddDays(-1), ct);
         var week = await feedback.VotesSinceAsync(now.AddDays(-7), ct);
-        double? weekUpRate = week.Up + week.Down == 0 ? null : (double)week.Up / (week.Up + week.Down);
-        var zone = options.Value.Zone;
-        var localNow = TimeZoneInfo.ConvertTime(now, zone);
-        var monthStart = new DateTimeOffset(new DateTime(localNow.Year, localNow.Month, 1), zone.GetUtcOffset(new DateTime(localNow.Year, localNow.Month, 1)));
-        var spend = await usage.SpendSinceAsync(monthStart, ct);
+        var weekUpRate = DigestStats.UpRate(week);
+        var spend = await usage.SpendSinceAsync(DigestStats.MonthStart(now, options.Value.Zone), ct);
         var byProject = shown
             .GroupBy(v => v.Project ?? "other")
             .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)

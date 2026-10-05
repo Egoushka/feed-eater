@@ -42,6 +42,9 @@ public sealed class LlmOptions
     public string TriageModel { get; set; } = "gpt-4.1-nano";
     public string ReadModel { get; set; } = "claude-haiku-4-5";
     public int EmbedBatch { get; set; } = 64;
+
+    /// <summary>USD per month shown against the spend on /ui/usage; 0 shows no budget.</summary>
+    public decimal MonthlyBudget { get; set; }
 }
 
 public sealed class CapsOptions

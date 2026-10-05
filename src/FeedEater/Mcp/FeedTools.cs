@@ -3,17 +3,14 @@ using System.Globalization;
 using System.Text.Json;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
-using FeedEater.Llm;
+using FeedEater.Search;
 using FeedEater.Storage;
 
 namespace FeedEater.Mcp;
 
 [McpServerToolType]
-public sealed class FeedTools(ItemStore items, DigestStore digests, FeedbackStore feedback, LiteLlmClient llm)
+public sealed class FeedTools(ArchiveSearch search, ItemStore items, DigestStore digests, FeedbackStore feedback)
 {
-    /// <summary>How long a search waits for the query embedding before it falls back to keywords.</summary>
-    internal static TimeSpan EmbedTimeout { get; set; } = TimeSpan.FromSeconds(5);
-
     [McpServerTool(Name = "feed_search", ReadOnly = true)]
     [Description("Search Yehor's research archive: every item from his feeds (tech news, blogs, releases, Ukrainian tech), with an AI summary where one was written. Matches by meaning and by keywords. Optional filters: project or topic key, kind (improve, new, fyi), published range. Returns id, title, url, feed, date, summary, project, kind, his vote.")]
     public async Task<string> SearchAsync(
@@ -30,20 +27,7 @@ public sealed class FeedTools(ItemStore items, DigestStore digests, FeedbackStor
             throw new McpProtocolException("query is empty.", McpErrorCode.InvalidParams);
         }
 
-        float[]? vector = null;
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(EmbedTimeout);
-        try
-        {
-            vector = (await llm.EmbedAsync([query], "search", timeout.Token))[0];
-        }
-        catch (Exception ex) when (ex is HttpRequestException or BudgetExceededException
-                                   || (ex is OperationCanceledException && !ct.IsCancellationRequested))
-        {
-            // Keyword search still answers.
-        }
-
-        return Json(await items.SearchAsync(vector, query, project, kind, from, to, Math.Clamp(limit, 1, 50), ct));
+        return Json(await search.SearchAsync(query, project, kind, from, to, Math.Clamp(limit, 1, 50), ct));
     }
 
     [McpServerTool(Name = "feed_read", ReadOnly = true)]

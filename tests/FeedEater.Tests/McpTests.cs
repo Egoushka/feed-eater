@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using FeedEater.Llm;
 using FeedEater.Mcp;
+using FeedEater.Search;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -28,7 +29,7 @@ public sealed class McpTests(PostgresFixture pg) : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        FeedTools.EmbedTimeout = TimeSpan.FromSeconds(5);
+        ArchiveSearch.EmbedTimeout = TimeSpan.FromSeconds(5);
         await _app.DisposeAsync();
     }
 
@@ -123,7 +124,7 @@ public sealed class McpTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Search_falls_back_to_keywords_when_the_embedder_hangs()
     {
-        FeedTools.EmbedTimeout = TimeSpan.FromMilliseconds(200);
+        ArchiveSearch.EmbedTimeout = TimeSpan.FromMilliseconds(200);
         await using var hanging = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
             .UseSetting("ConnectionStrings:FeedEater", pg.ConnectionString)
             .UseSetting("Mcp:Token", "test-token")

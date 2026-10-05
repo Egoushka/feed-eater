@@ -63,6 +63,18 @@ public sealed record SearchHit
     public double Rank { get; init; }
 }
 
+public sealed record SourceStats
+{
+    public long FeedId { get; init; }
+    public string Title { get; init; } = "";
+    public string? Category { get; init; }
+    public int Items { get; init; }
+    public int Candidates { get; init; }
+    public int Shown { get; init; }
+    public int Up { get; init; }
+    public int Down { get; init; }
+}
+
 public sealed class ItemStore(FeedDb db)
 {
     public async Task UpsertFeedAsync(Feed feed, CancellationToken ct)
@@ -205,6 +217,31 @@ public sealed class ItemStore(FeedDb db)
             left join ideas d on d.item_id = i.id
             where i.id = @id
             """, new { id }, cancellationToken: ct));
+    }
+
+    /// <summary>
+    /// Per feed, over items published since <paramref name="since"/> (duplicates excluded): how many came in, were scored as
+    /// candidates, appeared in any digest, and got each vote. Feeds with no items in the window still appear, with zeros.
+    /// </summary>
+    public async Task<IReadOnlyList<SourceStats>> SourceStatsAsync(DateTimeOffset since, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<SourceStats>(new CommandDefinition(
+            """
+            with shown as (select distinct unnest(item_ids) as id from digests)
+            select f.id as feed_id, f.title, f.category,
+                   count(i.id)::int as items,
+                   (count(i.id) filter (where i.score is not null))::int as candidates,
+                   count(s.id)::int as shown,
+                   (count(v.item_id) filter (where v.value = 1))::int as up,
+                   (count(v.item_id) filter (where v.value = -1))::int as down
+            from feeds f
+            left join items i on i.feed_id = f.id and i.published_at >= @since and i.duplicate_of is null
+            left join shown s on s.id = i.id
+            left join votes v on v.item_id = i.id
+            group by f.id, f.title, f.category
+            order by f.title
+            """, new { since = since.UtcDateTime }, cancellationToken: ct))).ToList();
     }
 
     /// <summary>The digest's items in its order; items without a read result are skipped.</summary>
