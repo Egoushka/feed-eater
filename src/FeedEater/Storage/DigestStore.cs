@@ -38,6 +38,10 @@ public sealed class DigestStore(FeedDb db)
     public Task CreateAsync(string date, CancellationToken ct) => ExecuteAsync(
         "insert into digests (local_date, status) values (@date::date, 'building') on conflict (local_date) do nothing", new { date }, ct);
 
+    /// <summary>A forced run may rebuild a digest that failed without items; a sent one is never reopened.</summary>
+    public Task ReopenAsync(string date, CancellationToken ct) => ExecuteAsync(
+        "update digests set status = 'building', error = null where local_date = @date::date and status = 'failed'", new { date }, ct);
+
     public Task SetSelectionAsync(string date, int candidates, int triaged, long[] itemIds, string? note, CancellationToken ct) => ExecuteAsync(
         """
         update digests set candidates = @candidates, triaged = @triaged, item_ids = @itemIds, note = @note, sent_count = 0

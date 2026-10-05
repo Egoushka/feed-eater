@@ -5,11 +5,11 @@ using FeedEater.Storage;
 namespace FeedEater.Telegram;
 
 /// <summary>
-/// Long-polls button presses. Updates are handled one at a time, so a double tap on 💡 sees the first filing.
+/// Long-polls button presses and /digest commands. Updates are handled one at a time, so a double tap on 💡 sees the first filing.
 /// The offset advances past a failing update so one bad callback cannot block the rest.
 /// </summary>
 public sealed class TelegramPoller(
-    TelegramClient telegram, CallbackHandler handler, CursorStore cursors, LoopHealth health, TimeProvider time, ILogger<TelegramPoller> logger)
+    TelegramClient telegram, CallbackHandler handler, CommandHandler commands, CursorStore cursors, LoopHealth health, TimeProvider time, ILogger<TelegramPoller> logger)
     : PollingLoop(health, time, logger)
 {
     private const string Cursor = "telegram:offset";
@@ -33,6 +33,18 @@ public sealed class TelegramPoller(
                 {
                     Logger.LogError(ex, "Callback {Data} failed", callback.Data);
                     await AnswerQuietlyAsync(callback, ct);
+                }
+            }
+
+            if (update.Message is { } message)
+            {
+                try
+                {
+                    await commands.HandleAsync(message, ct);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    Logger.LogError(ex, "Command handling failed");
                 }
             }
 

@@ -5,7 +5,9 @@ namespace FeedEater.Telegram;
 
 public sealed record TgCallback(string Id, long FromId, long ChatId, long MessageId, string? Data);
 
-public sealed record TgUpdate(long UpdateId, TgCallback? Callback);
+public sealed record TgMessage(long FromId, long ChatId, string? Text);
+
+public sealed record TgUpdate(long UpdateId, TgCallback? Callback, TgMessage? Message = null);
 
 public sealed class TelegramException(string message) : Exception(message);
 
@@ -46,12 +48,13 @@ public sealed class TelegramClient(HttpClient http)
         {
             ["offset"] = offset,
             ["timeout"] = timeoutSeconds,
-            ["allowed_updates"] = new[] { "callback_query" },
+            ["allowed_updates"] = new[] { "callback_query", "message" },
         }, ct);
         return result.EnumerateArray()
             .Select(u => new TgUpdate(
                 u.GetProperty("update_id").GetInt64(),
-                u.TryGetProperty("callback_query", out var c) ? Callback(c) : null))
+                u.TryGetProperty("callback_query", out var c) ? Callback(c) : null,
+                u.TryGetProperty("message", out var m) ? Message(m) : null))
             .ToList();
     }
 
@@ -65,6 +68,11 @@ public sealed class TelegramClient(HttpClient http)
             hasMessage ? m.GetProperty("message_id").GetInt64() : 0,
             c.TryGetProperty("data", out var d) ? d.GetString() : null);
     }
+
+    private static TgMessage? Message(JsonElement m) =>
+        m.TryGetProperty("from", out var from) && m.TryGetProperty("chat", out var chat)
+            ? new TgMessage(from.GetProperty("id").GetInt64(), chat.GetProperty("id").GetInt64(), Json.Str(m, "text"))
+            : null;
 
     private static object Markup(IReadOnlyList<IReadOnlyList<Button>> keyboard) =>
         new { inline_keyboard = keyboard.Select(row => row.Select(b => new { text = b.Text, callback_data = b.Data })) };

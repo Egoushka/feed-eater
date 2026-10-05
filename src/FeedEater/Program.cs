@@ -1,6 +1,8 @@
 using FeedEater;
 using FeedEater.Mcp;
 using FeedEater.Storage;
+using FeedEater.Ui;
+using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -19,8 +21,15 @@ if (string.IsNullOrEmpty(token))
     app.Logger.LogWarning("Mcp:Token is not set; /mcp refuses every request");
 }
 
+var feedEater = app.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
+if (feedEater.RunJobs && feedEater.Telegram.Token.Length == 0)
+{
+    app.Logger.LogWarning("FeedEater:Telegram:Token is not set; the digest and the Telegram poller are off");
+}
+
 app.MapGet("/healthz", async (FeedDb db, CancellationToken ct) => await db.PingAsync(ct) ? Results.Ok() : Results.StatusCode(503));
 app.MapFeedEaterMcp(token);
+app.MapFeedEaterUi();
 app.Run();
 
 public partial class Program;

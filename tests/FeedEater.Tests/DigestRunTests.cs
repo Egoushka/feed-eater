@@ -21,6 +21,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private static readonly string LongText = string.Join(' ', Enumerable.Repeat("Postgres async I/O details.", 80));
 
     private readonly List<string> _sent = [];
+    private readonly LoopHealth _health = new(new FakeTimeProvider(Now));
     private int _telegramCalls;
     private int _failTelegramAt;
     private int _chatCalls;
@@ -103,9 +104,13 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new MinifluxClient(miniflux.Client("http://miniflux/")),
             new TelegramClient(telegram.Client("http://tg/botT/")),
-            new LoopHealth(time), options, time, NullLogger<DigestRun>.Instance);
+            _health, options, time, NullLogger<DigestRun>.Instance);
         return (run, digests, miniflux);
     }
+
+    private DigestJob BuildJob(DigestRun run, DigestStore digests, StubHandler notices, IOptions<FeedEaterOptions> options, FakeTimeProvider time) =>
+        new(run, digests, new TelegramClient(notices.Client("http://tg/botT/")), new DigestTrigger(new CursorStore(pg.Db), options, time),
+            new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DigestJob>.Instance);
 
     private async Task SeedAsync()
     {
@@ -142,6 +147,30 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_embedding_outage_is_not_reported_as_a_Miniflux_outage()
+    {
+        await SeedAsync();
+        _health.Failed(Ingestor.EmbedName, "LiteLLM down");
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+        Assert.Contains("Embeddings were unavailable", _sent[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("Miniflux was unreachable", _sent[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_Miniflux_outage_is_reported_as_one()
+    {
+        await SeedAsync();
+        _health.Failed(Ingestor.LoopName, "refused");
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+        Assert.Contains("Miniflux was unreachable", _sent[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("Embeddings were unavailable", _sent[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task The_header_carries_the_seven_day_up_rate()
     {
         await SeedAsync();
@@ -168,8 +197,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var (run, digests, _) = Build();
         var time = new FakeTimeProvider(Now);
         var notices = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
-        var job = new DigestJob(run, digests, new TelegramClient(notices.Client("http://tg/botT/")),
-            new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DigestJob>.Instance);
+        var job = BuildJob(run, digests, notices, options, time);
         _failAllTelegram = true;
 
         await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
@@ -334,5 +362,100 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal("a note\nnot sent before 12:00", noted.Note);
         Assert.Equal("not sent before 12:00", noted.Error);
         Assert.Equal("sent", (await digests.GetAsync("2026-10-03", default))!.Status);
+    }
+
+    private static readonly DateTimeOffset Evening = Now.AddHours(10);   // 17:30 Kyiv: outside the window
+
+    private (DigestRun Run, DigestStore Digests, DigestJob Job, DigestTrigger Trigger, StubHandler Notices) BuildForced()
+    {
+        var (run, digests, _) = Build();
+        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var time = new FakeTimeProvider(Evening);
+        var notices = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
+        return (run, digests, BuildJob(run, digests, notices, options, time), new DigestTrigger(new CursorStore(pg.Db), options, time), notices);
+    }
+
+    [Fact]
+    public async Task A_forced_run_sends_outside_the_window_once_and_clears_the_request()
+    {
+        await SeedAsync();
+        var (_, digests, job, trigger, _) = BuildForced();
+
+        await job.TickAsync(default);
+        Assert.Empty(_sent);
+
+        await trigger.RequestAsync(false, default);
+        await job.TickAsync(default);
+        await job.TickAsync(default);
+
+        Assert.Equal(3, _sent.Count);
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+        Assert.Null(await trigger.PendingAsync(default));
+        Assert.Equal("Sent.", (await trigger.LastResultAsync(default))!.Text);
+    }
+
+    [Fact]
+    public async Task A_forced_run_after_a_sent_digest_says_so_and_only_resend_sends_again()
+    {
+        await SeedAsync();
+        var (run, _, job, trigger, notices) = BuildForced();
+        await run.RunAsync(Today, default);
+        Assert.Equal(3, _sent.Count);
+
+        await trigger.RequestAsync(false, default);
+        await job.TickAsync(default);
+
+        Assert.Equal(3, _sent.Count);
+        Assert.Contains("already sent", Assert.Single(notices.Calls).Body, StringComparison.Ordinal);
+        Assert.Null(await trigger.PendingAsync(default));
+
+        await trigger.RequestAsync(true, default);
+        await job.TickAsync(default);
+
+        Assert.Equal(6, _sent.Count);
+        Assert.Equal("Sent again.", (await trigger.LastResultAsync(default))!.Text);
+    }
+
+    [Fact]
+    public async Task A_forced_run_rebuilds_a_digest_that_failed_without_items()
+    {
+        var (run, digests, job, trigger, _) = BuildForced();
+        await run.RunAsync(Today, default);
+        Assert.Equal("failed", (await digests.GetAsync(Today, default))!.Status);
+        await SeedAsync();
+
+        await trigger.RequestAsync(false, default);
+        await job.TickAsync(default);
+
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+        Assert.Equal(4, _sent.Count);   // the "no digest" notice, then header and two items
+    }
+
+    [Fact]
+    public async Task A_failed_forced_run_is_reported_and_cleared_instead_of_retried_forever()
+    {
+        await SeedAsync();
+        var (_, _, job, trigger, notices) = BuildForced();
+        _failAllTelegram = true;
+        await trigger.RequestAsync(false, default);
+
+        await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
+
+        Assert.Null(await trigger.PendingAsync(default));
+        Assert.StartsWith("Failed:", (await trigger.LastResultAsync(default))!.Text, StringComparison.Ordinal);
+        Assert.Single(notices.Calls);
+    }
+
+    [Fact]
+    public async Task A_request_from_an_earlier_day_is_dropped()
+    {
+        var options = Options.Create(new FeedEaterOptions());
+        var cursors = new CursorStore(pg.Db);
+        var time = new FakeTimeProvider(Now);
+        await new DigestTrigger(cursors, options, time).RequestAsync(false, default);
+        time.Advance(TimeSpan.FromDays(1));
+
+        Assert.Null(await new DigestTrigger(cursors, options, time).PendingAsync(default));
+        Assert.Null(await cursors.GetAsync("digest:force", default));
     }
 }

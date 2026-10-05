@@ -12,6 +12,8 @@ using FeedEater.Text;
 
 namespace FeedEater.Digest;
 
+public sealed record ForceOutcome(bool Sent, string Text);
+
 public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> ItemIds, IReadOnlyList<string> Notes);
 
 /// <summary>
@@ -55,6 +57,33 @@ public sealed class DigestRun(
         await SendAsync(digest, ct);
     }
 
+    /// <summary>
+    /// A digest on demand. A digest that was already sent is not sent again unless <paramref name="resend"/>; one that never
+    /// went out is built (or resumed) now. Returns what happened, in words.
+    /// </summary>
+    public async Task<ForceOutcome> ForceAsync(string date, bool resend, CancellationToken ct)
+    {
+        var digest = await digests.GetAsync(date, ct);
+        if (digest?.Status == "sent")
+        {
+            if (!resend)
+            {
+                return new ForceOutcome(false, "Today's digest was already sent; nothing sent again.");
+            }
+
+            await digests.SetSentCountAsync(date, 0, ct);
+            await SendAsync(digest with { SentCount = 0 }, ct);
+            return new ForceOutcome(true, "Sent again.");
+        }
+
+        await digests.ReopenAsync(date, ct);
+        await RunAsync(date, ct);
+        var after = await digests.GetAsync(date, ct);
+        return after?.Status == "sent"
+            ? new ForceOutcome(true, "Sent.")
+            : new ForceOutcome(false, $"No digest: {after?.Error ?? "nothing to send"}");
+    }
+
     internal async Task<Selection> SelectAsync(CancellationToken ct)
     {
         var o = options.Value;
@@ -63,6 +92,11 @@ public sealed class DigestRun(
         if (health.IsDown(Ingestor.LoopName))
         {
             notes.Add("Miniflux was unreachable at the last poll; some items may be missing");
+        }
+
+        if (health.IsDown(Ingestor.EmbedName))
+        {
+            notes.Add("Embeddings were unavailable at the last poll; new items may be missing");
         }
 
         var zone = o.Zone;
@@ -233,11 +267,8 @@ public sealed class DigestRun(
         var now = time.GetUtcNow();
         var votes = await feedback.VotesSinceAsync(now.AddDays(-1), ct);
         var week = await feedback.VotesSinceAsync(now.AddDays(-7), ct);
-        double? weekUpRate = week.Up + week.Down == 0 ? null : (double)week.Up / (week.Up + week.Down);
-        var zone = options.Value.Zone;
-        var localNow = TimeZoneInfo.ConvertTime(now, zone);
-        var monthStart = new DateTimeOffset(new DateTime(localNow.Year, localNow.Month, 1), zone.GetUtcOffset(new DateTime(localNow.Year, localNow.Month, 1)));
-        var spend = await usage.SpendSinceAsync(monthStart, ct);
+        var weekUpRate = DigestStats.UpRate(week);
+        var spend = await usage.SpendSinceAsync(DigestStats.MonthStart(now, options.Value.Zone), ct);
         var byProject = shown
             .GroupBy(v => v.Project ?? "other")
             .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)

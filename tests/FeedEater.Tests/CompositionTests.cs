@@ -47,10 +47,10 @@ public sealed class CompositionTests
     }
 
     [Fact]
-    public void Telegram_poller_is_not_registered_without_a_token()
+    public void Digest_and_poller_are_not_registered_without_a_token()
     {
         using var host = Build(runJobs: true, telegramToken: "");
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(WeeklyRetain) }, Jobs(host));
     }
 }

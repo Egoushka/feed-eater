@@ -9,9 +9,11 @@ using FeedEater.Memory;
 using FeedEater.Mcp;
 using FeedEater.Plane;
 using FeedEater.Profiles;
+using FeedEater.Search;
 using FeedEater.Signals;
 using FeedEater.Storage;
 using FeedEater.Telegram;
+using FeedEater.Ui;
 
 namespace FeedEater;
 
@@ -73,7 +75,7 @@ public static class ServiceRegistration
         services.AddHttpClient<GitHubStarsClient>((sp, http) =>
         {
             http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.1");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.2");
         });
 
         services.AddHttpClient<HindsightClient>((sp, http) =>
@@ -86,19 +88,33 @@ public static class ServiceRegistration
         services.AddSingleton<DigestRun>();
         services.AddSingleton<IdeaFiler>();
         services.AddSingleton<CallbackHandler>();
+        services.AddSingleton<ArchiveSearch>();
+        services.AddSingleton<CommandHandler>();
+        services.AddSingleton<DigestTrigger>();
 
         if (settings.RunJobs)
         {
             services.AddHostedService<Ingestor>();
             services.AddHostedService<ProfileBuilder>();
             services.AddHostedService<SignalJob>();
-            services.AddHostedService<DigestJob>();
+
+            // Without a bot token a digest would pay for triage and then fail to send.
+            var telegram = settings.Telegram.Token.Length > 0;
+            if (telegram)
+            {
+                services.AddHostedService<DigestJob>();
+            }
+
             services.AddHostedService<WeeklyRetain>();
-            if (settings.Telegram.Token.Length > 0)
+            if (telegram)
             {
                 services.AddHostedService<TelegramPoller>();
             }
         }
+
+        services.AddSingleton(sp => new UiSession(configuration["Mcp:Token"], sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<LoginThrottle>();
+        services.AddSingleton<UiHandlers>();
 
         services.AddFeedEaterMcp();
         return services;

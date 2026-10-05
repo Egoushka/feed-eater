@@ -33,6 +33,30 @@ Every key is under `FeedEater:` (environment: `FeedEater__Section__Key`). Defaul
 | `FeedEater:Hindsight:Token` | no | weekly summary to the `learning` bank |
 | `FeedEater:ProfilePath` | no | default `/config/profile.json`; shape in `profile.example.json` |
 
+## Web UI
+
+`/ui` is a server-rendered reading UI over the archive: today's digest with 👍 👎 💡 buttons, search, one item, the digest
+history, per-feed stats for the last 30 days (to decide which Miniflux feeds to prune), filed ideas and LLM spend.
+It needs no JavaScript and loads nothing from other hosts (CSP `default-src 'none'`).
+
+Sign in at `/ui/login` with the same value as `Mcp:Token`. The session is an HttpOnly, SameSite=Strict cookie signed with a key
+derived from that token (30 days; changing the token signs everyone out). Every POST also checks that Origin or Referer
+names the request's own host and carries a per-session anti-forgery value. Logins are limited to 5 a minute. With no
+`Mcp:Token` every `/ui` route answers 503. `FeedEater:Llm:MonthlyBudget` (USD, default 0 = none) adds a budget line to `/ui/usage`.
+`/mcp` and `/healthz` are unchanged.
+
+## Running a digest on demand
+
+The scheduled digest runs once a day inside 07:30 to 12:00 Kyiv time. To run one outside that:
+
+- Telegram: `/digest` (only from `FeedEater:Telegram:AllowedUserId`). `/digest resend` sends today's digest again.
+- UI: "Run digest now" on `/ui`; "Send today's digest again" sits behind a confirm step.
+
+Both write a cursor, `digest:force` (`run:<date>` or `resend:<date>`), that the digest job picks up within a minute. It ignores
+the window and the done-check for that day only, and is cleared after the run, failed or not (a failure is reported on Telegram
+and in `/ui`). A stale request from an earlier day is dropped. If today's digest was already sent, a plain run says so and
+sends nothing; only `resend` sends the same messages again. Without a Telegram token the digest job is not registered.
+
 ## MCP tools
 
 `feed_search`, `feed_read`, `feed_digests`, `feed_digest`, `feed_ideas`. All read-only. `./selftest.sh` calls them.

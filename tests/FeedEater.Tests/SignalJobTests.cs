@@ -102,4 +102,25 @@ public sealed class SignalJobTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(1, await Build(karakeep, GitHub(), llm).CollectAsync(default));   // only the star
     }
+
+    [Fact]
+    public async Task A_failing_source_does_not_stop_the_others()
+    {
+        var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
+        var github = new StubHandler((_, _) => StubHandler.Json("{}", System.Net.HttpStatusCode.Forbidden));
+
+        Assert.Equal(2, await Build(Karakeep(), github, llm).CollectAsync(default));
+
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        Assert.Equal(["b1", "b3"], (await c.QueryAsync<string>("select external_id from signals order by external_id")).ToList());
+    }
+
+    [Fact]
+    public async Task The_job_fails_when_every_source_fails_so_it_retries()
+    {
+        var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
+        var down = new StubHandler((_, _) => StubHandler.Json("{}", System.Net.HttpStatusCode.BadGateway));
+
+        await Assert.ThrowsAsync<AggregateException>(() => Build(down, down, llm).CollectAsync(default));
+    }
 }
