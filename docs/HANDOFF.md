@@ -1,4 +1,4 @@
-# Handoff — feed-eater (2026-10-05, after Tasks 0–16)
+# Handoff — feed-eater (2026-10-05, Tasks 0–16 merged, Task 17 Steps 1–2 done)
 
 ## Goal
 
@@ -7,15 +7,17 @@ learns from 👍/👎/💡, files ideas into Plane Intake, and serves the whole 
 
 ## State
 
-- Branch `feat/v1` in worktree `.claude/worktrees/v1`, 32 commits on top of `main` (`b5d8745`). Not pushed; no GitHub repo
-  yet; not in `~/Projects/repos.toml` yet.
+- `main` = `f0026b8` (squash of `feat/v1`), pushed to the public repo https://github.com/Egoushka/feed-eater. CI is green.
+- Tag `v0.1.0` pushed; image `ghcr.io/egoushka/feed-eater:0.1.0` is published,
+  digest `sha256:65da5b60b72f1113e57808a8ef3e82e89a187469eb36ca0c30028f01a56c5286`.
+- The `repos.toml` entry is in PR https://github.com/Egoushka/workspace/pull/63 (open, not merged).
 - Tasks 0–16 of `docs/plans/2026-10-05-feed-eater-v1.md` are done. Each was reviewed against its plan section and
   for code quality, then the whole branch had a final review. The final review's three Important findings are fixed
   and re-reviewed.
 - `dotnet test FeedEater.slnx`: 127/127 passing (Testcontainers, pgvector 0.8.7-pg18). `docker build` succeeded locally.
 - Preflight answers: `docs/specs/2026-10-05-preflight.md`. LiteLLM listens on `100.64.0.2:4000` only; Reddit `top`
   feeds return 200 from the box.
-- Task 17 (deploy) has not started. Every step in it is externally visible and needs Yehor's go-ahead.
+- Task 17 Steps 1–2 are done; Steps 3–10 remain. Every step is externally visible and needs Yehor's go-ahead.
 
 ## Decisions taken during execution (deviations from the plan)
 
@@ -41,7 +43,7 @@ The spec won over the plan wherever they disagreed.
 - Accepted risks:
   - If the process dies between the Plane POST and the ideas insert, the item can be filed twice.
   - An unparseable deep read is paid for again on rerun.
-- The rulings ledger, task reports and reviews are in `.superpowers/sdd/2026-10-05-feed-eater-v1/` (git-ignored).
+- The rulings ledger, task reports and reviews are in `~/Projects/personal/feed-eater/.superpowers/sdd/2026-10-05-feed-eater-v1/` (git-ignored).
   `final-review.md` lists the parked minor findings for v0.2:
   - the "Miniflux unreachable" note also fires on embed failures;
   - backfilled items have no `profile_key`, so they miss the `feed_search` project filter;
@@ -55,10 +57,17 @@ The spec won over the plan wherever they disagreed.
 
 ## Next step
 
-1. Yehor approves the branch. Then merge `feat/v1` to `main` (squash or merge, Yehor's choice) and remove the worktree.
-2. Task 17 (deploy): create the public GitHub repo, push, tag `v0.1.0` for the image, add the stack in
-   `homelab-gitops` from a separate session, create the Telegram bot, the LiteLLM virtual key ($10/30d), the profile
-   file and the secrets. Ask before each step.
+1. Merge workspace PR #63.
+2. Task 17 Step 3 (Yehor only, secrets never pass through chat): create the Telegram bot, the Miniflux API key, the LiteLLM
+   virtual key, and the Plane, Karakeep and Hindsight tokens, plus `DB_PASSWORD` and `FEED_MCP_TOKEN`. Store each with
+   `make secret-set STACK=feed-eater KEY=<k>`.
+   **The plan's LiteLLM key command is wrong:** it calls `127.0.0.1:4000`, but LiteLLM listens only on `100.64.0.2:4000`
+   (see preflight). Use `http://100.64.0.2:4000/key/generate`.
+3. Step 4: create the Plane project `FEED` and turn on Intake for it and for every project in `profile.json`. This
+   uses the Plane MCP and needs a go-ahead.
+4. Steps 5–10 happen in a separate `homelab-gitops` session and worktree, as one PR: compose stack, pins (image digest
+   above, plus `pgvector/pgvector:0.8.7-pg18-trixie`), agentgateway route `/mcp/feed`, gatus, ingest. The plan's Task 17
+   lists each step.
 
 ## How to verify
 
