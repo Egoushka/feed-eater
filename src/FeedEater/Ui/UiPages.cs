@@ -131,6 +131,9 @@ public static class UiPages
         IReadOnlyList<ItemView> posts, string? nextBefore, bool paged)
     {
         var h = new StringBuilder("<h1>Posts</h1>");
+        var active = new[] { q.Category is not null, q.Feed is not null, q.Project is not null, q.Kind is not null, q.Unrated, q.Summary, q.Days != 7 }.Count(x => x);
+        var badge = active > 0 ? $" <span class=\"badge\">{N(active)} active</span>" : "";
+        h.Append($"<details class=\"filterbox\"><summary>Filters{badge}</summary>");
         h.Append(
             $"""
             <form method="get" action="/ui/posts" class="filters">
@@ -144,7 +147,7 @@ public static class UiPages
                 <label class="check"><input type="checkbox" name="summary" value="1"{(q.Summary ? " checked" : "")}> With AI summary only</label>
               </div>
               <button type="submit" class="primary">Apply</button>
-            </form>
+            </form></details>
             """);
         CardList(h, p, posts, q.Url(), "No posts match these filters.");
         h.Append("<p class=\"pager\">");
@@ -502,7 +505,7 @@ public static class UiPages
     {
         h.Append($"<article class=\"card\" id=\"item-{N(v.Id)}\">");
         var title = External(v.Url, v.Title);
-        h.Append(full ? $"<h1>{title}</h1>" : $"<h3>{title}</h3>");
+        h.Append(full ? $"<h1>{title}</h1>" : $"<h2>{title}</h2>");
         h.Append("<p class=\"meta\">").Append(Meta(p, v.Feed, v.Category, v.Project, v.Kind, v.PublishedAt));
         if (!full)
         {
