@@ -86,6 +86,21 @@ public static class DigestFormatter
         return new OutMessage(html.ToString(), Buttons(i.Id, i.Suggestion is not null, vote, filedIn));
     }
 
+    /// <summary>One search hit as its own message, with the same buttons as a digest item.</summary>
+    public static OutMessage Result(SearchHit h, string publishedLocal)
+    {
+        var title = E(Clip(h.Title, 300));
+        var link = IsLinkable(h.Url) ? $"<a href=\"{E(h.Url)}\">{title}</a>" : title;
+        var meta = string.Join(" · ", new[] { Clip(h.Feed, 80), publishedLocal, Clip(h.Project ?? "", 40) }.Where(s => s.Length > 0).Select(E));
+        var html = new StringBuilder($"<b>{link}</b>\n<i>{meta}</i>");
+        if (!string.IsNullOrWhiteSpace(h.Summary))
+        {
+            html.Append("\n\n").Append(E(Clip(h.Summary.Trim(), 240)));
+        }
+
+        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn));
+    }
+
     public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn)
     {
         var rows = new List<IReadOnlyList<Button>>

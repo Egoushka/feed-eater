@@ -92,6 +92,8 @@ public sealed record SearchHit
     public string? Kind { get; init; }
     public int? Vote { get; init; }
     public int Also { get; init; }
+    public bool HasSuggestion { get; init; }
+    public string? FiledIn { get; init; }
     public double Rank { get; init; }
 }
 
@@ -466,12 +468,14 @@ public sealed class ItemStore(FeedDb db)
             select i.id, i.title, i.url, coalesce(f.title, '') as feed, i.published_at, r.summary,
                    coalesce(r.project, i.profile_key) as project, r.kind, vt.value::int as vote,
                    (select count(*) from items m where m.id <> i.id and (m.id = coalesce(i.cluster_of, i.id) or m.cluster_of = coalesce(i.cluster_of, i.id)))::int as also,
+                   r.suggestion is not null as has_suggestion, d.plane_project as filed_in,
                    fused.rrf as rank
             from fused
             join items i on i.id = fused.id
             left join feeds f on f.id = i.feed_id
             left join reads r on r.item_id = i.id
             left join votes vt on vt.item_id = i.id
+            left join ideas d on d.item_id = i.id
             order by fused.rrf desc
             limit @limit
             """,
