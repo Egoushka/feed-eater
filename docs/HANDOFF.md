@@ -91,15 +91,15 @@ The spec won over the plan wherever they disagreed.
 
 ## Still open
 
-1. **TELEGRAM_BOT_TOKEN** (Yehor, BotFather, then `/start` the bot). Without it the digest and button handling never start.
-   On hedzer: `cd /root/gitops-work && git pull --ff-only && ./scripts/secret.sh set feed-eater TELEGRAM_BOT_TOKEN "$T"`,
-   `scp` the `.enc` into a homelab-gitops worktree, PR with `automerge`, then `hz deployed <sha> --wait 10m`.
-2. Verify the backfill: `hz sql feed-eater-db "select count(*) from items"` and the embedding count; `hz logs feed-eater`.
-3. Step 9 (Miniflux source cleanup: Hacker News URL, Reddit top feeds), each approved by Yehor.
-4. Step 10: four-week validation in `docs/specs/2026-10-05-validation.md`.
-5. First digest in Telegram by 08:00 Kyiv, only after item 1.
+1. Step 10: four-week validation, one row each Monday in `docs/specs/2026-10-05-validation.md`.
+2. Watch the first scheduled digest on 2026-10-07 at 07:30 Kyiv and the 👍/👎 rate in its header.
+3. Parked v0.2 findings: see `final-review.md` listed above.
 
-## Update (later)
+## Done since the deploy
 
-- `TELEGRAM_BOT_TOKEN` is deployed (homelab-gitops#575); `@feed_hrabovsky_bot` accepts it. Ingest finished (10,776 items), embedding backfill running. Open item 1 above is done; first digest by 08:00 Kyiv needs `/start` sent to the bot.
+- `TELEGRAM_BOT_TOKEN` is deployed (homelab-gitops#575); `@feed_hrabovsky_bot` accepts it. Ingest finished (10,776 items) and all were embedded.
 - Step 9 done: Miniflux feeds 13 (Hacker News, `hnrss.org/frontpage?points=100`), 17 and 16 (r/homelab, r/selfhosted `top/.rss?t=day`) updated; no parse errors.
+- The first digest was sent early on 2026-10-06 at 00:20 Kyiv (13 items from 140 candidates, 60 triaged) by setting
+  `FeedEater__DigestAt` to 00:20 for one run (homelab-gitops#576), reverted in #578. That day's digest key is consumed,
+  so the next one is 2026-10-07 at 07:30. There is no manual trigger: to run one off-schedule, repeat that temporary PR.
+- Yehor tried it in Telegram and reported it works.
