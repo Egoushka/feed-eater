@@ -15,6 +15,7 @@ public sealed class UiHandlers(
     IOptions<FeedEaterOptions> options, TimeProvider time)
 {
     private const int SearchLimit = 30;
+    private const int PageSize = 30;
     private const int DigestListLimit = 90;
     private static readonly Lazy<string> Css = new(() =>
     {
@@ -115,6 +116,41 @@ public sealed class UiHandlers(
         return Html(UiPages.Search(Context(ctx), q, keys, hits));
     }
 
+    public async Task<IResult> PostsAsync(HttpContext ctx, CancellationToken ct)
+    {
+        var query = ctx.Request.Query;
+        var q = new PostsQuery(
+            Blank(query["category"]),
+            long.TryParse(query["feed"], NumberStyles.None, CultureInfo.InvariantCulture, out var feed) ? feed : null,
+            Blank(query["project"]),
+            query["kind"].ToString() is "improve" or "new" or "fyi" ? query["kind"].ToString() : null,
+            query["unrated"] == "1",
+            query["summary"] == "1",
+            int.TryParse(query["days"], NumberStyles.None, CultureInfo.InvariantCulture, out var days) && PostsQuery.DayChoices.Contains(days) ? days : 7);
+        var before = PageCursor.Parse(query["before"]);
+        var rows = await items.PostsAsync(
+            new PostFilter(time.GetUtcNow().AddDays(-q.Days), q.Category, q.Feed, q.Project, q.Kind, q.Unrated, q.Summary), before, PageSize + 1, ct);
+        var shown = rows.Take(PageSize).ToList();
+        var next = rows.Count > PageSize ? PageCursor.Of(shown[^1].PublishedAt, shown[^1].Id).ToString() : null;
+        var projects = (await profiles.AllAsync(ct)).Select(x => x.Key).ToList();
+        return Html(UiPages.Posts(Context(ctx), q, await items.CategoriesAsync(ct), await items.FeedsAsync(ct), projects, shown, next, before is not null));
+    }
+
+    public async Task<IResult> FeedbackAsync(HttpContext ctx, CancellationToken ct)
+    {
+        var query = ctx.Request.Query;
+        var tab = query["tab"].ToString() is "down" or "idea" ? query["tab"].ToString() : "up";
+        var before = PageCursor.Parse(query["before"]);
+        var rows = await items.RatedAsync(tab, before, PageSize + 1, ct);
+        var shown = rows.Take(PageSize).ToList();
+        var next = rows.Count > PageSize ? PageCursor.Of(shown[^1].RatedAt, shown[^1].Id).ToString() : null;
+        var now = time.GetUtcNow();
+        return Html(UiPages.Feedback(
+            Context(ctx), tab, await feedback.TotalsAsync(ct),
+            DigestStats.UpRate(await feedback.VotesSinceAsync(now.AddDays(-7), ct)), DigestStats.UpRate(await feedback.VotesSinceAsync(now.AddDays(-30), ct)),
+            shown, next, before is not null));
+    }
+
     public async Task<IResult> ItemAsync(HttpContext ctx, long id, CancellationToken ct)
     {
         var p = Context(ctx);
@@ -169,6 +205,9 @@ public sealed class UiHandlers(
                 return SeeOther(ctx, back);
             case "down":
                 await callbacks.VoteAsync(id, -1, ct);
+                return SeeOther(ctx, back);
+            case "clear":
+                await callbacks.ClearVoteAsync(id, ct);
                 return SeeOther(ctx, back);
             case "idea":
                 var (project, _) = await callbacks.FileIdeaAsync(id, ct);
@@ -249,7 +288,7 @@ public sealed class UiHandlers(
 
     /// <summary>A same-site path under /ui; anything else (another host, a protocol-relative URL) falls back to /ui.</summary>
     internal static string SafeBack(string? back) =>
-        back is { Length: > 0 and <= 300 } && back.StartsWith("/ui", StringComparison.Ordinal) && !back.StartsWith("//", StringComparison.Ordinal)
+        back is { Length: > 0 and <= 600 } && back.StartsWith("/ui", StringComparison.Ordinal) && !back.StartsWith("//", StringComparison.Ordinal)
         && (back.Length == 3 || back[3] is '/' or '?' or '#') && back.All(c => c is >= ' ' and < '\u007f' && c != '\\')
             ? back
             : "/ui";

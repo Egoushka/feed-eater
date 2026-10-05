@@ -47,6 +47,8 @@ public sealed class CallbackHandler(
     /// <summary>Also used by the web UI, so a vote means the same on both surfaces.</summary>
     public Task VoteAsync(long itemId, short value, CancellationToken ct) => feedback.SetVoteAsync(itemId, value, ct);
 
+    public Task ClearVoteAsync(long itemId, CancellationToken ct) => feedback.ClearVoteAsync(itemId, ct);
+
     /// <summary>Files the item's suggestion in Plane and counts it as a 👍. The project, or the reason it was not filed.</summary>
     public async Task<(string? Project, string? Error)> FileIdeaAsync(long itemId, CancellationToken ct)
     {

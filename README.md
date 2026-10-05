@@ -45,6 +45,10 @@ names the request's own host and carries a per-session anti-forgery value. Login
 `Mcp:Token` every `/ui` route answers 503. `FeedEater:Llm:MonthlyBudget` (USD, default 0 = none) adds a budget line to `/ui/usage`.
 `/mcp` and `/healthz` are unchanged.
 
+`/ui/posts` is the stream of recent posts beyond the digest (filters: category, feed, project, kind, unrated, with AI summary;
+keyset paging). `/ui/feedback` lists everything already rated, per 👍, 👎 and 💡, with the 7- and 30-day 👍 rate; a vote can be
+changed or cleared there. The top of Today has "the day in brief", built from the digest's stored reads with no extra model call.
+
 ## Running a digest on demand
 
 The scheduled digest runs once a day inside 07:30 to 12:00 Kyiv time. To run one outside that:

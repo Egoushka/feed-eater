@@ -81,6 +81,8 @@ public static class UiEndpoints
         });
 
         secured.MapGet("", h.TodayAsync);
+        secured.MapGet("/posts", h.PostsAsync);
+        secured.MapGet("/feedback", h.FeedbackAsync);
         secured.MapGet("/search", h.SearchAsync);
         secured.MapGet("/item/{id:long}", h.ItemAsync);
         secured.MapGet("/digests", h.DigestsAsync);

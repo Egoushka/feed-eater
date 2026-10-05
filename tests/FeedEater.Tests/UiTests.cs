@@ -123,7 +123,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
     public static TheoryData<string> Pages =>
     [
-        "/ui", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
+        "/ui", "/ui/posts", "/ui/feedback", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
         "/ui/item/1", "/ui/digest/2026-10-05", "/ui/digest/run",
     ];
 
@@ -518,5 +518,201 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, (await _http.SendAsync(Rpc(Token, "http://localhost"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await _http.SendAsync(Rpc(Token, null))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await _http.GetAsync("/healthz")).StatusCode);
+    }
+
+    private async Task<long> PostAsync(long feed, string title, int hoursAgo, string content = "Plain body text.", string url = "https://example.com/p")
+    {
+        var id = await Seed.ItemAsync(pg, feed, title, TestVectors.OneHot(1), DateTime.UtcNow.AddHours(-hoursAgo), content: content);
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await c.ExecuteAsync("update items set url = @url where id = @id", new { id, url });
+        return id;
+    }
+
+    private async Task CategoryAsync(long feed, string category)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await c.ExecuteAsync("update feeds set category = @category where id = @feed", new { feed, category });
+    }
+
+    [Fact]
+    public async Task The_posts_page_shows_summaries_or_excerpts_and_filters_by_query_string()
+    {
+        var withSummary = await PostAsync(1, "Has a summary", 1);
+        await PostAsync(2, "Has only an excerpt", 2, "Raw feed text   with\n\nodd   spacing.");
+        var voted = await PostAsync(2, "Already voted", 3);
+        await CategoryAsync(1, "Postgres");
+        await CategoryAsync(2, "Security");
+        await Seed.ReadAsync(pg, withSummary, "homelab", "improve");
+        await new FeedbackStore(pg.Db).SetVoteAsync(voted, 1, default);
+        var cookie = await LoginAsync();
+
+        var all = await GetAsync("/ui/posts", cookie);
+        Assert.Contains("Has a summary", all, StringComparison.Ordinal);
+        Assert.Contains("<p>s</p>", all, StringComparison.Ordinal);
+        Assert.Contains("Raw feed text with odd spacing.", all, StringComparison.Ordinal);
+        Assert.Contains("in Security", all, StringComparison.Ordinal);
+        Assert.Contains("name=\"unrated\"", all, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/posts\"", all, StringComparison.Ordinal);   // nav and card forms point back at the page
+
+        var byCategory = await GetAsync("/ui/posts?category=Postgres", cookie);
+        Assert.Contains("Has a summary", byCategory, StringComparison.Ordinal);
+        Assert.DoesNotContain("Has only an excerpt", byCategory, StringComparison.Ordinal);
+
+        var unrated = await GetAsync("/ui/posts?unrated=1&summary=1&kind=improve&days=30", cookie);
+        Assert.Contains("Has a summary", unrated, StringComparison.Ordinal);
+        Assert.DoesNotContain("Already voted", unrated, StringComparison.Ordinal);
+        Assert.Contains("No posts match", await GetAsync("/ui/posts?kind=fyi", cookie), StringComparison.Ordinal);
+        Assert.Contains("Has a summary", await GetAsync("/ui/posts?kind=bogus&days=bogus&feed=x&before=zzz", cookie), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_posts_page_pages_with_a_keyset_link_and_keeps_the_filters()
+    {
+        for (var i = 0; i < 35; i++)
+        {
+            await PostAsync(1, $"Post {i:00}", i + 1);
+        }
+
+        var cookie = await LoginAsync();
+        var first = await GetAsync("/ui/posts?days=30", cookie);
+        var next = Regex.Match(first, "rel=\"next\" href=\"([^\"]+)\"").Groups[1].Value.Replace("&amp;", "&");
+
+        Assert.Contains("Post 00", first, StringComparison.Ordinal);
+        Assert.Contains("Post 29", first, StringComparison.Ordinal);
+        Assert.DoesNotContain("Post 30", first, StringComparison.Ordinal);
+        Assert.StartsWith("/ui/posts?days=30&before=", next, StringComparison.Ordinal);
+
+        var second = await GetAsync(next, cookie);
+        Assert.Contains("Post 30", second, StringComparison.Ordinal);
+        Assert.Contains("Post 34", second, StringComparison.Ordinal);
+        Assert.DoesNotContain("Post 29", second, StringComparison.Ordinal);
+        Assert.DoesNotContain("rel=\"next\"", second, StringComparison.Ordinal);
+        Assert.Contains("Back to the newest", second, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_vote_on_the_posts_page_returns_to_the_same_filtered_page_and_anchor_and_can_be_cleared()
+    {
+        var id = await PostAsync(1, "Votable", 1);
+        await Seed.ReadAsync(pg, id, "homelab", "fyi");
+        var cookie = await LoginAsync();
+        var page = await GetAsync("/ui/posts?kind=fyi&unrated=1", cookie);
+        Assert.Contains($"value=\"/ui/posts?kind=fyi&amp;unrated=1#item-{id}\"", page, StringComparison.Ordinal);
+
+        var up = await PostAsync("/ui/vote", cookie, ("item", id.ToString()), ("v", "up"), ("back", $"/ui/posts?kind=fyi&unrated=1#item-{id}"));
+        Assert.Equal($"/ui/posts?kind=fyi&unrated=1#item-{id}", up.Headers.Location!.OriginalString);
+        Assert.Equal(1, (await new ItemStore(pg.Db).GetAsync(id, default))!.Vote);
+        Assert.Contains("Clear vote", await GetAsync("/ui/posts", cookie), StringComparison.Ordinal);
+
+        var clear = await PostAsync("/ui/vote", cookie, ("item", id.ToString()), ("v", "clear"), ("back", "/ui/posts"));
+        Assert.Equal(HttpStatusCode.SeeOther, clear.StatusCode);
+        Assert.Null((await new ItemStore(pg.Db).GetAsync(id, default))!.Vote);
+        Assert.DoesNotContain("Clear vote", await GetAsync("/ui/posts", cookie), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_feedback_page_lists_rated_items_per_tab_with_counts_and_rates()
+    {
+        var liked = await PostAsync(1, "Liked post", 1);
+        var disliked = await PostAsync(1, "Disliked post", 2);
+        var filed = await PostAsync(1, "Filed post", 3);
+        await Seed.ReadAsync(pg, filed, "homelab", "improve");
+        var feedback = new FeedbackStore(pg.Db);
+        await feedback.SetVoteAsync(liked, 1, default);
+        await feedback.SetVoteAsync(disliked, -1, default);
+        await feedback.SetVoteAsync(filed, 1, default);
+        await feedback.AddIdeaAsync(new Idea { ItemId = filed, PlaneProject = "LAB", PlaneIssueId = "i-9", Title = "t", At = DateTime.UtcNow }, default);
+        var cookie = await LoginAsync();
+
+        var up = await GetAsync("/ui/feedback", cookie);
+        Assert.Contains("Liked post", up, StringComparison.Ordinal);
+        Assert.DoesNotContain("Disliked post", up, StringComparison.Ordinal);
+        Assert.Contains("👍 Liked <span class=\"count\">2</span>", up, StringComparison.Ordinal);
+        Assert.Contains("👎 Disliked <span class=\"count\">1</span>", up, StringComparison.Ordinal);
+        Assert.Contains("💡 Filed ideas <span class=\"count\">1</span>", up, StringComparison.Ordinal);
+        Assert.Contains("67%", up, StringComparison.Ordinal);   // 2 of 3 votes, in both windows
+        Assert.Contains("Clear vote", up, StringComparison.Ordinal);
+
+        var down = await GetAsync("/ui/feedback?tab=down", cookie);
+        Assert.Contains("Disliked post", down, StringComparison.Ordinal);
+        Assert.DoesNotContain("Liked post", down, StringComparison.Ordinal);
+
+        var ideas = await GetAsync("/ui/feedback?tab=idea", cookie);
+        Assert.Contains("Filed post", ideas, StringComparison.Ordinal);
+        Assert.Contains("Filed in LAB", ideas, StringComparison.Ordinal);
+        Assert.DoesNotContain("Liked post", ideas, StringComparison.Ordinal);
+
+        Assert.Contains("Liked post", await GetAsync("/ui/feedback?tab=bogus&before=junk", cookie), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_feedback_page_is_empty_friendly_and_pages_by_rating_time()
+    {
+        var cookie = await LoginAsync();
+        Assert.Contains("Nothing here yet", await GetAsync("/ui/feedback", cookie), StringComparison.Ordinal);
+
+        for (var i = 0; i < 32; i++)
+        {
+            await new FeedbackStore(pg.Db).SetVoteAsync(await PostAsync(1, $"Rated {i:00}", 1), 1, default);
+            await Task.Delay(2);
+        }
+
+        var first = await GetAsync("/ui/feedback", cookie);
+        var next = Regex.Match(first, "rel=\"next\" href=\"([^\"]+)\"").Groups[1].Value.Replace("&amp;", "&");
+        Assert.Contains("Rated 31", first, StringComparison.Ordinal);
+        Assert.DoesNotContain("Rated 01", first, StringComparison.Ordinal);
+        var second = await GetAsync(next, cookie);
+        Assert.Contains("Rated 01", second, StringComparison.Ordinal);
+        Assert.Contains("Rated 00", second, StringComparison.Ordinal);
+        Assert.DoesNotContain("Rated 31", second, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Posts_and_feedback_encode_hostile_feed_content()
+    {
+        var id = await PostAsync(1, $"{Hostile} title", 1, $"{Hostile} excerpt \" onmouseover=\"x", "javascript:alert(1)");
+        await CategoryAsync(1, $"{Hostile} category");
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update feeds set title = @t where id = 1", new { t = $"{Hostile} feed" });
+        }
+
+        await new FeedbackStore(pg.Db).SetVoteAsync(id, 1, default);
+        await new FeedbackStore(pg.Db).AddIdeaAsync(new Idea { ItemId = id, PlaneProject = "LAB", PlaneIssueId = "i", Title = Hostile, At = DateTime.UtcNow }, default);
+        var cookie = await LoginAsync();
+        var pages = new[]
+        {
+            await GetAsync("/ui/posts", cookie), await GetAsync($"/ui/posts?category={Uri.EscapeDataString(Hostile + " category")}", cookie),
+            await GetAsync($"/ui/posts?category={Uri.EscapeDataString("\"><script>alert(2)</script>")}&project={Uri.EscapeDataString("\"><script>alert(3)</script>")}", cookie),
+            await GetAsync("/ui/feedback", cookie), await GetAsync("/ui/feedback?tab=idea", cookie),
+        };
+
+        foreach (var page in pages)
+        {
+            Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("javascript:", page, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("onmouseover=\"x", page, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; title", pages[0], StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; category", pages[0], StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; feed", pages[3], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Today_opens_with_the_day_in_brief_built_from_the_digest()
+    {
+        var (item, _) = await SeedDigestAsync($"{Hostile} brief", suggestion: "Do it.");
+        await new AnalysisStore(pg.Db).SaveReadAsync(item, new ReadResult { Summary = $"{Hostile} summary", Why = "w", Kind = "improve", Project = "homelab", Suggestion = "Do it." }, "m", default);
+        var cookie = await LoginAsync();
+
+        var page = await GetAsync("/ui", cookie);
+
+        Assert.Contains("The day in brief", page, StringComparison.Ordinal);
+        Assert.Contains("1 highlights, 1 with a suggestion", page, StringComparison.Ordinal);
+        Assert.Contains($"href=\"#item-{item}\"", page, StringComparison.Ordinal);
+        Assert.True(page.IndexOf("The day in brief", StringComparison.Ordinal) < page.IndexOf("Spend this month", StringComparison.Ordinal));
+        Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("The day in brief", await GetAsync("/ui/digests", cookie), StringComparison.Ordinal);
     }
 }

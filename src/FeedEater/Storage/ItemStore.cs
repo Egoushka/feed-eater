@@ -29,12 +29,13 @@ public sealed record Candidate
     public float[] Embedding { get; init; } = [];
 }
 
-public sealed record ItemView
+public record ItemView
 {
     public long Id { get; init; }
     public string Title { get; init; } = "";
     public string Url { get; init; } = "";
     public string Feed { get; init; } = "";
+    public string? Category { get; init; }
     public DateTime PublishedAt { get; init; }
     public string Content { get; init; } = "";
     public string? ProfileKey { get; init; }
@@ -47,6 +48,29 @@ public sealed record ItemView
     public string? Suggestion { get; init; }
     public int? Vote { get; init; }
     public string? FiledIn { get; init; }
+}
+
+/// <summary>An item with the time its vote or idea was recorded, for the feedback page.</summary>
+public sealed record RatedItem : ItemView
+{
+    public DateTime RatedAt { get; init; }
+}
+
+public sealed record PostFilter(DateTimeOffset Since, string? Category, long? FeedId, string? Project, string? Kind, bool UnratedOnly, bool SummaryOnly);
+
+/// <summary>Keyset position: microseconds since the Unix epoch plus the item id, so ties on the timestamp cannot repeat or skip rows.</summary>
+public sealed record PageCursor(long Micros, long Id)
+{
+    public static PageCursor Of(DateTime utc, long id) => new((DateTime.SpecifyKind(utc, DateTimeKind.Utc).Ticks - DateTime.UnixEpoch.Ticks) / 10, id);
+
+    public static PageCursor? Parse(string? text) =>
+        text?.Split('-') is [var micros, var id]
+        && long.TryParse(micros, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var m)
+        && long.TryParse(id, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var i)
+            ? new PageCursor(m, i)
+            : null;
+
+    public override string ToString() => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Micros}-{Id}");
 }
 
 public sealed record SearchHit
@@ -206,7 +230,7 @@ public sealed class ItemStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.QuerySingleOrDefaultAsync<ItemView>(new CommandDefinition(
             """
-            select i.id, i.title, i.url, coalesce(f.title, '') as feed, i.published_at, i.content, i.profile_key,
+            select i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, i.published_at, i.content, i.profile_key,
                    t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
                    coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in
             from items i
@@ -242,6 +266,85 @@ public sealed class ItemStore(FeedDb db)
             group by f.id, f.title, f.category
             order by f.title
             """, new { since = since.UtcDateTime }, cancellationToken: ct))).ToList();
+    }
+
+    private const string CardColumns =
+        """
+        i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, i.published_at, left(i.content, 600) as content, i.profile_key,
+        t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
+        coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in
+        """;
+
+    /// <summary>
+    /// Posts newest first (published_at, then id), strictly after <paramref name="before"/>, duplicates excluded. Returns up to
+    /// <paramref name="limit"/> rows; the text is clipped to 600 characters, enough for an excerpt.
+    /// </summary>
+    public async Task<IReadOnlyList<ItemView>> PostsAsync(PostFilter f, PageCursor? before, int limit, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<ItemView>(new CommandDefinition(
+            $"""
+            select {CardColumns}
+            from items i
+            left join feeds f on f.id = i.feed_id
+            left join triage t on t.item_id = i.id
+            left join reads r on r.item_id = i.id
+            left join votes v on v.item_id = i.id
+            left join ideas d on d.item_id = i.id
+            where i.duplicate_of is null and i.published_at >= @since
+              and (@micros::bigint is null or (i.published_at, i.id) < (timestamptz 'epoch' + @micros * interval '1 microsecond', @cursorId))
+              and (@category::text is null or f.category = @category)
+              and (@feedId::bigint is null or i.feed_id = @feedId)
+              and (@project::text is null or i.profile_key = @project or coalesce(r.project, t.project) = @project)
+              and (@kind::text is null or coalesce(r.kind, t.kind) = @kind)
+              and (not @unrated or v.item_id is null)
+              and (not @summaryOnly or r.item_id is not null)
+            order by i.published_at desc, i.id desc
+            limit @limit
+            """,
+            new
+            {
+                since = f.Since.UtcDateTime, micros = before?.Micros, cursorId = before?.Id ?? 0L, f.Category, f.FeedId, f.Project, f.Kind,
+                unrated = f.UnratedOnly, summaryOnly = f.SummaryOnly, limit,
+            }, cancellationToken: ct))).ToList();
+    }
+
+    /// <summary>
+    /// Items already rated, newest rating first: 👍 or 👎 votes (<paramref name="rating"/> "up" or "down"), or filed ideas ("idea").
+    /// </summary>
+    public async Task<IReadOnlyList<RatedItem>> RatedAsync(string rating, PageCursor? before, int limit, CancellationToken ct)
+    {
+        var idea = rating == "idea";
+        var at = idea ? "d.at" : "v.at";
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<RatedItem>(new CommandDefinition(
+            $"""
+            select {CardColumns}, {at} as rated_at
+            from {(idea ? "ideas d join items i on i.id = d.item_id left join votes v on v.item_id = i.id"
+                        : "votes v join items i on i.id = v.item_id left join ideas d on d.item_id = i.id")}
+            left join feeds f on f.id = i.feed_id
+            left join triage t on t.item_id = i.id
+            left join reads r on r.item_id = i.id
+            where {(idea ? "true" : "v.value = @value")}
+              and (@micros::bigint is null or ({at}, i.id) < (timestamptz 'epoch' + @micros * interval '1 microsecond', @cursorId))
+            order by {at} desc, i.id desc
+            limit @limit
+            """,
+            new { value = rating == "down" ? -1 : 1, micros = before?.Micros, cursorId = before?.Id ?? 0L, limit }, cancellationToken: ct))).ToList();
+    }
+
+    public async Task<IReadOnlyList<string>> CategoriesAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<string>(new CommandDefinition(
+            "select distinct category from feeds where category is not null and category <> '' order by category", cancellationToken: ct))).ToList();
+    }
+
+    public async Task<IReadOnlyList<Feed>> FeedsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<Feed>(new CommandDefinition(
+            "select id, title, category, site_url from feeds order by title", cancellationToken: ct))).ToList();
     }
 
     /// <summary>The digest's items in its order; items without a read result are skipped.</summary>
