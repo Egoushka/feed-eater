@@ -1,0 +1,12 @@
+{
+  "about": "Backend .NET developer in Kyiv who builds self-hosted AI tooling on a Hetzner homelab.",
+  "projects": [
+    { "key": "chargehand", "plane": "CHARGEHAND", "description": "Agent orchestrator. Runs read-only coding agents and returns cited claims." },
+    { "key": "homelab", "plane": "LAB", "description": "Hetzner VPS with about 120 containers, deployed by GitOps." },
+    { "key": "trader", "description": "Algorithmic crypto trading experiments." }
+  ],
+  "topics": [
+    { "key": "postgres", "description": "PostgreSQL internals, releases, extensions and performance." },
+    { "key": "llm-engineering", "description": "Building with LLMs: evals, agents, retrieval, cost." }
+  ]
+}

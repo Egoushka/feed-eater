@@ -1,0 +1,40 @@
+{
+  "total": 5,
+  "entries": [
+    {
+      "id": 101, "feed_id": 7, "status": "unread", "title": "Postgres 18.1 released",
+      "url": "https://www.postgresql.org/about/news/postgresql-181-released/?utm_source=rss",
+      "published_at": "2026-10-04T09:00:00Z",
+      "content": "<p>Fixes for <b>async I/O</b>.</p>",
+      "feed": { "id": 7, "title": "PostgreSQL News", "site_url": "https://www.postgresql.org/", "category": { "id": 2, "title": "Databases" } }
+    },
+    {
+      "id": 102, "feed_id": 8, "status": "unread", "title": "Postgres 18.1 Released!",
+      "url": "https://news.ycombinator.com/item?id=1",
+      "published_at": "2026-10-04T10:00:00Z",
+      "content": "<a href=\"https://news.ycombinator.com/item?id=1\">Comments</a>",
+      "feed": { "id": 8, "title": "Hacker News", "site_url": "https://news.ycombinator.com/", "category": { "id": 3, "title": "Software Engineering" } }
+    },
+    {
+      "id": 103, "feed_id": 7, "status": "read", "title": "",
+      "url": "https://www.postgresql.org/about/news/pgconf/",
+      "published_at": "2026-10-04T11:00:00Z",
+      "content": "",
+      "feed": { "id": 7, "title": "PostgreSQL News", "site_url": "https://www.postgresql.org/", "category": { "id": 2, "title": "Databases" } }
+    },
+    {
+      "id": 104, "feed_id": 8, "status": "unread", "title": "Release notes",
+      "url": "https://postgresql.org/about/news/postgresql-181-released",
+      "published_at": "2026-10-04T12:00:00Z",
+      "content": "<p>Same article, other link.</p>",
+      "feed": { "id": 8, "title": "Hacker News", "site_url": "https://news.ycombinator.com/", "category": { "id": 3, "title": "Software Engineering" } }
+    },
+    {
+      "id": 105, "feed_id": 9, "status": "unread", "title": "News",
+      "url": "https://ain.ua/2026/10/04/news/",
+      "published_at": "2026-10-04T13:00:00Z",
+      "content": "<p>Новини.</p>",
+      "feed": { "id": 9, "title": "AIN.UA", "site_url": "https://ain.ua/", "category": null }
+    }
+  ]
+}

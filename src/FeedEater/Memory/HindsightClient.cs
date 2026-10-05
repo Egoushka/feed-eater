@@ -1,0 +1,34 @@
+using System.Globalization;
+using System.Net.Http.Json;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+
+namespace FeedEater.Memory;
+
+/// <summary>Hindsight's retain API, the same body host/opt-homelab/ingest.py sends.</summary>
+public sealed class HindsightClient(HttpClient http)
+{
+    // Plain JSON to a trusted API, never HTML: the default encoder escapes "+" as \u002B, so "+03:00" would not match ingest.py's body.
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    public async Task RetainAsync(
+        string bank, string content, string context, DateTimeOffset timestamp, string documentId, IReadOnlyList<string> tags, CancellationToken ct)
+    {
+        using var response = await http.PostAsJsonAsync($"v1/default/banks/{bank}/memories", new
+        {
+            @async = true,
+            items = new[]
+            {
+                new
+                {
+                    content,
+                    context,
+                    timestamp = timestamp.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture),
+                    document_id = documentId,
+                    tags,
+                },
+            },
+        }, Options, ct);
+        response.EnsureSuccessStatusCode();
+    }
+}

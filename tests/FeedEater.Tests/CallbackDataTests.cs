@@ -1,0 +1,29 @@
+using System.Text;
+using FeedEater.Telegram;
+
+namespace FeedEater.Tests;
+
+public sealed class CallbackDataTests
+{
+    [Fact]
+    public void Round_trips_votes_ideas_and_noop()
+    {
+        Assert.Equal(new VoteCallback(5, 1), CallbackData.Parse(CallbackData.Vote(5, 1)));
+        Assert.Equal(new VoteCallback(5, -1), CallbackData.Parse(CallbackData.Vote(5, -1)));
+        Assert.Equal(new IdeaCallback(9), CallbackData.Parse(CallbackData.Idea(9)));
+        Assert.IsType<NoopCallback>(CallbackData.Parse(CallbackData.Noop));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("x:1")]
+    [InlineData("v:abc:u")]
+    [InlineData("v:1:z")]
+    [InlineData("i:-3")]
+    public void Rejects_anything_else(string? data) => Assert.Null(CallbackData.Parse(data));
+
+    [Fact]
+    public void Fits_telegrams_64_byte_limit_for_the_largest_id() =>
+        Assert.True(Encoding.UTF8.GetByteCount(CallbackData.Vote(long.MaxValue, -1)) <= 64);
+}

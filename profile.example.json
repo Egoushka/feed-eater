@@ -1,0 +1,11 @@
+{
+  "about": "Backend developer who runs a homelab and builds his own AI tooling.",
+  "projects": [
+    { "key": "homelab", "plane": "LAB", "description": "VPS with about 100 containers deployed by GitOps. Docker Compose, Postgres, Prometheus." },
+    { "key": "side-project", "description": "A project without a Plane project; ideas for it go to the fallback project." }
+  ],
+  "topics": [
+    { "key": "postgres", "description": "PostgreSQL internals, releases, extensions and performance." },
+    { "key": "llm-engineering", "description": "Building with LLMs: evals, agents, retrieval, cost control." }
+  ]
+}

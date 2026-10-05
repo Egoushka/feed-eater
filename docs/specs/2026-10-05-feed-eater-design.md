@@ -182,8 +182,9 @@ One retain to the `learning` bank: what was read and liked this week, ideas file
 - `signals(id PK, source karakeep|github_star, external_id, url, title, embedding, polarity, at,
   UNIQUE(source, external_id))`
 - `profiles(key PK, kind project|topic, plane_identifier, description, embedding, built_at)`
-- `cursors(name PK, value)`: Miniflux entry id, Karakeep id, last star, Telegram offset.
-- `llm_usage(id, at, purpose embed|triage|read, model, input_tokens, output_tokens, cost)`. Cost comes from
+- `cursors(name PK, value)`: the Telegram update offset (`telegram:offset`) and one run key per scheduled job
+  (`job:<name>`: digest, profiles, signals, weekly-retain), so a job runs once per window.
+- `llm_usage(id, at, purpose embed|triage|read|profile|signal|search, model, input_tokens, output_tokens, cost numeric(16,10))`. Cost comes from
   LiteLLM's `x-litellm-response-cost` header.
 
 Retention: everything is kept. ~1 MB a day at today's volume.
