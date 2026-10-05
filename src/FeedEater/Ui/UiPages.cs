@@ -298,6 +298,11 @@ public static class UiPages
                     h.Append(" · ").Append(vote > 0 ? "👍" : "👎");
                 }
 
+                if (hit.Also > 0)
+                {
+                    h.Append($" · +{N(hit.Also)} similar");
+                }
+
                 h.Append("</p>");
                 if (hit.Summary is not null)
                 {
@@ -520,6 +525,16 @@ public static class UiPages
         else if (!full && v.Content.Length > 0)
         {
             h.Append($"<p class=\"excerpt\">{E(Excerpt(v.Content))}</p>");
+        }
+
+        if (v.AlsoIn.Count > 0)
+        {
+            h.Append("<p class=\"also\">Also in: ").Append(string.Join(", ", v.AlsoIn.Take(6).Select(m => External(m.Url, m.Feed.Length > 0 ? m.Feed : m.Title))));
+            h.Append(v.AlsoIn.Count > 6 ? $" +{N(v.AlsoIn.Count - 6)}" : "").Append("</p>");
+        }
+        else if (v.Also > 0)
+        {
+            h.Append($"<p class=\"also\">{N(v.Also)} similar {(v.Also == 1 ? "item" : "items")}</p>");
         }
 
         if (v.Why is not null)

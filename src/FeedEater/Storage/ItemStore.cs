@@ -4,6 +4,8 @@ using FeedEater.Ranking;
 
 namespace FeedEater.Storage;
 
+public sealed record ClusterMember(long Id, string Title, string Url, string Feed);
+
 public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl);
 
 public sealed record NewItem(
@@ -48,6 +50,10 @@ public record ItemView
     public string? Suggestion { get; init; }
     public int? Vote { get; init; }
     public string? FiledIn { get; init; }
+
+    /// <summary>How many other items tell the same story, and (when loaded) where.</summary>
+    public int Also { get; init; }
+    public IReadOnlyList<ClusterMember> AlsoIn { get; init; } = [];
 }
 
 /// <summary>An item with the time its vote or idea was recorded, for the feedback page.</summary>
@@ -84,6 +90,7 @@ public sealed record SearchHit
     public string? Project { get; init; }
     public string? Kind { get; init; }
     public int? Vote { get; init; }
+    public int Also { get; init; }
     public double Rank { get; init; }
 }
 
@@ -101,6 +108,10 @@ public sealed record SourceStats
 
 public sealed class ItemStore(FeedDb db)
 {
+    /// <summary>Other items in the same cluster; a cluster is its head plus the items pointing at it.</summary>
+    private const string AlsoColumn =
+        "(select count(*) from items m where m.id <> i.id and (m.id = coalesce(i.cluster_of, i.id) or m.cluster_of = coalesce(i.cluster_of, i.id)))::int as also";
+
     public async Task UpsertFeedAsync(Feed feed, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
@@ -161,18 +172,23 @@ public sealed class ItemStore(FeedDb db)
     /// <summary>
     /// Items published inside the window that are embedded, not duplicates and not triaged before <paramref name="triagedBefore"/>
     /// (the start of today). Same-day retries see today's triaged items again and reuse the stored result; items over the
-    /// triage cap stay untriaged and can return while still inside the window.
+    /// triage cap stay untriaged and can return while still inside the window. One item per story: the earliest published of
+    /// its cluster, and none when any member of the cluster was triaged on an earlier day.
     /// </summary>
     public async Task<IReadOnlyList<Candidate>> CandidatesAsync(DateTimeOffset publishedAfter, DateTimeOffset triagedBefore, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<Candidate>(new CommandDefinition(
             """
-            select i.id, i.miniflux_entry_id, i.feed_id, i.title, i.url, coalesce(f.title, '') as feed_title, i.content,
+            select distinct on (coalesce(i.cluster_of, i.id))
+                   i.id, i.miniflux_entry_id, i.feed_id, i.title, i.url, coalesce(f.title, '') as feed_title, i.content,
                    i.embedding::real[] as embedding
             from items i left join feeds f on f.id = i.feed_id
             where i.published_at > @publishedAfter and i.duplicate_of is null and i.embedding is not null
-              and not exists (select 1 from triage t where t.item_id = i.id and t.at < @triagedBefore)
+              and not exists (
+                  select 1 from items m join triage t on t.item_id = m.id
+                  where (m.id = coalesce(i.cluster_of, i.id) or m.cluster_of = coalesce(i.cluster_of, i.id)) and t.at < @triagedBefore)
+            order by coalesce(i.cluster_of, i.id), i.published_at, i.id
             """,
             new { publishedAfter = publishedAfter.UtcDateTime, triagedBefore = triagedBefore.UtcDateTime }, cancellationToken: ct))).ToList();
     }
@@ -229,10 +245,10 @@ public sealed class ItemStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.QuerySingleOrDefaultAsync<ItemView>(new CommandDefinition(
-            """
+            $"""
             select i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, i.published_at, i.content, i.profile_key,
                    t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
-                   coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in
+                   coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in, {AlsoColumn}
             from items i
             left join feeds f on f.id = i.feed_id
             left join triage t on t.item_id = i.id
@@ -269,10 +285,10 @@ public sealed class ItemStore(FeedDb db)
     }
 
     private const string CardColumns =
-        """
+        $"""
         i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, i.published_at, left(i.content, 600) as content, i.profile_key,
         t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
-        coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in
+        coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in, {AlsoColumn}
         """;
 
     /// <summary>
@@ -351,7 +367,7 @@ public sealed class ItemStore(FeedDb db)
     public async Task<IReadOnlyList<DigestItem>> DigestItemsAsync(long[] ids, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
-        return (await c.QueryAsync<DigestItem>(new CommandDefinition(
+        var shown = (await c.QueryAsync<DigestItem>(new CommandDefinition(
             """
             select i.id, i.title, i.url, coalesce(f.title, '') as feed, r.project, r.kind, r.summary, r.why, r.suggestion
             from unnest(@ids::bigint[]) with ordinality as x(id, ord)
@@ -360,6 +376,39 @@ public sealed class ItemStore(FeedDb db)
             left join feeds f on f.id = i.feed_id
             order by x.ord
             """, new { ids }, cancellationToken: ct))).ToList();
+        var members = await MembersAsync(shown.Select(s => s.Id).ToArray(), ct);
+        return shown.Select(s => members.TryGetValue(s.Id, out var also) ? s with { AlsoIn = also } : s).ToList();
+    }
+
+    private sealed record MemberRow(long ForId, long Id, string Title, string Url, string Feed);
+
+    /// <summary>For each given item, the other items of its story (earliest first); items with none are absent.</summary>
+    public async Task<IReadOnlyDictionary<long, IReadOnlyList<ClusterMember>>> MembersAsync(IReadOnlyCollection<long> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0)
+        {
+            return new Dictionary<long, IReadOnlyList<ClusterMember>>();
+        }
+
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        var rows = await c.QueryAsync<MemberRow>(new CommandDefinition(
+            """
+            select x.id as for_id, m.id, m.title, m.url, coalesce(f.title, '') as feed
+            from items x
+            join items m on m.id <> x.id and (m.id = coalesce(x.cluster_of, x.id) or m.cluster_of = coalesce(x.cluster_of, x.id))
+            left join feeds f on f.id = m.feed_id
+            where x.id = any(@ids)
+            order by m.published_at, m.id
+            """, new { ids = ids.ToArray() }, cancellationToken: ct));
+        return rows.GroupBy(r => r.ForId).ToDictionary(
+            g => g.Key, g => (IReadOnlyList<ClusterMember>)g.Select(r => new ClusterMember(r.Id, r.Title, r.Url, r.Feed)).ToList());
+    }
+
+    /// <summary>Fills <see cref="ItemView.AlsoIn"/> for the items that have cluster mates.</summary>
+    public async Task<IReadOnlyList<T>> WithMembersAsync<T>(IReadOnlyList<T> views, CancellationToken ct) where T : ItemView
+    {
+        var members = await MembersAsync(views.Where(v => v.Also > 0).Select(v => v.Id).ToArray(), ct);
+        return views.Select(v => members.TryGetValue(v.Id, out var also) ? v with { AlsoIn = also } : v).ToList();
     }
 
     /// <summary>
@@ -400,7 +449,9 @@ public sealed class ItemStore(FeedDb db)
                 select id, sum(1.0 / (60 + pos))::float8 as rrf from (select * from v union all select * from t) u group by id
             )
             select i.id, i.title, i.url, coalesce(f.title, '') as feed, i.published_at, r.summary,
-                   coalesce(r.project, i.profile_key) as project, r.kind, vt.value::int as vote, fused.rrf as rank
+                   coalesce(r.project, i.profile_key) as project, r.kind, vt.value::int as vote,
+                   (select count(*) from items m where m.id <> i.id and (m.id = coalesce(i.cluster_of, i.id) or m.cluster_of = coalesce(i.cluster_of, i.id)))::int as also,
+                   fused.rrf as rank
             from fused
             join items i on i.id = fused.id
             left join feeds f on f.id = i.feed_id

@@ -20,6 +20,7 @@ public sealed class IngestorTests(PostgresFixture pg) : IAsyncLifetime
         return new Ingestor(
             new MinifluxClient(miniflux.Client("http://miniflux/")),
             new ItemStore(pg.Db),
+            new StoryClusterer(new ClusterStore(pg.Db), options, NullLogger<StoryClusterer>.Instance),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             options, new LoopHealth(TimeProvider.System), TimeProvider.System, NullLogger<Ingestor>.Instance);
     }

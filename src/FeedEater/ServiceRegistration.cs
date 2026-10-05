@@ -32,6 +32,8 @@ public static class ServiceRegistration
         services.AddSingleton(new FeedDb(NpgsqlDataSource.Create(connectionString)));
         services.AddSingleton<CursorStore>();
         services.AddSingleton<ItemStore>();
+        services.AddSingleton<ClusterStore>();
+        services.AddSingleton<StoryClusterer>();
         services.AddSingleton<ProfileStore>();
         services.AddSingleton<FeedbackStore>();
         services.AddSingleton<AnalysisStore>();

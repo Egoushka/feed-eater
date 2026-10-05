@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using FeedEater.Storage;
 using FeedEater.Telegram;
 
 namespace FeedEater.Digest;
@@ -16,6 +17,7 @@ public sealed record DigestItem
     public string Summary { get; init; } = "";
     public string Why { get; init; } = "";
     public string? Suggestion { get; init; }
+    public IReadOnlyList<ClusterMember> AlsoIn { get; init; } = [];
 }
 
 /// <summary><c>MonthSpend</c> is spend since the 1st of the current month; <c>WeekUpRate</c> is the 👍 share of the last 7 days' votes, null when there were none.</summary>
@@ -69,6 +71,16 @@ public static class DigestFormatter
         if (i.Suggestion is not null)
         {
             html.Append("\n\n💡 ").Append(E(Clip(i.Suggestion, 800)));
+        }
+
+        if (i.AlsoIn.Count > 0)
+        {
+            var links = i.AlsoIn.Take(3).Select(m => IsLinkable(m.Url) ? $"<a href=\"{E(m.Url)}\">{E(Clip(m.Feed, 40))}</a>" : E(Clip(m.Feed, 40)));
+            html.Append("\n\nAlso in: ").Append(string.Join(", ", links));
+            if (i.AlsoIn.Count > 3)
+            {
+                html.Append(CultureInfo.InvariantCulture, $" +{i.AlsoIn.Count - 3}");
+            }
         }
 
         return new OutMessage(html.ToString(), Buttons(i.Id, i.Suggestion is not null, vote, filedIn));

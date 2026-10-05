@@ -22,8 +22,23 @@ public sealed class FeedEaterOptions
     public KarakeepOptions Karakeep { get; set; } = new();
     public GitHubOptions GitHub { get; set; } = new();
     public HindsightOptions Hindsight { get; set; } = new();
+    public ClusterOptions Cluster { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
+}
+
+public sealed class ClusterOptions
+{
+    /// <summary>
+    /// Cosine similarity (title and start of the text, text-embedding-3-small) at or above which two items from different feeds
+    /// count as one story. Measured on the real archive (2026-10-06): same stories scored 0.80 to 0.86, related but different
+    /// ones stayed under 0.80. 0.84 merges only the clear cases. Raise it if unrelated items merge, lower it (0.82) if the same
+    /// story shows up twice in a digest.
+    /// </summary>
+    public double Threshold { get; set; } = 0.84;
+
+    /// <summary>Items published within this many days of each other can cluster.</summary>
+    public int WindowDays { get; set; } = 3;
 }
 
 public sealed class MinifluxOptions

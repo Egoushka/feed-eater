@@ -157,3 +157,4 @@ button.quiet:hover { color: var(--fg); border-color: var(--edge); }
 .filterbox { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); margin: var(--space-3) 0 var(--space-4); padding: 0 var(--space-4); }
 .filterbox summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
 .filterbox .filters { margin-top: var(--space-2); }
+.also { font-size: 0.875rem; color: var(--muted); margin: 0 0 var(--space-2); }

@@ -715,4 +715,27 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("The day in brief", await GetAsync("/ui/digests", cookie), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Posts_search_and_the_item_page_show_where_else_a_story_appeared()
+    {
+        var first = await PostAsync(1, "Story hnsw first", 3, url: "https://a.example/1");
+        var second = await PostAsync(2, "Story hnsw second", 2, url: "https://b.example/2");
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update items set cluster_of = @first where id = @second", new { first, second });
+            await c.ExecuteAsync("update feeds set title = @t where id = 2", new { t = $"{Hostile} feed" });
+        }
+
+        var cookie = await LoginAsync();
+        var posts = await GetAsync("/ui/posts", cookie);
+        var search = await GetAsync("/ui/search?q=hnsw", cookie);
+        var item = await GetAsync($"/ui/item/{first}", cookie);
+
+        Assert.Contains("Also in: <a href=\"https://b.example/2\" rel=\"noopener noreferrer\" target=\"_blank\">&lt;script&gt;alert(1)&lt;/script&gt; feed</a>", posts, StringComparison.Ordinal);
+        Assert.Contains("Also in: <a href=\"https://a.example/1\"", posts, StringComparison.Ordinal);
+        Assert.Contains("+1 similar", search, StringComparison.Ordinal);
+        Assert.Contains("Also in:", item, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", posts, StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -133,7 +133,7 @@ public sealed class UiHandlers(
         var shown = rows.Take(PageSize).ToList();
         var next = rows.Count > PageSize ? PageCursor.Of(shown[^1].PublishedAt, shown[^1].Id).ToString() : null;
         var projects = (await profiles.AllAsync(ct)).Select(x => x.Key).ToList();
-        return Html(UiPages.Posts(Context(ctx), q, await items.CategoriesAsync(ct), await items.FeedsAsync(ct), projects, shown, next, before is not null));
+        return Html(UiPages.Posts(Context(ctx), q, await items.CategoriesAsync(ct), await items.FeedsAsync(ct), projects, await items.WithMembersAsync(shown, ct), next, before is not null));
     }
 
     public async Task<IResult> FeedbackAsync(HttpContext ctx, CancellationToken ct)
@@ -148,13 +148,13 @@ public sealed class UiHandlers(
         return Html(UiPages.Feedback(
             Context(ctx), tab, await feedback.TotalsAsync(ct),
             DigestStats.UpRate(await feedback.VotesSinceAsync(now.AddDays(-7), ct)), DigestStats.UpRate(await feedback.VotesSinceAsync(now.AddDays(-30), ct)),
-            shown, next, before is not null));
+            await items.WithMembersAsync(shown, ct), next, before is not null));
     }
 
     public async Task<IResult> ItemAsync(HttpContext ctx, long id, CancellationToken ct)
     {
         var p = Context(ctx);
-        return await items.GetAsync(id, ct) is { } item ? Html(UiPages.Item(p, item)) : NotFound(p);
+        return await items.GetAsync(id, ct) is { } item ? Html(UiPages.Item(p, (await items.WithMembersAsync([item], ct))[0])) : NotFound(p);
     }
 
     public async Task<IResult> SourcesAsync(HttpContext ctx, CancellationToken ct)
@@ -240,7 +240,7 @@ public sealed class UiHandlers(
             }
         }
 
-        return shown;
+        return await items.WithMembersAsync(shown, ct);
     }
 
     private async Task<Figures> FiguresAsync(CancellationToken ct)
