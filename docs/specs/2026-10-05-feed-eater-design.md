@@ -1,6 +1,6 @@
 # feed-eater — design
 
-Date: 2026-10-05 · Status: draft, awaiting review
+Date: 2026-10-05 · Status: draft, awaiting review · Plan: [docs/plans/2026-10-05-feed-eater-v1.md](../plans/2026-10-05-feed-eater-v1.md)
 
 ## Goal
 
@@ -41,6 +41,7 @@ Success for v1, measured after 4 weeks of daily digests:
 | D5 | Code public (`Egoushka/feed-eater`, Apache-2.0); archive and MCP tailnet-only. | Full text of third-party articles must not be served publicly; same rule as `refs`. |
 | D6 | Accepted ideas become Plane Intake items; projects without a Plane project go to a new `FEED` project. | Ideas join the existing roadmap flow; `FEED` also holds feed-eater's own roadmap. |
 | D7 | .NET 10, cloned from senses' structure and package versions. | Yehor's stack; senses and nytka move together on the same versions. |
+| D8 | Vectors cross the wire as `real[]` and are cast to `vector` in SQL; no Pgvector NuGet package. | `Pgvector` 0.3.2 states only an Npgsql >= 8.0.5 floor, untested on Npgsql 10; arrays need no package. |
 
 ## Architecture
 
@@ -66,8 +67,8 @@ any MCP client ──► agentgateway /mcp/feed ──► McpTools (read-only)
    stored marks the new row `duplicate_of` the first one. A normalised-title hash seen in the last 7 days does
    the same (catches the same story from two feeds).
 3. Embed `title + "\n" + text(content)[:8000 chars]` in batches of 64 through LiteLLM `/v1/embeddings`.
-4. Stage-1 score (below) is computed at insert and recomputed for the candidate window at digest time,
-   because profiles and centroids change.
+4. The stage-1 score (below) is computed at digest time for the candidate window, because profiles and
+   centroids change between runs.
 
 First start backfills all 10,752 existing entries into the archive (embeddings only, ~16M tokens, ~$0.32 once).
 Only items ingested since the last sent digest are digest candidates.
@@ -89,7 +90,7 @@ candidate project.
 
 ### Profiles (nightly, 03:00)
 
-A config file `profile.yaml` (mounted from homelab-gitops) lists:
+A config file `profile.json` (mounted from homelab-gitops; JSON so no YAML dependency) lists:
 
 - **projects**: key, Plane identifier (or none), 3–5 sentence description. Initial set from `repos.toml` notes:
   chargehand, whetstone, senses, nytka, chronicle, synapse, jarvis, content-engine, touchstone, skarbnyk,
@@ -130,9 +131,9 @@ Messages use `parse_mode=HTML`, escaped, each under 4,096 characters.
 The poller calls `getUpdates` with `timeout=50`, `allowed_updates=["callback_query"]`, stores the offset, and
 ignores anyone but `Telegram:AllowedUserId`. Every callback is answered (`answerCallbackQuery`). A vote upserts
 (last one wins) and edits the button row to show it. `💡` files the idea (below), counts as 👍, and replaces the
-button with `Filed FEED-12`.
+button with `✓ Filed in <Plane project>`.
 
-If a digest fails after retries, the bot sends one message saying which step failed.
+If a digest run fails, the bot says so once, with the error, and the run retries with backoff until 12:00 local. Delivered messages are counted, so a retry sends only the rest.
 
 ### Plane
 
@@ -174,7 +175,8 @@ One retain to the `learning` bank: what was read and liked this week, ideas file
   GENERATED)`; HNSW index on `embedding` (cosine), GIN on `search`, index on `canonical_url`.
 - `triage(item_id PK, relevance, project, kind, reason, model, at)`
 - `reads(item_id PK, summary, why, kind, project, suggestion, model, at)`
-- `digests(local_date PK, status building|sent|failed, candidates, triaged, item_ids bigint[], note, sent_at)`
+- `digests(local_date PK, status building|sent|failed, candidates, triaged, item_ids bigint[], sent_count, note, error,
+  sent_at)`: `note` is shown in the header (budget reached, Miniflux down), `error` is the last failure.
 - `votes(item_id PK, value smallint ±1, at)`
 - `ideas(item_id PK, plane_project, plane_issue_id, title, at)`
 - `signals(id PK, source karakeep|github_star, external_id, url, title, embedding, polarity, at,
@@ -208,7 +210,7 @@ Phase 1 cleanup in Miniflux (Yehor approves each):
 - r/selfhosted and r/homelab → `/top/.rss?t=day`. Reddit allows ~1 logged-out request per minute per IP; two
   feeds polled by Miniflux's scheduler stay under it. Verify the `top` URL form works first.
 
-Phase 3 grows to ~100 feeds over the topics in `profile.yaml`, with GitHub release `.atom` feeds for libraries
+Phase 3 grows to ~100 feeds over the topics in `profile.json`, with GitHub release `.atom` feeds for libraries
 in use and changedetection for pages without a feed.
 
 ## Deployment
@@ -253,13 +255,12 @@ tag and the homelab-gitops PR.
 
 ## Open questions to settle first in the plan
 
-- **Q1** Do `Pgvector` 0.3.2 and `Pgvector.Dapper` 0.3.1 work with Npgsql 10.0.3? Their floor is Npgsql 8.0.5;
-  nothing states Npgsql 10. Build a spike test; fallback is passing vectors as `real[]` and casting in SQL.
+- **Q1** Answered by D8: no Pgvector package.
 - **Q2** Does `reddit.com/r/selfhosted/top/.rss?t=day` return entries from the box's IP?
 - **Q3** Does LiteLLM return `x-litellm-response-cost` on non-streaming chat and embedding calls through this
   proxy version?
-- **Q4** Does self-hosted Plane v1.4 accept `description_html` on intake (plane-sync sends it; the cloud docs show
-  `description`)? plane-sync's success says yes; confirm once with a test item and delete it.
+- **Q4** Answered: self-hosted Plane accepts `description_html` on intake; `host/opt-homelab/plane-sync.py:129` sends
+  it in production.
 
 ## Out of scope
 
