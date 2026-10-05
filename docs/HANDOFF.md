@@ -1,4 +1,4 @@
-# Handoff — feed-eater (2026-10-05, Tasks 0–16 merged, Task 17 Steps 1–2 done)
+# Handoff — feed-eater (2026-10-05, Tasks 0–16 merged, Task 17 Steps 1–2 and 4 done)
 
 ## Goal
 
@@ -17,7 +17,11 @@ learns from 👍/👎/💡, files ideas into Plane Intake, and serves the whole 
 - `dotnet test FeedEater.slnx`: 127/127 passing (Testcontainers, pgvector 0.8.7-pg18). `docker build` succeeded locally.
 - Preflight answers: `docs/specs/2026-10-05-preflight.md`. LiteLLM listens on `100.64.0.2:4000` only; Reddit `top`
   feeds return 200 from the box.
-- Task 17 Steps 1–2 are done; Steps 3–10 remain. Every step is externally visible and needs Yehor's go-ahead.
+- Plane project `FEED` (id `c0eb0fc1-ef92-4559-947e-ceb29598dfaa`) exists. Intake is on for FEED, CHARGEHAND, WHET,
+  NYTKA, CHRON, JARVIS, TOUCH, SKAR and LAB; the FEED `intake-issues/` endpoint answers 200. The Plane MCP's
+  `get_features`/`update_features` return 404 on this self-hosted Plane, so Intake was enabled with
+  `PATCH /api/v1/workspaces/homelab/projects/<id>/ {"intake_view": true}` from the box, using plane-sync's token.
+- Task 17 Steps 1, 2 and 4 are done; Step 3 and Steps 5–10 remain. Every step is externally visible and needs Yehor's go-ahead.
 
 ## Decisions taken during execution (deviations from the plan)
 
@@ -63,9 +67,7 @@ The spec won over the plan wherever they disagreed.
    `make secret-set STACK=feed-eater KEY=<k>`.
    **The plan's LiteLLM key command is wrong:** it calls `127.0.0.1:4000`, but LiteLLM listens only on `100.64.0.2:4000`
    (see preflight). Use `http://100.64.0.2:4000/key/generate`.
-3. Step 4: create the Plane project `FEED` and turn on Intake for it and for every project in `profile.json`. This
-   uses the Plane MCP and needs a go-ahead.
-4. Steps 5–10 happen in a separate `homelab-gitops` session and worktree, as one PR: compose stack, pins (image digest
+3. Steps 5–10 happen in a separate `homelab-gitops` session and worktree, as one PR: compose stack, pins (image digest
    above, plus `pgvector/pgvector:0.8.7-pg18-trixie`), agentgateway route `/mcp/feed`, gatus, ingest. The plan's Task 17
    lists each step.
 
