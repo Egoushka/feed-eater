@@ -7,6 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 using FeedEater.Digest;
 using FeedEater.Ingest;
 using FeedEater.Llm;
+using FeedEater.Signals;
 using FeedEater.Loops;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -31,6 +32,9 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private int _triageCalls;
     private bool _llmDown;
     private bool _readsDown;
+    private System.Net.HttpStatusCode _githubStatus = HttpStatusCode.NotFound;
+    private readonly List<string> _readPrompts = [];
+    private readonly List<string> _githubCalls = [];
 
     public async Task InitializeAsync()
     {
@@ -66,6 +70,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         {
             throw new InvalidOperationException("read model exploded");
         }
+
+        _readPrompts.Add(body);
 
         if (body.Contains("Title: Keep A", StringComparison.Ordinal))
         {
@@ -103,9 +109,30 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
             new ItemStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), digests, new UsageStore(pg.Db),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new MinifluxClient(miniflux.Client("http://miniflux/")),
+            new GitHubStarsClient(new StubHandler((request, _) => GitHub(request)).Client("http://github/"), options),
             new TelegramClient(telegram.Client("http://tg/botT/")),
             _health, options, time, NullLogger<DigestRun>.Instance);
         return (run, digests, miniflux);
+    }
+
+    private HttpResponseMessage GitHub(HttpRequestMessage request)
+    {
+        var path = request.RequestUri!.AbsolutePath;
+        _githubCalls.Add(path);
+        if (_githubStatus != HttpStatusCode.OK)
+        {
+            return StubHandler.Json("""{"message":"nope"}""", _githubStatus);
+        }
+
+        return path.EndsWith("/releases/latest", StringComparison.Ordinal)
+            ? StubHandler.Json("""{"tag_name":"v2.3.0","published_at":"2026-09-20T10:00:00Z"}""")
+            : StubHandler.Json("""{"full_name":"acme/widget","created_at":"2024-03-02T08:00:00Z","pushed_at":"2026-10-01T09:00:00Z","stargazers_count":1240}""");
+    }
+
+    private async Task LinkRepoAsync(params string[] titles)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await c.ExecuteAsync("update items set content = @content where title = any(@titles)", new { content = LongText + " Source: https://github.com/acme/widget/issues/4", titles });
     }
 
     private DigestJob BuildJob(DigestRun run, DigestStore digests, StubHandler notices, IOptions<FeedEaterOptions> options, FakeTimeProvider time) =>
@@ -457,5 +484,49 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Null(await new DigestTrigger(cursors, options, time).PendingAsync(default));
         Assert.Null(await cursors.GetAsync("digest:force", default));
+    }
+
+    [Fact]
+    public async Task The_read_prompt_carries_repository_facts_when_the_item_links_a_github_repo()
+    {
+        await SeedAsync();
+        await LinkRepoAsync("Keep A", "Keep B");
+        _githubStatus = HttpStatusCode.OK;
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Equal(2, _readPrompts.Count);
+        Assert.All(_readPrompts, p => Assert.Contains("Repository facts: created 2024-03-02, last push 2026-10-01, 1,240 stars, latest release v2.3.0 on 2026-09-20", p, StringComparison.Ordinal));
+        Assert.Equal(["/repos/acme/widget", "/repos/acme/widget/releases/latest"], _githubCalls);   // one lookup for both items
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task Without_an_answer_from_github_the_read_goes_ahead_with_no_facts_line(HttpStatusCode status)
+    {
+        await SeedAsync();
+        await LinkRepoAsync("Keep A");
+        _githubStatus = status;
+        var (run, digests, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.DoesNotContain(_readPrompts, p => p.Contains("Repository facts", StringComparison.Ordinal));
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+    }
+
+    [Fact]
+    public async Task Items_with_no_github_link_never_call_github()
+    {
+        await SeedAsync();
+        _githubStatus = HttpStatusCode.OK;
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Empty(_githubCalls);
+        Assert.DoesNotContain(_readPrompts, p => p.Contains("Repository facts", StringComparison.Ordinal));
     }
 }

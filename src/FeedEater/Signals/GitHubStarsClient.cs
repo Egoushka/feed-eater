@@ -8,6 +8,35 @@ public sealed record Star(string FullName, string Url, string? Description, IRea
 /// <summary>Public stars, unauthenticated (60 requests an hour is plenty for one run a day).</summary>
 public sealed class GitHubStarsClient(HttpClient http, IOptions<FeedEaterOptions> options)
 {
+    /// <summary>Null when GitHub answers anything but success (404, a 403 rate limit): the caller just goes without facts.</summary>
+    public async Task<RepoFacts?> RepoFactsAsync(string owner, string repo, CancellationToken ct)
+    {
+        var path = $"repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}";
+        using var response = await http.GetAsync(path, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var body = Json.Parse(await response.Content.ReadAsStringAsync(ct));
+        string? tag = null;
+        DateTimeOffset? released = null;
+        using var releaseResponse = await http.GetAsync($"{path}/releases/latest", ct);
+        if (releaseResponse.IsSuccessStatusCode)
+        {
+            var release = Json.Parse(await releaseResponse.Content.ReadAsStringAsync(ct));
+            tag = Json.Str(release, "tag_name");
+            released = release.TryGetProperty("published_at", out var p) && p.ValueKind == JsonValueKind.String ? p.GetDateTimeOffset() : null;
+        }
+
+        return new RepoFacts(
+            Json.Str(body, "full_name") ?? $"{owner}/{repo}",
+            body.GetProperty("created_at").GetDateTimeOffset(),
+            body.TryGetProperty("pushed_at", out var pushed) && pushed.ValueKind == JsonValueKind.String ? pushed.GetDateTimeOffset() : null,
+            body.TryGetProperty("stargazers_count", out var stars) ? stars.GetInt32() : 0,
+            tag, released);
+    }
+
     public async Task<IReadOnlyList<Star>> PageAsync(int page, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get,
