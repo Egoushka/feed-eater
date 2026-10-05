@@ -136,3 +136,20 @@ meter { width: 100%; min-width: 6rem; height: 0.75rem; }
   main { padding-left: var(--space-5); padding-right: var(--space-5); }
   .actions button { flex: 0 0 auto; }
 }
+
+.panel.brief ul { margin: var(--space-2) 0 0; padding-left: var(--space-5); }
+.panel.brief li { margin: var(--space-2) 0; }
+.panel.brief a { text-decoration: none; }
+.excerpt { color: var(--muted); overflow-wrap: anywhere; }
+.checks { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); align-items: center; grid-column: 1 / -1; }
+.check { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; margin: 0; font-size: 1rem; color: var(--fg); }
+.check input { width: 1.25rem; min-height: 1.25rem; height: 1.25rem; accent-color: var(--accent); }
+.tabs { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: var(--space-3) 0 var(--space-4); border-bottom: 1px solid var(--line); }
+.tabs a { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3); color: var(--muted); text-decoration: none; border-radius: var(--radius) var(--radius) 0 0; }
+.tabs a:hover { color: var(--fg); background: var(--surface-2); }
+.tabs a[aria-current="page"] { color: var(--fg); box-shadow: inset 0 -3px 0 var(--accent); }
+.count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.pager { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: var(--space-5) 0 0; }
+.pager a { display: inline-flex; align-items: center; min-height: 44px; }
+button.quiet { flex: 0 0 auto; border-color: transparent; background: none; color: var(--muted); }
+button.quiet:hover { color: var(--fg); border-color: var(--edge); }

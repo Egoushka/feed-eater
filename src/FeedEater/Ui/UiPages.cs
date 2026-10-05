@@ -11,6 +11,34 @@ public sealed record PageContext(string Csrf, TimeZoneInfo Zone, string? Notice)
 
 public sealed record Figures(decimal MonthSpend, decimal Budget, double? WeekUpRate, VoteCounts Yesterday);
 
+/// <summary>The /ui/posts filters as the page shows them; <see cref="Url"/> is the only way a filtered link is built, so nothing raw is reflected.</summary>
+public sealed record PostsQuery(string? Category, long? Feed, string? Project, string? Kind, bool Unrated, bool Summary, int Days)
+{
+    public static readonly int[] DayChoices = [1, 7, 30, 90];
+
+    public string Url(string? before = null)
+    {
+        var parts = new List<string>();
+        void Add(string key, string? value)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                parts.Add($"{key}={Uri.EscapeDataString(value)}");
+            }
+        }
+
+        Add("category", Category);
+        Add("feed", Feed?.ToString(CultureInfo.InvariantCulture));
+        Add("project", Project);
+        Add("kind", Kind);
+        Add("unrated", Unrated ? "1" : null);
+        Add("summary", Summary ? "1" : null);
+        Add("days", Days == 7 ? null : Days.ToString(CultureInfo.InvariantCulture));
+        Add("before", before);
+        return parts.Count == 0 ? "/ui/posts" : "/ui/posts?" + string.Join('&', parts);
+    }
+}
+
 public sealed record RunPanel(bool Enabled, bool Sent, string? Pending, ForceResult? Last);
 
 public sealed record SourceRow(SourceStats Stats, string? Flag)
@@ -26,7 +54,7 @@ public static class UiPages
 {
     private static readonly (string Path, string Label)[] Nav =
     [
-        ("/ui", "Today"), ("/ui/search", "Search"), ("/ui/digests", "Digests"),
+        ("/ui", "Today"), ("/ui/posts", "Posts"), ("/ui/feedback", "Feedback"), ("/ui/search", "Search"), ("/ui/digests", "Digests"),
         ("/ui/sources", "Sources"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
     ];
 
@@ -65,6 +93,7 @@ public static class UiPages
     {
         var h = new StringBuilder();
         h.Append("<h1>Today</h1>");
+        Brief(h, items);
         Stats(h, figures);
         RunControls(h, p, run);
         if (digest is null)
@@ -77,6 +106,110 @@ public static class UiPages
         }
 
         return Layout(p, "Today", "/ui", h.ToString());
+    }
+
+    private static void Brief(StringBuilder h, IReadOnlyList<ItemView> items)
+    {
+        var lines = DigestBrief.Build(items);
+        if (lines.Count == 0)
+        {
+            return;
+        }
+
+        var ideas = items.Count(i => i.Suggestion is not null);
+        h.Append($"<section class=\"panel brief\" aria-labelledby=\"brief-h\"><h2 id=\"brief-h\">The day in brief</h2><p class=\"meta\">{N(items.Count)} highlights, {N(ideas)} with a suggestion</p><ul>");
+        foreach (var l in lines)
+        {
+            h.Append($"<li><a href=\"#item-{N(l.ItemId)}\"><span class=\"badge\">{E(l.Project)}</span></a> {(l.Count > 1 ? $"<span class=\"muted\">{N(l.Count)} items</span> " : "")}{E(l.Text)}</li>");
+        }
+
+        h.Append("</ul></section>");
+    }
+
+    public static string Posts(
+        PageContext p, PostsQuery q, IReadOnlyList<string> categories, IReadOnlyList<Feed> feeds, IReadOnlyList<string> projects,
+        IReadOnlyList<ItemView> posts, string? nextBefore, bool paged)
+    {
+        var h = new StringBuilder("<h1>Posts</h1>");
+        h.Append(
+            $"""
+            <form method="get" action="/ui/posts" class="filters">
+              <div class="field"><label for="category">Category</label><select id="category" name="category">{Option("", "any", q.Category)}{string.Concat(categories.Select(c => Option(c, c, q.Category)))}</select></div>
+              <div class="field"><label for="feed">Feed</label><select id="feed" name="feed">{Option("", "any", q.Feed?.ToString(CultureInfo.InvariantCulture))}{string.Concat(feeds.Select(f => Option(N(f.Id), f.Title, q.Feed?.ToString(CultureInfo.InvariantCulture))))}</select></div>
+              <div class="field"><label for="project">Project or topic</label><select id="project" name="project">{Option("", "any", q.Project)}{string.Concat(projects.Select(k => Option(k, k, q.Project)))}</select></div>
+              <div class="field"><label for="kind">Kind</label><select id="kind" name="kind">{Option("", "any", q.Kind)}{Option("improve", "improve", q.Kind)}{Option("new", "new", q.Kind)}{Option("fyi", "fyi", q.Kind)}</select></div>
+              <div class="field"><label for="days">Published in the last</label><select id="days" name="days">{string.Concat(PostsQuery.DayChoices.Select(d => Option(N(d), d == 1 ? "day" : N(d) + " days", N(q.Days))))}</select></div>
+              <div class="checks">
+                <label class="check"><input type="checkbox" name="unrated" value="1"{(q.Unrated ? " checked" : "")}> Unrated only</label>
+                <label class="check"><input type="checkbox" name="summary" value="1"{(q.Summary ? " checked" : "")}> With AI summary only</label>
+              </div>
+              <button type="submit" class="primary">Apply</button>
+            </form>
+            """);
+        CardList(h, p, posts, q.Url(), "No posts match these filters.");
+        h.Append("<p class=\"pager\">");
+        if (paged)
+        {
+            h.Append($"<a href=\"{E(q.Url())}\">Back to the newest</a> ");
+        }
+
+        if (nextBefore is not null)
+        {
+            h.Append($"<a rel=\"next\" href=\"{E(q.Url(nextBefore))}\">Older posts</a>");
+        }
+
+        h.Append("</p>");
+        return Layout(p, "Posts", "/ui/posts", h.ToString());
+    }
+
+    public static string Feedback(
+        PageContext p, string tab, RatingTotals totals, double? rate7, double? rate30, IReadOnlyList<ItemView> cards, string? nextBefore, bool paged)
+    {
+        var h = new StringBuilder("<h1>Feedback</h1>");
+        h.Append("<dl class=\"stats\">")
+            .Append($"<div><dt>7-day 👍 rate</dt><dd>{Percent(rate7)}</dd></div>")
+            .Append($"<div><dt>30-day 👍 rate</dt><dd>{Percent(rate30)}</dd></div></dl>");
+        h.Append("<nav class=\"tabs\" aria-label=\"Rating\">");
+        foreach (var (key, label, count) in new[] { ("up", "👍 Liked", totals.Up), ("down", "👎 Disliked", totals.Down), ("idea", "💡 Filed ideas", totals.Ideas) })
+        {
+            h.Append($"<a href=\"/ui/feedback?tab={key}\"{(key == tab ? " aria-current=\"page\"" : "")}>{label} <span class=\"count\">{N(count)}</span></a>");
+        }
+
+        h.Append("</nav>");
+        var url = $"/ui/feedback?tab={tab}";
+        CardList(h, p, cards, url, "Nothing here yet.");
+        h.Append("<p class=\"pager\">");
+        if (paged)
+        {
+            h.Append($"<a href=\"{url}\">Back to the newest</a> ");
+        }
+
+        if (nextBefore is not null)
+        {
+            h.Append($"<a rel=\"next\" href=\"{E(url)}&amp;before={E(nextBefore)}\">Older</a>");
+        }
+
+        h.Append("</p>");
+        return Layout(p, "Feedback", "/ui/feedback", h.ToString());
+    }
+
+    private static void CardList(StringBuilder h, PageContext p, IReadOnlyList<ItemView> cards, string back, string empty)
+    {
+        if (cards.Count == 0)
+        {
+            h.Append($"<p class=\"empty\">{E(empty)}</p>");
+            return;
+        }
+
+        h.Append("<ol class=\"cards\">");
+        foreach (var v in cards)
+        {
+            h.Append("<li>");
+            Card(h, p, v, back, full: false);
+            h.Append("</li>");
+        }
+
+        h.Append("</ol>");
     }
 
     public static string DigestPage(PageContext p, DigestRow digest, IReadOnlyList<ItemView> items) =>
@@ -156,7 +289,7 @@ public static class UiPages
             {
                 h.Append("<li><div class=\"result\">")
                     .Append($"<a class=\"title\" href=\"/ui/item/{N(hit.Id)}\">{E(hit.Title)}</a>")
-                    .Append("<p class=\"meta\">").Append(Meta(p, hit.Feed, hit.Project, hit.Kind, hit.PublishedAt));
+                    .Append("<p class=\"meta\">").Append(Meta(p, hit.Feed, null, hit.Project, hit.Kind, hit.PublishedAt));
                 if (hit.Vote is { } vote)
                 {
                     h.Append(" · ").Append(vote > 0 ? "👍" : "👎");
@@ -370,7 +503,7 @@ public static class UiPages
         h.Append($"<article class=\"card\" id=\"item-{N(v.Id)}\">");
         var title = External(v.Url, v.Title);
         h.Append(full ? $"<h1>{title}</h1>" : $"<h3>{title}</h3>");
-        h.Append("<p class=\"meta\">").Append(Meta(p, v.Feed, v.Project ?? v.ProfileKey, v.Kind, v.PublishedAt));
+        h.Append("<p class=\"meta\">").Append(Meta(p, v.Feed, v.Category, v.Project, v.Kind, v.PublishedAt));
         if (!full)
         {
             h.Append($" · <a href=\"/ui/item/{N(v.Id)}\">Open</a>");
@@ -380,6 +513,10 @@ public static class UiPages
         if (v.Summary is not null)
         {
             h.Append($"<p>{E(v.Summary)}</p>");
+        }
+        else if (!full && v.Content.Length > 0)
+        {
+            h.Append($"<p class=\"excerpt\">{E(Excerpt(v.Content))}</p>");
         }
 
         if (v.Why is not null)
@@ -405,12 +542,23 @@ public static class UiPages
             h.Append("<button type=\"submit\" name=\"v\" value=\"idea\">💡 File to Plane</button>");
         }
 
+        if (v.Vote is not null)
+        {
+            h.Append("<button type=\"submit\" name=\"v\" value=\"clear\" class=\"quiet\">Clear vote</button>");
+        }
+
         h.Append("</form></article>");
     }
 
-    private static string Meta(PageContext p, string feed, string? project, string? kind, DateTime published)
+    private static string Excerpt(string text)
     {
-        var parts = new List<string> { $"<span>{E(feed)}</span>" };
+        var flat = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return flat.Length <= 280 ? flat : flat[..279].TrimEnd() + "…";
+    }
+
+    private static string Meta(PageContext p, string feed, string? category, string? project, string? kind, DateTime published)
+    {
+        var parts = new List<string> { $"<span>{E(feed)}{(string.IsNullOrEmpty(category) ? "" : $" <span class=\"muted\">in {E(category)}</span>")}</span>" };
         if (!string.IsNullOrEmpty(project))
         {
             parts.Add($"<span class=\"badge\">{E(project)}</span>");
