@@ -55,7 +55,7 @@ public static class UiPages
 {
     private static readonly (string Path, string Label)[] Nav =
     [
-        ("/ui", "Today"), ("/ui/posts", "Posts"), ("/ui/feedback", "Feedback"), ("/ui/search", "Search"), ("/ui/digests", "Digests"),
+        ("/ui", "Today"), ("/ui/posts", "Posts"), ("/ui/feedback", "Feedback"), ("/ui/search", "Search"), ("/ui/digests", "Digests"), ("/ui/weekly", "Weekly"),
         ("/ui/sources", "Sources"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
     ];
 
@@ -399,6 +399,92 @@ public static class UiPages
 
         h.Append("</tbody></table></div>");
         return Layout(p, "Sources", "/ui/sources", h.ToString());
+    }
+
+    public static string Weekly(PageContext p, WeeklyRow? row, IReadOnlyList<string> weeks)
+    {
+        var h = new StringBuilder("<h1>Weekly review</h1>");
+        if (row is null)
+        {
+            h.Append("<p class=\"empty\">No review yet. One is built on Sunday at 18:30.</p>");
+            return Layout(p, "Weekly review", "/ui/weekly", h.ToString());
+        }
+
+        var r = row.Report;
+        h.Append($"<p class=\"meta\">Week ending {E(row.WeekOf)} · {E(Local(p, r.Since))} to {E(Local(p, r.Until))}{(row.SentAt is { } sent ? " · sent " + E(Local(p, sent)) : " · not sent")}</p>");
+        h.Append("<dl class=\"stats\">")
+            .Append($"<div><dt>Items published</dt><dd>{N(r.Items)}</dd></div><div><dt>Shown in digests</dt><dd>{N(r.Shown)}</dd></div>")
+            .Append($"<div><dt>Rated</dt><dd>👍 {N(r.Up)} · 👎 {N(r.Down)} · 💡 {N(r.Ideas)}</dd></div></dl>");
+
+        h.Append("<h2>Top 👍</h2>");
+        if (r.TopLiked.Count == 0)
+        {
+            h.Append("<p class=\"empty\">Nothing liked this week.</p>");
+        }
+        else
+        {
+            h.Append("<ol>");
+            foreach (var i in r.TopLiked)
+            {
+                h.Append($"<li>{External(i.Url, i.Title)} <span class=\"muted\">{E(i.Feed)}</span> · <a href=\"/ui/item/{N(i.Id)}\">Open</a></li>");
+            }
+
+            h.Append("</ol>");
+        }
+
+        h.Append("<h2>Rated by project</h2>");
+        if (r.Projects.Count == 0)
+        {
+            h.Append("<p class=\"empty\">No ratings.</p>");
+        }
+        else
+        {
+            h.Append("<div class=\"scroll\"><table><thead><tr><th>Project</th><th class=\"num\">👍</th><th class=\"num\">👎</th></tr></thead><tbody>");
+            foreach (var t in r.Projects)
+            {
+                h.Append($"<tr><td><span class=\"badge\">{E(t.Project)}</span></td><td class=\"num\">{N(t.Up)}</td><td class=\"num\">{N(t.Down)}</td></tr>");
+            }
+
+            h.Append("</tbody></table></div>");
+        }
+
+        h.Append("<h2>Ideas filed</h2>");
+        if (r.IdeasFiled.Count == 0)
+        {
+            h.Append("<p class=\"empty\">None this week.</p>");
+        }
+        else
+        {
+            h.Append("<ul>");
+            foreach (var i in r.IdeasFiled)
+            {
+                h.Append($"<li>{E(i.Title)} <span class=\"badge\">{E(i.PlaneProject)}</span> · <a href=\"/ui/item/{N(i.ItemId)}\">Source item</a></li>");
+            }
+
+            h.Append("</ul>");
+        }
+
+        h.Append("<h2>Feeds that earned 👍</h2>");
+        h.Append(r.TopFeeds.Count == 0
+            ? "<p class=\"empty\">None.</p>"
+            : "<ul>" + string.Concat(r.TopFeeds.Select(f => $"<li>{E(f.Title)} <span class=\"muted\">{N(f.Count)}</span></li>")) + "</ul>");
+        h.Append("<h2>Mute candidates</h2><p class=\"meta\">Posts this week, none shown in a digest and none liked. Mute them on the <a href=\"/ui/sources?sort=perweek&amp;dir=desc\">Sources page</a>.</p>");
+        h.Append(r.MuteCandidates.Count == 0
+            ? "<p class=\"empty\">None.</p>"
+            : "<ul>" + string.Concat(r.MuteCandidates.Select(f => $"<li>{E(f.Title)} <span class=\"muted\">{N(f.Count)} posts</span></li>")) + "</ul>");
+
+        if (weeks.Count > 1)
+        {
+            h.Append("<h2>History</h2><ul>");
+            foreach (var w in weeks)
+            {
+                h.Append(w == row.WeekOf ? $"<li>{E(w)} (this one)</li>" : $"<li><a href=\"/ui/weekly/{E(w)}\">{E(w)}</a></li>");
+            }
+
+            h.Append("</ul>");
+        }
+
+        return Layout(p, "Weekly review", "/ui/weekly", h.ToString());
     }
 
     public static string Ideas(PageContext p, IReadOnlyList<Idea> ideas)

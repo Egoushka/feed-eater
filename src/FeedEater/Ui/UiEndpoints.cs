@@ -87,6 +87,8 @@ public static class UiEndpoints
         secured.MapGet("/item/{id:long}", h.ItemAsync);
         secured.MapGet("/digests", h.DigestsAsync);
         secured.MapGet("/digest/{date}", h.DigestAsync);
+        secured.MapGet("/weekly", (HttpContext c, CancellationToken t) => h.WeeklyAsync(c, null, t));
+        secured.MapGet("/weekly/{date}", h.WeeklyAsync);
         secured.MapGet("/sources", h.SourcesAsync);
         secured.MapGet("/ideas", h.IdeasAsync);
         secured.MapGet("/usage", h.UsageAsync);

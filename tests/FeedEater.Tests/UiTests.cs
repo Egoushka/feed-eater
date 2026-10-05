@@ -123,7 +123,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
     public static TheoryData<string> Pages =>
     [
-        "/ui", "/ui/posts", "/ui/feedback", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
+        "/ui", "/ui/posts", "/ui/feedback", "/ui/weekly", "/ui/weekly/2026-10-04", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
         "/ui/item/1", "/ui/digest/2026-10-05", "/ui/digest/run",
     ];
 
@@ -796,5 +796,40 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.DoesNotContain("The day in brief", page, StringComparison.Ordinal);
         Assert.Contains("Postgres 19 lands", page, StringComparison.Ordinal);   // the digest itself is history and stays
+    }
+
+    [Fact]
+    public async Task The_weekly_page_shows_the_latest_review_history_and_encodes_hostile_content()
+    {
+        var cookie = await LoginAsync();
+        Assert.Contains("No review yet", await GetAsync("/ui/weekly", cookie), StringComparison.Ordinal);
+
+        var hostile = new FeedEater.Storage.WeeklyReport(
+            DateTimeOffset.UtcNow.AddDays(-7), DateTimeOffset.UtcNow, 40, 12, 6, 2, 1,
+            [new WeeklyItem(7, $"{Hostile} top", "javascript:alert(1)", $"{Hostile} feed")],
+            [new ProjectTally($"{Hostile} project", 3, 1)], [new WeeklyIdea(7, $"{Hostile} idea", "LAB")],
+            [new FeedCount(1, $"{Hostile} best", 4)], [new FeedCount(2, $"{Hostile} noisy", 30)]);
+        var store = new WeeklyStore(pg.Db);
+        await store.SaveAsync("2026-10-04", DateTimeOffset.UtcNow.AddDays(-7), hostile, "old", default);
+        await store.SaveAsync("2026-10-11", DateTimeOffset.UtcNow, hostile, "new", default);
+        await store.MarkSentAsync("2026-10-11", DateTimeOffset.UtcNow, default);
+
+        var latest = await GetAsync("/ui/weekly", cookie);
+        var older = await GetAsync("/ui/weekly/2026-10-04", cookie);
+
+        Assert.Contains("Week ending 2026-10-11", latest, StringComparison.Ordinal);
+        Assert.Contains("Shown in digests", latest, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/weekly/2026-10-04\"", latest, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/sources?sort=perweek&amp;dir=desc\"", latest, StringComparison.Ordinal);
+        Assert.Contains("Week ending 2026-10-04", older, StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; noisy", latest, StringComparison.Ordinal);
+        foreach (var page in new[] { latest, older })
+        {
+            Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("javascript:", page, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await GetAsync("/ui/weekly/2001-01-01", cookie, HttpStatusCode.NotFound);
+        await GetAsync("/ui/weekly/garbage", cookie, HttpStatusCode.NotFound);
     }
 }

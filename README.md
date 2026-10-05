@@ -49,6 +49,21 @@ names the request's own host and carries a per-session anti-forgery value. Login
 keyset paging). `/ui/feedback` lists everything already rated, per 👍, 👎 and 💡, with the 7- and 30-day 👍 rate; a vote can be
 changed or cleared there. The top of Today has "the day in brief", built from the digest's stored reads with no extra model call.
 
+## v0.4 additions
+
+- **Story clustering.** An item whose embedding is within `FeedEater:Cluster:Threshold` (default 0.84, cosine) of an earlier
+  item from another feed published within `WindowDays` (3) is linked to it (`items.cluster_of`); nothing is hidden. The digest takes
+  the earliest unmuted item of each story and skips a story any member of which was triaged on an earlier day. Cards, the Telegram
+  digest and search show "also in" and the count. Two titles that name different versions never merge. 0.84 was picked from the
+  real archive on 2026-10-06 (same stories 0.80 to 0.86, related ones below 0.80, few samples): raise it if unrelated items merge,
+  lower it to 0.82 if the same story shows up twice.
+- **Mute a feed.** `/ui/sources` has Mute/Unmute per feed and a posts/week column. A muted feed is still ingested, archived and
+  searchable; it stays out of digest candidates and the Today brief, and `/ui/posts` hides it unless "Show muted feeds" is ticked.
+- **Telegram search.** `/search words`, or any plain message from the allowed user, returns up to 5 results, one message each,
+  with 👍 👎 💡.
+- **Weekly review.** Sundays 18:30 Kyiv (only with a Telegram token): counts, top 5 👍, ratings per project, ideas filed, the 3
+  feeds that earned most 👍 and 3 mute candidates. Stored in `weekly` and shown at `/ui/weekly`. No model call.
+
 ## Running a digest on demand
 
 The scheduled digest runs once a day inside 07:30 to 12:00 Kyiv time. To run one outside that:

@@ -9,6 +9,7 @@ using FeedEater.Memory;
 using FeedEater.Mcp;
 using FeedEater.Plane;
 using FeedEater.Profiles;
+using FeedEater.Review;
 using FeedEater.Search;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -39,6 +40,7 @@ public static class ServiceRegistration
         services.AddSingleton<AnalysisStore>();
         services.AddSingleton<DigestStore>();
         services.AddSingleton<SignalStore>();
+        services.AddSingleton<WeeklyStore>();
         services.AddSingleton<UsageStore>();
         services.AddSingleton<IUsageSink>(sp => sp.GetRequiredService<UsageStore>());
         services.AddSingleton<LoopHealth>();
@@ -77,7 +79,7 @@ public static class ServiceRegistration
         services.AddHttpClient<GitHubStarsClient>((sp, http) =>
         {
             http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.3.1");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.4.0");
         });
 
         services.AddHttpClient<HindsightClient>((sp, http) =>
@@ -110,6 +112,7 @@ public static class ServiceRegistration
             services.AddHostedService<WeeklyRetain>();
             if (telegram)
             {
+                services.AddHostedService<WeeklyReview>();
                 services.AddHostedService<TelegramPoller>();
             }
         }

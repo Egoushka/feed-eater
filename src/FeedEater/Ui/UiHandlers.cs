@@ -11,7 +11,7 @@ namespace FeedEater.Ui;
 
 public sealed class UiHandlers(
     ItemStore items, DigestStore digests, FeedbackStore feedback, ProfileStore profiles, UsageStore usage, ArchiveSearch search,
-    CallbackHandler callbacks, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
+    CallbackHandler callbacks, WeeklyStore weekly, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
     IOptions<FeedEaterOptions> options, TimeProvider time)
 {
     private const int SearchLimit = 30;
@@ -171,6 +171,26 @@ public sealed class UiHandlers(
         }
 
         return Html(UiPages.Sources(Context(ctx), SortSources(rows, sort, desc), sort, desc, flaggedOnly));
+    }
+
+    public async Task<IResult> WeeklyAsync(HttpContext ctx, string? date, CancellationToken ct)
+    {
+        var p = Context(ctx);
+        WeeklyRow? row;
+        if (date is null)
+        {
+            row = await weekly.LatestAsync(ct);
+        }
+        else if (DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) && await weekly.GetAsync(date, ct) is { } found)
+        {
+            row = found;
+        }
+        else
+        {
+            return NotFound(p);
+        }
+
+        return Html(UiPages.Weekly(p, row, await weekly.ListAsync(52, ct)));
     }
 
     public async Task<IResult> IdeasAsync(HttpContext ctx, CancellationToken ct) =>
