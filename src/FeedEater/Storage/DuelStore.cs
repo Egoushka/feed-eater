@@ -36,7 +36,7 @@ public sealed class DuelStore(FeedDb db)
             """, new { publishedAfter = publishedAfter.UtcDateTime }, cancellationToken: ct))).ToList();
     }
 
-    /// <summary>Every pair ever sent, answered or not, so no pair is offered twice.</summary>
+    /// <summary>Every pair ever sent, answered or not, a failed send included, so no pair is offered twice.</summary>
     public async Task<IReadOnlySet<(long, long)>> SeenPairsAsync(CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
@@ -48,7 +48,7 @@ public sealed class DuelStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.ExecuteScalarAsync<int>(new CommandDefinition(
-            "select count(*)::int from duels where sent_at >= @since", new { since = since.UtcDateTime }, cancellationToken: ct));
+            "select count(*)::int from duels where sent_at >= @since and send_failed_at is null", new { since = since.UtcDateTime }, cancellationToken: ct));
     }
 
     public async Task<long> CreateAsync(long a, long b, DateTimeOffset sentAt, CancellationToken ct)
@@ -58,11 +58,11 @@ public sealed class DuelStore(FeedDb db)
             "insert into duels (a, b, sent_at) values (@a, @b, @sentAt) returning id", new { a, b, sentAt = sentAt.UtcDateTime }, cancellationToken: ct));
     }
 
-    /// <summary>For a duel whose message never went out.</summary>
-    public async Task DeleteAsync(long id, CancellationToken ct)
+    /// <summary>For a duel whose send threw; it stays answerable and its pair stays seen, but it no longer counts as sent.</summary>
+    public async Task MarkFailedAsync(long id, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
-        await c.ExecuteAsync(new CommandDefinition("delete from duels where id = @id", new { id }, cancellationToken: ct));
+        await c.ExecuteAsync(new CommandDefinition("update duels set send_failed_at = now() where id = @id", new { id }, cancellationToken: ct));
     }
 
     /// <summary>

@@ -204,7 +204,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
     {
         var numbers = ScriptsUpTo(9999).Select(n => n.Split(".Migrations.")[1][..4]).Order(StringComparer.Ordinal).ToList();
 
-        Assert.Equal(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0014", "0015", "0016", "0018"], numbers);
+        Assert.Equal(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0014", "0015", "0016", "0018", "0019"], numbers);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_database_with_0001_to_0011_applied_takes_0012_and_0014_to_0018_and_keeps_its_rows()
+    public async Task A_database_with_0001_to_0011_applied_takes_0012_and_0014_to_0019_and_keeps_its_rows()
     {
         var name = await CreateAsync();
         var connection = Database(name, pg);
@@ -260,8 +260,52 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
             Assert.All(new[] { "duels", "follows", "follow_items", "repo_snapshots", "snapshot_failures", "autopsy" }, t => Assert.Contains(t, tables));
             await after.ExecuteAsync("insert into duels (a, b) values (1, 2)");
             await after.ExecuteAsync("insert into follows (root_item_id, started_at, ends_at) values (1, now(), now())");
-            Assert.Equal(["0012", "0014", "0015", "0016", "0018"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
+            Assert.Equal(["0012", "0014", "0015", "0016", "0018", "0019"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
                 .Select(s => s.Split(".Migrations.")[1][..4]).Where(n => string.CompareOrdinal(n, "0011") > 0));
+        }
+        finally
+        {
+            await DropAsync(name);
+        }
+    }
+
+    [Fact]
+    public async Task A_database_with_0001_to_0016_applied_takes_0018_and_0019_and_keeps_its_duels_and_snapshots()
+    {
+        var name = await CreateAsync();
+        var connection = Database(name, pg);
+        try
+        {
+            var old = DeployChanges.To.PostgresqlDatabase(connection)
+                .WithScripts(ScriptsUpTo(16).Select(n =>
+                {
+                    using var stream = typeof(DatabaseMigrator).Assembly.GetManifestResourceStream(n)!;
+                    return new DbUp.Engine.SqlScript(n, new StreamReader(stream).ReadToEnd());
+                }))
+                .WithTransactionPerScript().LogToNowhere().Build().PerformUpgrade();
+            Assert.True(old.Successful);
+            await using (var c = new NpgsqlConnection(connection))
+            {
+                await c.OpenAsync();
+                await c.ExecuteAsync("insert into feeds (id, title) values (3, 'Feed')");
+                await c.ExecuteAsync(
+                    """
+                    insert into items (feed_id, url, canonical_url, title_hash, title, published_at)
+                    values (3, 'https://x.example/1', 'https://x.example/1', '', 'One', now()), (3, 'https://x.example/2', 'https://x.example/2', '', 'Two', now())
+                    """);
+                await c.ExecuteAsync("insert into duels (a, b) values (1, 2)");
+                await c.ExecuteAsync("insert into repo_snapshots (item_id, repo, taken_at, stars) values (1, 'o/r', now(), 3)");
+            }
+
+            new DatabaseMigrator(connection, NullLogger<DatabaseMigrator>.Instance).Run();
+
+            await using var after = new NpgsqlConnection(connection);
+            await after.OpenAsync();
+            Assert.Null(await after.ExecuteScalarAsync<DateTime?>("select send_failed_at from duels where a = 1"));
+            Assert.Equal(1, await after.ExecuteScalarAsync<int>("select count(*)::int from repo_snapshots"));
+            await after.ExecuteAsync("insert into snapshot_failures (item_id, failures) values (2, 1)");
+            Assert.Equal(["0018", "0019"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
+                .Select(s => s.Split(".Migrations.")[1][..4]).Where(n => string.CompareOrdinal(n, "0016") > 0));
         }
         finally
         {

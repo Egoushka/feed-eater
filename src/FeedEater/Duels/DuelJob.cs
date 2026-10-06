@@ -43,7 +43,8 @@ public sealed class DuelJob(
 
         var (first, second) = chosen;
 
-        // The buttons carry the duel id, so the row exists before the send and goes again when the send fails.
+        // The buttons carry the duel id, so the row exists before the send. It stays when the send fails (Telegram may have delivered it
+        // anyway), marked failed so its pair is not picked again.
         var id = await duels.CreateAsync(first.Id, second.Id, now, ct);
         try
         {
@@ -51,7 +52,7 @@ public sealed class DuelJob(
         }
         catch
         {
-            await duels.DeleteAsync(id, CancellationToken.None);
+            await duels.MarkFailedAsync(id, CancellationToken.None);
             throw;
         }
     }

@@ -246,21 +246,43 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_failed_send_leaves_no_duel_behind_and_is_retried()
+    public async Task A_failed_send_keeps_the_duel_so_a_delivered_message_still_works_and_the_retry_takes_another_pair()
     {
         await PoolAsync(11);
-        var (job, _, sent) = BuildJob(Kyiv(12, 30));
+        var (job, _, sent) = BuildJob(Kyiv(12, 30), perDay: 1);
         _telegramFails = true;
 
         await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
-        Assert.Equal(0, await ScalarAsync<int>("select count(*)::int from duels"));
+        Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from duels where send_failed_at is not null"));
         Assert.Null(await new CursorStore(pg.Db).GetAsync("job:duel", default));
 
+        // Telegram may have delivered it before the call failed: the buttons name duel 1.
+        await BuildHandler().HandleAsync(Tap(1, 'a'), default);
+        Assert.DoesNotContain("No such duel", Answers(), StringComparison.Ordinal);
+        Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from votes where value = 1"));
+
         _telegramFails = false;
-        await job.TickAsync(default);
+        await job.TickAsync(default);   // the failed one does not count toward the day's cap
 
         Assert.Single(sent);
-        Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from duels"));
+        Assert.Contains("\"callback_data\":\"d:2:a\"", sent[0], StringComparison.Ordinal);
+        Assert.Equal(2, (await new DuelStore(pg.Db).SeenPairsAsync(default)).Count);
+    }
+
+    [Fact]
+    public async Task A_pair_that_always_fails_to_send_is_not_picked_again_by_the_next_attempts()
+    {
+        await PoolAsync(11);
+        var (job, _, _) = BuildJob(Kyiv(12, 30));
+        _telegramFails = true;
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
+        }
+
+        Assert.Equal(3, (await new DuelStore(pg.Db).SeenPairsAsync(default)).Count);
+        Assert.Equal(3, await ScalarAsync<int>("select count(*)::int from duels where send_failed_at is not null"));
     }
 
     [Fact]
