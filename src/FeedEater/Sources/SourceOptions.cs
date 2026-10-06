@@ -13,8 +13,8 @@ public sealed class SourceOptions
 
     public bool IsBuiltin => !string.Equals(Kind, Miniflux, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Hosts a fetch may reach although they are private (self-hosted RSSHub, Nitter); any port. Exact host names.</summary>
-    [Description("Exact host names a feed fetch may reach although they are private (self-hosted RSSHub, Nitter); any port.")]
+    /// <summary>Hosts a configured feed URL may name although they are private (self-hosted RSSHub, Nitter); any port. Exact host names. Article and linked-page fetches never get this.</summary>
+    [Description("Exact host names a configured feed URL may point at although they are private (self-hosted RSSHub, Nitter); any port. Applies to feed URLs only, never to article or linked-page fetches.")]
     public string[] AllowedHosts { get; set; } = [];
 
     /// <summary>The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories.</summary>

@@ -90,10 +90,13 @@ public static class ServiceRegistration
             http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.5.0");
         });
 
-        services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(sp => SafeFetcher.CreateHandler(Settings(sp).Source.AllowedHosts));
+        // Only the feed client trusts Source:AllowedHosts: article and linked-page URLs come from untrusted entries.
+        services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(() => SafeFetcher.CreateHandler());
+        services.AddHttpClient(SafeFetcher.FeedClientName).ConfigurePrimaryHttpMessageHandler(sp => SafeFetcher.CreateHandler(Settings(sp).Source.AllowedHosts));
         services.AddSingleton(sp => new SafeFetcher(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(SafeFetcher.ClientName), sp.GetRequiredService<IOptions<FeedEaterOptions>>(),
-            sp.GetRequiredService<CursorStore>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SafeFetcher>>()));
+            sp.GetRequiredService<CursorStore>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SafeFetcher>>(),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(SafeFetcher.FeedClientName)));
         services.AddHttpClient<HnClient>((sp, http) =>
         {
             http.BaseAddress = new Uri(Settings(sp).Fetch.HnApiBase);

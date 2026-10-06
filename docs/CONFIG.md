@@ -141,7 +141,7 @@ An integration is off until its required settings are filled. An off integration
 
 | Key | Default | Description |
 |---|---|---|
-| `FeedEater:Source:AllowedHosts` | (empty) | Exact host names a feed fetch may reach although they are private (self-hosted RSSHub, Nitter); any port. |
+| `FeedEater:Source:AllowedHosts` | (empty) | Exact host names a configured feed URL may point at although they are private (self-hosted RSSHub, Nitter); any port. Applies to feed URLs only, never to article or linked-page fetches. |
 | `FeedEater:Source:BackfillDays` | `14` | The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories. |
 | `FeedEater:Source:FeedInterval` | `00:30:00` | How often each feed is fetched; repeated failures double the wait up to MaxBackoff. |
 | `FeedEater:Source:Kind` | `builtin` | Where entries come from: builtin (feed-eater reads the feeds itself) or miniflux (copies entries from Miniflux). Switching on a populated database is unsupported. |

@@ -18,10 +18,16 @@ public sealed record FetchResult(FetchOutcome Outcome, string? Body = null, Uri?
 /// <summary>The validators of the last good fetch of a feed, sent back so an unchanged feed answers 304.</summary>
 public sealed record FeedConditions(string? ETag = null, string? LastModified = null);
 
-/// <summary>The only code that opens a connection to a host named by a feed. The rules are in docs/specs/2026-10-06-page-fetch.md.</summary>
-public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> options, CursorStore cursors, TimeProvider time, ILogger<SafeFetcher> logger)
+/// <summary>
+/// The only code that opens a connection to a host named by a feed. The rules are in docs/specs/2026-10-06-page-fetch.md.
+/// <paramref name="feedHttp"/> is the client for configured feed URLs and is the only one whose handler trusts <c>Source:AllowedHosts</c>;
+/// article and linked-page URLs come from untrusted entries and go through <paramref name="http"/>. Without it, <paramref name="http"/> does both.
+/// </summary>
+public sealed class SafeFetcher(
+    HttpClient http, IOptions<FeedEaterOptions> options, CursorStore cursors, TimeProvider time, ILogger<SafeFetcher> logger, HttpClient? feedHttp = null)
 {
     public const string ClientName = "safe-fetch";
+    public const string FeedClientName = "safe-fetch-feed";
     public const string UserAgent = "feed-eater/0.5.0";
     private const int MaxRedirects = 3;
     private const int MaxBytes = 1024 * 1024;
@@ -120,7 +126,7 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
                 AddValidators(request, feed);
             }
 
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await (feed is null ? http : feedHttp ?? http).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
 
             if ((int)response.StatusCode is >= 300 and < 400 && response.Headers.Location is { } location)
             {
@@ -193,10 +199,13 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
     private static string? Header(HttpResponseMessage response, string name) =>
         (response.Headers.TryGetValues(name, out var values) || response.Content.Headers.TryGetValues(name, out values)) ? values.FirstOrDefault() : null;
 
-    /// <summary>Private hosts are refused unless listed in <c>Source:AllowedHosts</c>, which also lifts the port rule for them. Feeds skip the blocked list.</summary>
+    /// <summary>
+    /// Private hosts are refused. A feed URL may name one in <c>Source:AllowedHosts</c>, which also lifts the port rule for it; article
+    /// and linked-page URLs never get that, because an entry's links are not the owner's. Feeds skip the blocked list.
+    /// </summary>
     private FetchResult? Check(Uri uri, FetchOptions cfg, bool feed = false)
     {
-        var allowed = options.Value.Source.AllowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase);
+        var allowed = feed && options.Value.Source.AllowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase);
         if (uri.Scheme is not ("http" or "https") || (!allowed && uri.Port is not (80 or 443)) || uri.UserInfo.Length > 0)
         {
             return new FetchResult(FetchOutcome.Refused, Detail: "scheme, port or credentials");

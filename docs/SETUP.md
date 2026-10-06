@@ -100,6 +100,12 @@ and re-embedding every item. `text-embedding-3-small` (the default) and `text-em
 size is reported by `doctor` as `FAIL llm embeddings`. A model that can shorten its output (`text-embedding-3-large`) works when you set
 `FeedEater__Llm__EmbedDimensions=1536`, which is sent as the `dimensions` parameter.
 
+### A feed on a private host
+
+A feed URL that points at a private address (a self-hosted RSSHub or Nitter) is refused. List its host name in
+`FeedEater__Source__AllowedHosts__0=rsshub` (exact name, any port). This applies to feed URLs only: article and linked-page fetches
+never reach private hosts, whatever the list says, because those links come from the feeds' entries.
+
 ### Reaching it from elsewhere
 
 The compose file publishes the UI on `127.0.0.1:8080` only. To use it from a phone or another machine, put a reverse proxy with

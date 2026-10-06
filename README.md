@@ -77,7 +77,7 @@ get their article text from the page itself when the digest reads them.
 | Key | Default | Notes |
 |---|---|---|
 | `Kind` | `builtin` | `builtin` or `miniflux` (copy entries from Miniflux, as before; full text through Miniflux). Switching on a populated database is unsupported |
-| `AllowedHosts` | none | Private hosts a fetch may reach, e.g. a self-hosted RSSHub: exact names, any port (`FeedEater__Source__AllowedHosts__0=rsshub`) |
+| `AllowedHosts` | none | Private hosts a feed URL may point at, e.g. a self-hosted RSSHub: exact names, any port (`FeedEater__Source__AllowedHosts__0=rsshub`). Feed URLs only: article and linked-page fetches never reach private hosts |
 | `BackfillDays` | 14 | Age limit for the first fetch of a feed |
 | `FeedInterval` | 30 min | Per feed |
 | `MaxBackoff` | 24 h | Longest wait after repeated failures |

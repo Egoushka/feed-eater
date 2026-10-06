@@ -1,5 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -190,6 +194,50 @@ public sealed class FeedFetchTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Empty(stub.Calls);
     }
 
+    [Theory]
+    [InlineData("http://10.0.0.5/page")]
+    [InlineData("http://10.0.0.5:5432/")]
+    [InlineData("http://rsshub.internal:5432/")]
+    public async Task AllowedHosts_never_lifts_a_rule_for_an_article_or_linked_page_fetch(string url)
+    {
+        var (fetcher, stub, _) = Build(_ => Ok(), o => o.Source.AllowedHosts = ["10.0.0.5", "rsshub.internal"]);
+
+        var result = await fetcher.FetchAsync(new Uri(url), default);
+
+        Assert.Equal(FetchOutcome.Refused, result.Outcome);
+        Assert.Empty(stub.Calls);
+    }
+
+    [Fact]
+    public async Task A_redirect_from_an_article_to_an_allowed_private_host_is_refused()
+    {
+        var redirect = new Func<HttpRequestMessage, HttpResponseMessage>(r => r.RequestUri!.Host == "public.example"
+            ? new HttpResponseMessage(HttpStatusCode.Found) { Headers = { Location = new Uri("https://10.0.0.5/secret") } }
+            : Ok("internal"));
+        var (fetcher, stub, _) = Build(redirect, o => o.Source.AllowedHosts = ["10.0.0.5"]);
+
+        var result = await fetcher.FetchAsync(new Uri("https://public.example/post"), default);
+
+        Assert.Equal(FetchOutcome.Refused, result.Outcome);
+        Assert.Single(stub.Calls);
+    }
+
+    [Fact]
+    public async Task Feed_fetches_use_the_feed_client_and_every_other_fetch_the_plain_one()
+    {
+        var feedStub = new StubHandler((_, _) => Ok());
+        var pageStub = new StubHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<p>page</p>", System.Text.Encoding.UTF8, "text/html") });
+        var fetcher = new SafeFetcher(
+            new HttpClient(pageStub), Options.Create(new FeedEaterOptions()), new CursorStore(pg.Db), new FakeTimeProvider(Now), NullLogger<SafeFetcher>.Instance, new HttpClient(feedStub));
+
+        // Two hosts: the fake clock never passes the one-a-second wait between requests to one host.
+        Assert.True((await fetcher.FetchFeedAsync(new Uri("https://feeds.example/feed"), new FeedConditions(), default)).Ok);
+        Assert.True((await fetcher.FetchAsync(new Uri("https://example.com/post"), default)).Ok);
+
+        Assert.Equal(["https://feeds.example/feed"], feedStub.Calls.Select(c => c.Uri));
+        Assert.Equal(["https://example.com/post"], pageStub.Calls.Select(c => c.Uri));
+    }
+
     [Fact]
     public async Task A_redirect_from_a_feed_to_a_private_host_is_refused_unless_it_is_allowed()
     {
@@ -289,5 +337,54 @@ public sealed class TrustedHostConnectorTests
         await Assert.ThrowsAsync<UnsafeAddressException>(async () => await connector.ConnectAsync("rsshub.internal", 443, default));
 
         Assert.Empty(connects);
+    }
+}
+
+public sealed class AllowedHostsWiringTests
+{
+    /// <summary>Through the registered clients and their real handlers: a loopback listener on a free port, loopback listed in AllowedHosts.</summary>
+    [Fact]
+    public async Task Only_the_feed_client_can_connect_to_a_listed_private_host()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using var stop = new CancellationTokenSource();
+        var serving = Task.Run(async () =>
+        {
+            try
+            {
+                while (true)
+                {
+                    using var client = await listener.AcceptTcpClientAsync(stop.Token);
+                    var stream = client.GetStream();
+                    _ = await stream.ReadAsync(new byte[4096]);
+                    await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nhi"u8.ToArray());
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SocketException or IOException)
+            {
+                // stopped
+            }
+        });
+        var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:FeedEater"] = "Host=localhost;Database=unused",
+            ["FeedEater:RunJobs"] = "false",
+            ["FeedEater:Source:AllowedHosts:0"] = "127.0.0.1",
+        });
+        builder.Services.AddFeedEater(builder.Configuration);
+        using var host = builder.Build();
+        var factory = host.Services.GetRequiredService<IHttpClientFactory>();
+        var url = $"http://127.0.0.1:{port}/";
+
+        using var ok = await factory.CreateClient(SafeFetcher.FeedClientName).GetAsync(url);
+        var refused = await Assert.ThrowsAsync<HttpRequestException>(() => factory.CreateClient(SafeFetcher.ClientName).GetAsync(url));
+
+        Assert.Equal("hi", await ok.Content.ReadAsStringAsync());
+        Assert.IsType<UnsafeAddressException>(refused.GetBaseException());
+        await stop.CancelAsync();
+        await serving;
     }
 }
