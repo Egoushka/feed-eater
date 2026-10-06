@@ -372,7 +372,7 @@ public static class UiPages
         return Layout(p, "Digests", "/ui/digests", h.ToString());
     }
 
-    public static string Sources(PageContext p, IReadOnlyList<SourceRow> rows, string sort, bool desc, bool flaggedOnly, IReadOnlyList<SuggestedFeed>? suggestions = null)
+    public static string Sources(PageContext p, IReadOnlyList<SourceRow> rows, string sort, bool desc, bool flaggedOnly, IReadOnlyList<SuggestedFeed>? suggestions = null, string? panel = null)
     {
         var h = new StringBuilder("<h1>Sources</h1><p class=\"meta\">Items published in the last 30 days, per Miniflux feed. Muting a feed keeps it ingested and searchable but leaves it out of digests and the Today brief.</p>");
         h.Append(flaggedOnly
@@ -381,6 +381,7 @@ public static class UiPages
         if (rows.Count == 0)
         {
             h.Append("<p class=\"empty\">No feeds.</p>");
+            h.Append(panel);
             Suggested(h, suggestions ?? []);
             return Layout(p, "Sources", "/ui/sources", h.ToString());
         }
@@ -413,6 +414,7 @@ public static class UiPages
         }
 
         h.Append("</tbody></table></div>");
+        h.Append(panel);
         Suggested(h, suggestions ?? []);
         return Layout(p, "Sources", "/ui/sources", h.ToString());
     }

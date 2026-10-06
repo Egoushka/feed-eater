@@ -1,3 +1,5 @@
+using FeedEater.Sources;
+
 namespace FeedEater;
 
 public sealed class FeedEaterOptions
@@ -13,6 +15,7 @@ public sealed class FeedEaterOptions
     public TimeSpan DigestAt { get; set; } = new(7, 30, 0);
     public TimeSpan DigestGiveUpAt { get; set; } = new(12, 0, 0);
 
+    public SourceOptions Source { get; set; } = new();
     public MinifluxOptions Miniflux { get; set; } = new();
     public LlmOptions Llm { get; set; } = new();
     public CapsOptions Caps { get; set; } = new();

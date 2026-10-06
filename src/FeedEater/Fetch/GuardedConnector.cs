@@ -11,7 +11,8 @@ public sealed class UnsafeAddressException(string host) : Exception($"{host} res
 /// and connects to the address it validated, so the handler never does a second lookup that could answer differently.
 /// </summary>
 public sealed class GuardedConnector(
-    Func<string, CancellationToken, Task<IPAddress[]>> resolve, Func<IPAddress, int, CancellationToken, Task<Stream>> connect)
+    Func<string, CancellationToken, Task<IPAddress[]>> resolve, Func<IPAddress, int, CancellationToken, Task<Stream>> connect,
+    IReadOnlyCollection<string>? trustedHosts = null)
 {
     public static GuardedConnector Default { get; } = new(
         async (host, ct) => await Dns.GetHostAddressesAsync(host, ct),
@@ -30,18 +31,22 @@ public sealed class GuardedConnector(
             }
         });
 
+    /// <summary>The same connector, except that the named hosts (<c>Source:AllowedHosts</c>) may be private and use any port.</summary>
+    public GuardedConnector Trusting(IReadOnlyCollection<string> hosts) => new(resolve, connect, hosts);
+
     public async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken ct) =>
         await ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, ct);
 
     public async ValueTask<Stream> ConnectAsync(string host, int port, CancellationToken ct)
     {
-        if (port is not (80 or 443))
+        var trusted = trustedHosts?.Contains(host, StringComparer.OrdinalIgnoreCase) == true;
+        if (!trusted && port is not (80 or 443))
         {
             throw new UnsafeAddressException($"{host}:{port}");
         }
 
         var addresses = IPAddress.TryParse(host, out var literal) ? [literal] : await resolve(host, ct);
-        if (addresses.Length == 0 || addresses.Any(a => !IpGuard.IsPublic(a)))
+        if (addresses.Length == 0 || (!trusted && addresses.Any(a => !IpGuard.IsPublic(a))))
         {
             throw new UnsafeAddressException(host);
         }

@@ -6,17 +6,18 @@ using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Ranking;
 using FeedEater.Search;
+using FeedEater.Sources;
 
 namespace FeedEater.Telegram;
 
 /// <summary>
-/// /digest and /digest resend, /search text, /ask question, /quiet, /learn, plain text as a search (or, ending in "?", a question),
+/// /digest and /digest resend, /search text, /ask question, /quiet, /learn, /feeds, plain text as a search (or, ending in "?", a question),
 /// and replies to an item, from the allowed user only; anyone else is ignored without a reply. Each search hit is its own message so
 /// it carries its own 👍 👎 💡 buttons.
 /// </summary>
 public sealed class CommandHandler(
     TelegramClient telegram, DigestTrigger trigger, QuietHours quiet, ArchiveSearch search, ArchiveAnswer answers, ReplyHandler replies,
-    TasteSwitch taste, IOptions<FeedEaterOptions> options)
+    TasteSwitch taste, IOptions<FeedEaterOptions> options, FeedsCommand? feeds = null)
 {
     private const int MaxResults = 5;
     private const int MaxQuery = 300;
@@ -75,6 +76,11 @@ public sealed class CommandHandler(
                 break;
             case "/learn":
                 await LearnAsync(message, words.Length == 2 ? words[1] : null, ct);
+                break;
+            case "/feeds":
+                await ReplyAsync(message, feeds is null
+                    ? "Feeds are managed in Miniflux (FeedEater:Source:Kind is miniflux)."
+                    : await feeds.RunAsync(words.Length == 2 ? words[1] : null, ct), ct);
                 break;
         }
     }

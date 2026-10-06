@@ -1,6 +1,7 @@
 using FeedEater;
 using FeedEater.Eval;
 using FeedEater.Mcp;
+using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Ui;
 using Microsoft.Extensions.Options;
@@ -15,6 +16,11 @@ if (args.FirstOrDefault() == "eval")
 if (args.FirstOrDefault() == "taste")
 {
     return await TasteCommand.RunAsync(args[1..]);
+}
+
+if (args.FirstOrDefault() == "import-opml")
+{
+    return await ImportOpmlCommand.RunAsync(args[1..]);
 }
 
 var builder = WebApplication.CreateBuilder(args);
