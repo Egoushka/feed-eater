@@ -73,7 +73,7 @@ public sealed class LogisticModel
 public static class LearnedTaste
 {
     /// <summary>Per-class minimum next to the total: one class alone teaches nothing.</summary>
-    private const int MinPerClass = 10;
+    internal const int MinPerClass = 10;
 
     public static (LogisticModel? Model, string? Note) Prepare(IReadOnlyList<LabeledVector> data, TasteOptions o)
     {

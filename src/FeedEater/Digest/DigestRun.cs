@@ -23,7 +23,7 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 /// </summary>
 public sealed class DigestRun(
     ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
-    LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, LoopHealth health,
+    LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, LoopHealth health, TasteSwitch tasteSwitch,
     IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger)
 {
     private const int TriageMaxTokens = 200;
@@ -109,7 +109,7 @@ public sealed class DigestRun(
         var taste = Taste.Build(
             await feedback.PositiveVectorsAsync(o.Caps.Centroid, ct), await feedback.NegativeVectorsAsync(o.Caps.Centroid, ct),
             await feedback.FeedVotesAsync(ct), o.Weights);
-        if (o.Taste.Learn)
+        if (await tasteSwitch.IsOnAsync(ct))
         {
             var (model, note) = LearnedTaste.Prepare(await feedback.LabeledVectorsAsync(ct), o.Taste);
             taste = taste with { Learned = model };

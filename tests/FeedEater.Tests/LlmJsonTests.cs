@@ -59,4 +59,25 @@ public sealed class LlmJsonTests
         Assert.Null(LlmJson.Read("""{"why":"W.","kind":"fyi"}""", Keys));
         Assert.Null(LlmJson.Read("no json here", Keys));
     }
+
+    [Fact]
+    public void Reply_matches_the_project_ignoring_case_and_keeps_an_unknown_name_apart()
+    {
+        string[] plane = ["LAB", "JARVIS", "FEED"];
+
+        var known = LlmJson.Reply("""{"action":"Idea","project":"jarvis","idea":"Do X."}""", plane);
+        var unknown = LlmJson.Reply("""{"action":"idea","project":"Nytka"}""", plane);
+        var none = LlmJson.Reply("""{"action":"idea","project":null}""", plane);
+
+        Assert.Equal(new ReplyIntent("idea", "JARVIS", null, "Do X."), known);
+        Assert.Equal(new ReplyIntent("idea", null, "Nytka"), unknown);
+        Assert.Equal(new ReplyIntent("idea"), none);
+    }
+
+    [Theory]
+    [InlineData("""{"action":"delete everything"}""")]
+    [InlineData("""{"question":"x"}""")]
+    [InlineData("no json")]
+    public void Reply_with_an_unknown_or_missing_action_is_unclear(string text) =>
+        Assert.Equal(new ReplyIntent("unclear"), LlmJson.Reply(text, ["LAB"]));
 }

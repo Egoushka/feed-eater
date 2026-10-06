@@ -2,16 +2,21 @@ using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
+using FeedEater.Llm;
 using FeedEater.Loops;
+using FeedEater.Ranking;
 using FeedEater.Search;
 
 namespace FeedEater.Telegram;
 
 /// <summary>
-/// /digest and /digest resend, /search text, and plain text as a search, from the allowed user only; anyone else is ignored
-/// without a reply. Each search hit is its own message so it carries its own 👍 👎 💡 buttons.
+/// /digest and /digest resend, /search text, /ask question, /quiet, /learn, plain text as a search (or, ending in "?", a question),
+/// and replies to an item, from the allowed user only; anyone else is ignored without a reply. Each search hit is its own message so
+/// it carries its own 👍 👎 💡 buttons.
 /// </summary>
-public sealed class CommandHandler(TelegramClient telegram, DigestTrigger trigger, QuietHours quiet, ArchiveSearch search, IOptions<FeedEaterOptions> options)
+public sealed class CommandHandler(
+    TelegramClient telegram, DigestTrigger trigger, QuietHours quiet, ArchiveSearch search, ArchiveAnswer answers, ReplyHandler replies,
+    TasteSwitch taste, IOptions<FeedEaterOptions> options)
 {
     private const int MaxResults = 5;
     private const int MaxQuery = 300;
@@ -25,7 +30,19 @@ public sealed class CommandHandler(TelegramClient telegram, DigestTrigger trigge
 
         if (!text.StartsWith('/'))
         {
-            await SearchAsync(message, text, ct);
+            if (message.ReplyToItemId is { } itemId)
+            {
+                await replies.HandleAsync(message.ChatId, itemId, Clip(text), ct);
+            }
+            else if (text.EndsWith('?'))
+            {
+                await AskAsync(message, text, ct);
+            }
+            else
+            {
+                await SearchAsync(message, text, ct);
+            }
+
             return;
         }
 
@@ -46,6 +63,18 @@ public sealed class CommandHandler(TelegramClient telegram, DigestTrigger trigge
                 }
 
                 await SearchAsync(message, words[1], ct);
+                break;
+            case "/ask":
+                if (words.Length < 2)
+                {
+                    await ReplyAsync(message, "Usage: /ask a question about what your feeds said. A message ending in ? is a question too.", ct);
+                    return;
+                }
+
+                await AskAsync(message, words[1], ct);
+                break;
+            case "/learn":
+                await LearnAsync(message, words.Length == 2 ? words[1] : null, ct);
                 break;
         }
     }
@@ -78,9 +107,42 @@ public sealed class CommandHandler(TelegramClient telegram, DigestTrigger trigge
             : $"{WebUtility.HtmlEncode(status.Text)}{(status.Quiet ? " The digest, the weekly review and release alerts wait; /digest still works." : "")}", ct);
     }
 
+    private async Task AskAsync(TgMessage message, string question, CancellationToken ct)
+    {
+        OutMessage answer;
+        try
+        {
+            answer = await answers.AskAsync(Clip(question), ct);
+        }
+        catch (BudgetExceededException)
+        {
+            answer = new OutMessage("The model budget is used up; /search still works.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            answer = new OutMessage("The model is not reachable; try again later, or /search.");
+        }
+
+        await telegram.SendAsync(message.ChatId, answer, ct);
+    }
+
+    private async Task LearnAsync(TgMessage message, string? argument, CancellationToken ct)
+    {
+        var status = argument switch
+        {
+            null or "status" => await taste.StatusAsync(ct),
+            "on" => await taste.SetAsync(true, ct),
+            "off" => await taste.SetAsync(false, ct),
+            _ => null,
+        };
+        await ReplyAsync(message, WebUtility.HtmlEncode(status ?? "Usage: /learn status, /learn on, /learn off. On adds the learned term to the ranking from the next digest."), ct);
+    }
+
+    private static string Clip(string text) => text.Length <= MaxQuery ? text : text[..MaxQuery];
+
     private async Task SearchAsync(TgMessage message, string query, CancellationToken ct)
     {
-        query = query.Length <= MaxQuery ? query : query[..MaxQuery];
+        query = Clip(query);
         var hits = await search.SearchAsync(query, null, null, null, null, MaxResults, ct);
         if (hits.Count == 0)
         {

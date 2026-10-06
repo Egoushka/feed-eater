@@ -89,6 +89,19 @@ changed or cleared there. The top of Today has "the day in brief", built from th
   alerts. `/quiet` (or `/quiet on|off|status`) and a button on Today toggle it by hand; `/digest` still works. Driving it from the
   senses service is a follow-up.
 
+## v0.6 additions
+
+- **Ask the archive.** `/ask question`, or any plain message ending in `?`, searches the archive (top 8), and the read model answers
+  from those items only, citing each claim as `[n]`. Markers that name no source are dropped, and the cited items follow as links. When the
+  sources do not answer it, the reply says so. Other plain messages are still a search.
+- **Reply to an item.** Reply to a digest item or a search result with free text. The small model turns it into one action: 👍, 👎,
+  file an idea (in a project you name, in your words: "idea for JARVIS: …"), save to Karakeep, mute the feed, or answer a question
+  from the item's own text. A bare 👍 or 👎 needs no model call. The item is found from the buttons on the message you replied to, so
+  nothing new is stored. A project name that is not a Plane project files nothing and lists the known ones.
+- **`/learn`.** `/learn status` gives the vote count and, with enough votes, the held-out agreement of the current and learned rankings.
+  `/learn on|off` switches the learned term from the next digest and wins over `FeedEater:Taste:Learn`. The weekly review adds a
+  "Ranking" line when the learned model is ahead by the required margin and still off.
+
 ## Running a digest on demand
 
 The scheduled digest runs once a day inside 07:30 to 12:00 Kyiv time. To run one outside that:

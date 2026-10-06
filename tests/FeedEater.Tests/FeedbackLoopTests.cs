@@ -23,6 +23,8 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
     private readonly List<string> _karakeepBodies = [];
     private System.Net.HttpStatusCode _planeStatus = System.Net.HttpStatusCode.Created;
     private string _planeBody = """{"issue":{"id":"issue-1"}}""";
+    private readonly Queue<string> _chat = new();
+    private readonly List<string> _chatBodies = [];
 
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
@@ -54,15 +56,30 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         });
         var planeStub = new StubHandler((request, _) => request.Method == HttpMethod.Post
             ? StubHandler.Json(_planeBody, _planeStatus)
-            : StubHandler.Json("""{"results":[{"id":"p-lab","identifier":"LAB"},{"id":"p-feed","identifier":"FEED"}]}"""));
+            : StubHandler.Json("""{"results":[{"id":"p-lab","identifier":"LAB"},{"id":"p-feed","identifier":"FEED"},{"id":"p-jarvis","identifier":"JARVIS"}]}"""));
         var telegram = new TelegramClient(telegramStub.Client("http://tg/botT/"));
         var items = new ItemStore(pg.Db);
         var feedback = new FeedbackStore(pg.Db);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), new PlaneClient(planeStub.Client("http://plane/"), options), options, TimeProvider.System);
         var handler = new CallbackHandler(telegram, feedback, filer, items, new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
-        var embedder = new StubHandler((_, _) => StubHandler.Json("{}", System.Net.HttpStatusCode.ServiceUnavailable));   // search falls back to keywords
+        // Embeddings fail, so search falls back to keywords; chat answers with the next _chat reply.
+        var embedder = new StubHandler((request, body) =>
+        {
+            if (!request.RequestUri!.AbsolutePath.EndsWith("chat/completions", StringComparison.Ordinal))
+            {
+                return StubHandler.Json("{}", System.Net.HttpStatusCode.ServiceUnavailable);
+            }
+
+            _chatBodies.Add(body);
+            return StubHandler.Json(JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = _chat.TryDequeue(out var reply) ? reply : "" } } }, usage = new { prompt_tokens = 10, completion_tokens = 5 } }));
+        });
         var llm = new FeedEater.Llm.LiteLlmClient(embedder.Client("http://llm/"), new UsageStore(pg.Db), options);
-        var commands = new CommandHandler(telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new QuietHours(new CursorStore(pg.Db), options, TimeProvider.System), new FeedEater.Search.ArchiveSearch(items, llm), options);
+        var search = new FeedEater.Search.ArchiveSearch(items, llm);
+        var replies = new ReplyHandler(telegram, handler, items, new ProfileStore(pg.Db), llm, options, NullLogger<ReplyHandler>.Instance);
+        var commands = new CommandHandler(
+            telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new QuietHours(new CursorStore(pg.Db), options, TimeProvider.System),
+            search, new FeedEater.Search.ArchiveAnswer(search, items, llm, options), replies,
+            new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), feedback, options), options);
         var poller = new TelegramPoller(telegram, handler, commands, new CursorStore(pg.Db), new LoopHealth(TimeProvider.System), TimeProvider.System, NullLogger<TelegramPoller>.Instance);
         return (poller, planeStub);
     }
@@ -455,5 +472,157 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Empty(Replies());
         Assert.Null(await new CursorStore(pg.Db).GetAsync("quiet:manual", default));
+    }
+
+    /// <summary>A reply to an item message: Telegram includes the replied-to message with its buttons.</summary>
+    private static string ReplyTo(long updateId, long itemId, string text) => JsonSerializer.Serialize(new
+    {
+        update_id = updateId,
+        message = new
+        {
+            message_id = 9, from = new { id = 42 }, chat = new { id = 42 }, text,
+            reply_to_message = new
+            {
+                message_id = 3, chat = new { id = 42 }, text = "item",
+                reply_markup = new { inline_keyboard = new[] { new[] { new { text = "👍", callback_data = $"v:{itemId}:u" }, new { text = "💡", callback_data = $"i:{itemId}" } } } },
+            },
+        },
+    });
+
+    private async Task AddJarvisProfileAsync() => await new ProfileStore(pg.Db).ReplaceAllAsync(
+        [
+            new Profile { Key = "homelab", Kind = "project", PlaneIdentifier = "LAB", Description = "VPS.", Embedding = TestVectors.OneHot(0) },
+            new Profile { Key = "jarvis", Kind = "project", PlaneIdentifier = "JARVIS", Description = "Assistant.", Embedding = TestVectors.OneHot(2) },
+        ],
+        DateTimeOffset.UtcNow, default);
+
+    [Theory]
+    [InlineData("👍", 1)]
+    [InlineData("👎", -1)]
+    public async Task A_bare_thumb_reply_votes_without_a_model_call(string text, int vote)
+    {
+        var id = await SeedReadItemAsync("Try it.");
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{ReplyTo(10, id, text)}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Equal(vote, (await new ItemStore(pg.Db).GetAsync(id, default))!.Vote);
+        Assert.Equal($"{text} saved", Assert.Single(Replies()).Text);
+        Assert.Empty(_chatBodies);
+    }
+
+    [Fact]
+    public async Task A_reply_naming_a_project_files_his_idea_there()
+    {
+        var id = await SeedReadItemAsync("Try it.");
+        await AddJarvisProfileAsync();
+        var (poller, plane) = Build();
+        _chat.Enqueue("""{"action":"idea","project":"jarvis","idea":"Use it for JARVIS memory.","question":null}""");
+        _updates = $$"""{"ok":true,"result":[{{ReplyTo(10, id, "idea for jarvis: use it for memory")}}]}""";
+
+        await poller.TickAsync(default);
+
+        var post = Assert.Single(plane.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Contains("/projects/p-jarvis/intake-issues/", post.Uri, StringComparison.Ordinal);
+        Assert.Contains("Use it for JARVIS memory.", post.Body, StringComparison.Ordinal);
+        Assert.Equal("JARVIS", (await new ItemStore(pg.Db).GetAsync(id, default))!.FiledIn);
+        Assert.Equal("💡 Filed in JARVIS", Assert.Single(Replies()).Text);
+        var prompt = Assert.Single(_chatBodies);
+        Assert.Contains("JARVIS", prompt, StringComparison.Ordinal);
+        Assert.Contains("idea for jarvis: use it for memory", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_reply_naming_an_unknown_project_files_nothing_and_lists_the_known_ones()
+    {
+        var id = await SeedReadItemAsync("Try it.");
+        var (poller, plane) = Build();
+        _chat.Enqueue("""{"action":"idea","project":"Nytka"}""");
+        _updates = $$"""{"ok":true,"result":[{{ReplyTo(10, id, "file for nytka")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.DoesNotContain(plane.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Equal("No Plane project called Nytka. Known: LAB, FEED.", Assert.Single(Replies()).Text);
+    }
+
+    [Fact]
+    public async Task A_mute_reply_mutes_the_items_feed()
+    {
+        var id = await SeedReadItemAsync(null);
+        var (poller, _) = Build();
+        _chat.Enqueue("""{"action":"mute"}""");
+        _updates = $$"""{"ok":true,"result":[{{ReplyTo(10, id, "never show me this source again")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.True((await new ItemStore(pg.Db).GetAsync(id, default))!.FeedMuted);
+        Assert.StartsWith("🔇 Muted Feed 1.", Assert.Single(Replies()).Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_question_reply_is_answered_from_the_items_text_and_unclear_ones_get_help()
+    {
+        var id = await SeedReadItemAsync(null);
+        var (poller, _) = Build();
+        _chat.Enqueue("""{"action":"ask","question":"Does it support S3?"}""");
+        _chat.Enqueue("Yes, <b>S3</b> and B2.");
+        _chat.Enqueue("not json");
+        _updates = $$"""{"ok":true,"result":[{{ReplyTo(10, id, "s3?")}},{{ReplyTo(11, id, "hmm")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Equal(["Yes, &lt;b&gt;S3&lt;/b&gt; and B2.", ReplyHandler.Help], Replies().Select(r => r.Text));
+        Assert.Contains("Does it support S3?", _chatBodies[1], StringComparison.Ordinal);
+        Assert.Contains("Backup tool", _chatBodies[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_reply_to_a_message_without_item_buttons_is_a_plain_search()
+    {
+        var (poller, _) = Build();
+        _updates = """{"ok":true,"result":[{"update_id":10,"message":{"message_id":9,"from":{"id":42},"chat":{"id":42},"text":"zzz","reply_to_message":{"message_id":3,"chat":{"id":42},"text":"header"}}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.StartsWith("Nothing found for zzz", Assert.Single(Replies()).Text, StringComparison.Ordinal);
+        Assert.Empty(_chatBodies);
+    }
+
+    [Fact]
+    public async Task A_message_ending_in_a_question_mark_is_answered_from_the_archive_with_checked_citations()
+    {
+        LiteLlmClientRetry();
+        var id = await Seed.ItemAsync(pg, 1, "HNSW tuning in pgvector", TestVectors.OneHot(1));
+        await Seed.ReadAsync(pg, id, "homelab", "improve");
+        var (poller, _) = Build();
+        _chat.Enqueue("Raise ef_search [1], see also [7].");
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 42, "hnsw tuning?")}}]}""";
+
+        await poller.TickAsync(default);
+
+        var (html, markup) = Assert.Single(Replies());
+        Assert.StartsWith("Raise ef_search [1], see also .", html, StringComparison.Ordinal);
+        Assert.Contains("[1] <a href=\"https://example.com/", html, StringComparison.Ordinal);
+        Assert.Contains(">HNSW tuning in pgvector</a>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("[7]", html, StringComparison.Ordinal);
+        Assert.Equal("", markup);
+        Assert.Contains("[1] HNSW tuning in pgvector (Feed 1, ", Assert.Single(_chatBodies), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_learn_command_reports_and_switches_the_learned_ranking()
+    {
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 42, "/learn")}},{{Message(11, 42, "/learn on")}},{{Message(12, 42, "/learn maybe")}}]}""";
+
+        await poller.TickAsync(default);
+
+        var texts = Replies().Select(r => r.Text).ToList();
+        Assert.StartsWith("Learned ranking is off. It needs 100 votes", texts[0], StringComparison.Ordinal);
+        Assert.StartsWith("Learned ranking is on.", texts[1], StringComparison.Ordinal);
+        Assert.StartsWith("Usage: /learn", texts[2], StringComparison.Ordinal);
+        Assert.Equal("on", await new CursorStore(pg.Db).GetAsync("taste:learn", default));
     }
 }

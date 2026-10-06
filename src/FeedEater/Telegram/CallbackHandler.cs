@@ -112,12 +112,15 @@ public sealed class CallbackHandler(
     public Task ClearVoteAsync(long itemId, CancellationToken ct) => feedback.ClearVoteAsync(itemId, ct);
 
     /// <summary>Files the item's suggestion in Plane and counts it as a 👍. The project, or the reason it was not filed.</summary>
-    public async Task<(string? Project, string? Error)> FileIdeaAsync(long itemId, CancellationToken ct)
+    public Task<(string? Project, string? Error)> FileIdeaAsync(long itemId, CancellationToken ct) => FileIdeaAsync(itemId, null, null, ct);
+
+    /// <summary>As above, in another Plane project or with his own wording; used by replies to an item.</summary>
+    public async Task<(string? Project, string? Error)> FileIdeaAsync(long itemId, string? planeProject, string? text, CancellationToken ct)
     {
         string project;
         try
         {
-            project = await ideas.FileAsync(itemId, ct);
+            project = await ideas.FileAsync(itemId, planeProject, text, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException
             || (ex is TaskCanceledException && !ct.IsCancellationRequested))

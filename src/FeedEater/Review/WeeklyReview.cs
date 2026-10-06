@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using FeedEater.Loops;
+using FeedEater.Ranking;
 using FeedEater.Storage;
 using FeedEater.Telegram;
 
@@ -7,7 +8,7 @@ namespace FeedEater.Review;
 
 /// <summary>Sundays at 18:30 Kyiv: the week's figures to Telegram and into /ui/weekly. Runs once per Sunday; a missed one runs at start.</summary>
 public sealed class WeeklyReview(
-    WeeklyStore weekly, TelegramClient telegram, QuietHours quiet,
+    WeeklyStore weekly, TelegramClient telegram, QuietHours quiet, TasteSwitch taste,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<WeeklyReview> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -28,7 +29,7 @@ public sealed class WeeklyReview(
             return;
         }
 
-        var message = WeeklyFormatter.Message(key, report, zone);
+        var message = WeeklyFormatter.Message(key, report, zone, await taste.SuggestionAsync(ct));
         await weekly.SaveAsync(key, until, report, message.Html, ct);
         await telegram.SendAsync(Settings.Telegram.AllowedUserId, message, ct);
         await weekly.MarkSentAsync(key, Time.GetUtcNow(), ct);

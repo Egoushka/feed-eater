@@ -22,10 +22,14 @@ public sealed record ReadResult
 
 public sealed record ReleaseNote(string Changes, string Breaking, string? Evidence);
 
+/// <summary>What a reply to an item asks for. <see cref="UnknownProject"/> is a project he named that is not in the list.</summary>
+public sealed record ReplyIntent(string Action, string? Project = null, string? UnknownProject = null, string? Idea = null, string? Question = null);
+
 /// <summary>Lenient parsing of model replies: the first {...} in the text, unknown keys and kinds dropped.</summary>
 public static class LlmJson
 {
     private static readonly string[] Kinds = ["improve", "new", "fyi"];
+    private static readonly string[] Actions = ["up", "down", "idea", "save", "mute", "ask", "unclear"];
 
     public static TriageResult Triage(string text, IReadOnlySet<string> keys)
     {
@@ -70,6 +74,18 @@ public static class LlmJson
 
         var breaking = Text(e, "breaking")?.ToLowerInvariant();
         return new ReleaseNote(changes, breaking is "yes" or "no" ? breaking : "unknown", Text(e, "evidence"));
+    }
+
+    public static ReplyIntent Reply(string text, IReadOnlyCollection<string> planeProjects)
+    {
+        if (ExtractObject(text) is not { } e || Text(e, "action")?.ToLowerInvariant() is not { } action || !Actions.Contains(action))
+        {
+            return new ReplyIntent("unclear");
+        }
+
+        var named = Text(e, "project");
+        var project = named is null ? null : planeProjects.FirstOrDefault(p => string.Equals(p, named, StringComparison.OrdinalIgnoreCase));
+        return new ReplyIntent(action, project, project is null ? named : null, Text(e, "idea"), Text(e, "question"));
     }
 
     private static JsonElement? ExtractObject(string text)

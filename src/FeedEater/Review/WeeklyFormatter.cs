@@ -12,7 +12,7 @@ public static class WeeklyFormatter
     private const int MaxIdeas = 8;
     private const int MaxProjects = 8;
 
-    public static OutMessage Message(string weekOf, WeeklyReport r, TimeZoneInfo zone)
+    public static OutMessage Message(string weekOf, WeeklyReport r, TimeZoneInfo zone, string? tasteNote = null)
     {
         var from = TimeZoneInfo.ConvertTime(r.Since, zone).ToString("d MMM", CultureInfo.InvariantCulture);
         var h = new StringBuilder($"<b>Weekly review · {E(from)} to {E(DateOnly.ParseExact(weekOf, "yyyy-MM-dd", CultureInfo.InvariantCulture).ToString("d MMM", CultureInfo.InvariantCulture))}</b>\n");
@@ -57,6 +57,11 @@ public static class WeeklyFormatter
         if (r.MuteCandidates.Count > 0)
         {
             h.Append("\n\n<b>Mute candidates</b> (posts, none shown or liked)\n").Append(string.Join(" · ", r.MuteCandidates.Select(f => string.Create(CultureInfo.InvariantCulture, $"{E(Clip(f.Title, 40))} {f.Count}"))));
+        }
+
+        if (tasteNote is not null)
+        {
+            h.Append("\n\n<b>Ranking</b>\n").Append(E(tasteNote));
         }
 
         return new OutMessage(h.ToString());

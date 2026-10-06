@@ -23,6 +23,15 @@ public abstract record CallbackData
         _ => null,
     };
 
+    /// <summary>The item a button belongs to, or null for a button that names none.</summary>
+    public static long? ItemIdOf(string? data) => Parse(data) switch
+    {
+        VoteCallback v => v.ItemId,
+        IdeaCallback i => i.ItemId,
+        SaveCallback s => s.ItemId,
+        _ => null,
+    };
+
     private static long? Id(string text) => long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var id) ? id : null;
 }
 

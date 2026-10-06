@@ -5,7 +5,8 @@ namespace FeedEater.Telegram;
 
 public sealed record TgCallback(string Id, long FromId, long ChatId, long MessageId, string? Data);
 
-public sealed record TgMessage(long FromId, long ChatId, string? Text);
+/// <summary>A text message; <paramref name="ReplyToItemId"/> is the item whose message (digest item or search result) it replies to.</summary>
+public sealed record TgMessage(long FromId, long ChatId, string? Text, long? ReplyToItemId = null);
 
 public sealed record TgUpdate(long UpdateId, TgCallback? Callback, TgMessage? Message = null);
 
@@ -71,8 +72,25 @@ public sealed class TelegramClient(HttpClient http)
 
     private static TgMessage? Message(JsonElement m) =>
         m.TryGetProperty("from", out var from) && m.TryGetProperty("chat", out var chat)
-            ? new TgMessage(from.GetProperty("id").GetInt64(), chat.GetProperty("id").GetInt64(), Json.Str(m, "text"))
+            ? new TgMessage(from.GetProperty("id").GetInt64(), chat.GetProperty("id").GetInt64(), Json.Str(m, "text"),
+                m.TryGetProperty("reply_to_message", out var replied) ? ItemOf(replied) : null)
             : null;
+
+    /// <summary>Item messages carry the item id in their buttons' callback data, so a reply needs no stored message map.</summary>
+    private static long? ItemOf(JsonElement message)
+    {
+        if (!message.TryGetProperty("reply_markup", out var markup) || markup.ValueKind != JsonValueKind.Object || !markup.TryGetProperty("inline_keyboard", out var rows)
+            || rows.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        return rows.EnumerateArray()
+            .Where(row => row.ValueKind == JsonValueKind.Array)
+            .SelectMany(row => row.EnumerateArray())
+            .Select(b => CallbackData.ItemIdOf(Json.Str(b, "callback_data")))
+            .FirstOrDefault(id => id is not null);
+    }
 
     private static object Markup(IReadOnlyList<IReadOnlyList<Button>> keyboard) =>
         new { inline_keyboard = keyboard.Select(row => row.Select(b => new { text = b.Text, callback_data = b.Data })) };
