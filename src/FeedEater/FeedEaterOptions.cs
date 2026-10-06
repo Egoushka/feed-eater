@@ -44,6 +44,7 @@ public sealed class FeedEaterOptions
     public WatchOptions Watch { get; set; } = new();
     public TasteOptions Taste { get; set; } = new();
     public QuietOptions Quiet { get; set; } = new();
+    public FollowOptions Follow { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -147,6 +148,21 @@ public sealed class QuietOptions
     /// <summary>How long a manual "quiet on" lasts.</summary>
     [Description("Hours a manual /quiet on lasts.")]
     public int ManualHours { get; set; } = 12;
+}
+
+public sealed class FollowOptions
+{
+    [Description("Follow this story: a 🧵 button on items that sends later items on the same story as replies to one message. False removes the button and the job.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("Days a story is followed before it is closed with a summary.")]
+    public int Days { get; set; } = 14;
+
+    [Description("Stories followed at once.")]
+    public int MaxActive { get; set; } = 5;
+
+    [Description("Messages sent per followed story; the follow closes when it is reached.")]
+    public int MaxMessages { get; set; } = 50;
 }
 
 public sealed class TasteOptions
