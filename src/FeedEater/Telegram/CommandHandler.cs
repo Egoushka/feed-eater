@@ -11,7 +11,8 @@ namespace FeedEater.Telegram;
 
 /// <summary>
 /// /digest and /digest resend, /search text, /ask question, /quiet, /learn, plain text as a search (or, ending in "?", a question),
-/// and replies to an item, from the allowed user only; anyone else is ignored without a reply. Each search hit is its own message so
+/// and replies to an item, from the allowed user only; anyone else is ignored without a reply. While no user is allowed yet
+/// (<c>AllowedUserId</c> 0) only /start is answered, with the sender's own id. Each search hit is its own message so
 /// it carries its own 👍 👎 💡 buttons.
 /// </summary>
 public sealed class CommandHandler(
