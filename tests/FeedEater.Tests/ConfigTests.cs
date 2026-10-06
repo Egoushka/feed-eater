@@ -59,13 +59,35 @@ public sealed class ConfigTests
         Assert.Contains("FeedEater:Plane:Token=", lines);   // unset stays visibly unset
         Assert.Contains("FeedEater:Watch:Source=https://example.com/pins?***", lines);
         Assert.Contains("FeedEater:Plane:BaseUrl=https://plane.example/", lines);
-        Assert.Contains("ConnectionStrings:FeedEater=Host=db;Database=feed;Username=u;Password=***;Pooling=true", lines);
+        Assert.Contains("ConnectionStrings:FeedEater=Host=db;Database=feed;Username=u;Password=***;Pooling=True", lines);
         Assert.Contains("Mcp:Token=***", lines);
         var everything = string.Join('\n', lines);
         foreach (var secret in new[] { "sk-very-secret", "123:abc", "SECRET", "hunter2", "mcp-secret", "user:pw" })
         {
             Assert.DoesNotContain(secret, everything, StringComparison.Ordinal);
         }
+    }
+
+    [Theory]
+    [InlineData("Host=db;Database=feed;Username=u;Password=\"a;b\";Pooling=true", "a;b", "b\"")]
+    [InlineData("Host=db;Database=feed;Username=u;Password='x;y\"z';Pooling=true", "x;y", "y\"z")]
+    [InlineData("Host=db;Password=\"p1;p2\";SSL Password=\"k;1\"", "p1;p2", "k;1")]
+    public void A_quoted_connection_password_holding_a_semicolon_is_masked_whole(string connection, string first, string second)
+    {
+        var lines = ConfigPrinter.Lines(Config(("ConnectionStrings:FeedEater", connection)));
+
+        var line = Assert.Single(lines, l => l.StartsWith("ConnectionStrings:FeedEater=", StringComparison.Ordinal));
+        Assert.DoesNotContain(first, line, StringComparison.Ordinal);
+        Assert.DoesNotContain(second, line, StringComparison.Ordinal);
+        Assert.Contains("Password=***", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_connection_string_that_does_not_parse_is_masked_entirely()
+    {
+        var lines = ConfigPrinter.Lines(Config(("ConnectionStrings:FeedEater", "Host=db;Password=\"oops;rest")));
+
+        Assert.Contains("ConnectionStrings:FeedEater=***", lines);
     }
 
     [Fact]

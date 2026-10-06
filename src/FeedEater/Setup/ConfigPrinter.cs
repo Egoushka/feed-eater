@@ -1,7 +1,7 @@
 using System.Collections;
 using System.Globalization;
 using System.Reflection;
-using System.Text.RegularExpressions;
+using Npgsql;
 
 namespace FeedEater.Setup;
 
@@ -16,7 +16,7 @@ internal sealed record ConfigEntry(string Key, PropertyInfo Property, object? Va
 /// The effective configuration as sorted <c>key=value</c> lines with secrets masked: what the options hold after the environment
 /// and files are applied, defaults included. Two runs can be diffed to show that a change moved no setting.
 /// </summary>
-public static partial class ConfigPrinter
+public static class ConfigPrinter
 {
     private const string Masked = "***";
 
@@ -102,8 +102,32 @@ public static partial class ConfigPrinter
         return uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped) + (uri.Query.Length > 0 ? "?" + Masked : "");
     }
 
-    private static string MaskConnection(string connection) => Password().Replace(connection, "$1=" + Masked);
+    /// <summary>Parsed by Npgsql, so a quoted password that holds a <c>;</c> is masked whole. A string it cannot parse is masked entirely: there is no telling where its password is.</summary>
+    private static string MaskConnection(string connection)
+    {
+        if (connection.Length == 0)
+        {
+            return "";
+        }
 
-    [GeneratedRegex(@"\b(password|pwd)\s*=[^;]*", RegexOptions.IgnoreCase, 250)]
-    private static partial Regex Password();
+        try
+        {
+            var builder = new NpgsqlConnectionStringBuilder(connection);
+            if (!string.IsNullOrEmpty(builder.Password))
+            {
+                builder.Password = Masked;
+            }
+
+            if (!string.IsNullOrEmpty(builder.SslPassword))
+            {
+                builder.SslPassword = Masked;
+            }
+
+            return builder.ConnectionString;
+        }
+        catch (ArgumentException)
+        {
+            return Masked;
+        }
+    }
 }

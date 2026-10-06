@@ -89,6 +89,8 @@ public sealed partial class CheckRunner(
             text = text.Replace(secret, "***", StringComparison.Ordinal);
         }
 
+        // Providers echo a key back in their own shortened form ("sk-...ABCD"), which is not the configured value and slips past the replace above.
+        text = Credential().Replace(text, "***");
         return text.Length <= MaxText ? text : text[..(MaxText - 1)] + "…";
     }
 
@@ -117,6 +119,9 @@ public sealed partial class CheckRunner(
 
     [GeneratedRegex(@"\s+", RegexOptions.None, 250)]
     private static partial Regex Whitespace();
+
+    [GeneratedRegex(@"\bsk-[A-Za-z0-9_*.\-]+|\bauthorization\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+|\bbearer\s+(?=[A-Za-z]*[0-9._~+/=*\-])[A-Za-z0-9._~+/=*\-]{8,}", RegexOptions.IgnoreCase, 250)]
+    private static partial Regex Credential();
 }
 
 /// <summary>Plain-words reasons and fixes shared by the checks. Settings are named the way they are set in the environment.</summary>

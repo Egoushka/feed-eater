@@ -244,6 +244,37 @@ public sealed class SetupChecksTests
         Assert.Contains("profile.example.json", row.Result.Fix, StringComparison.Ordinal);
     }
 
+    // masking
+
+    private sealed class SaysCheck(string detail) : IIntegrationCheck
+    {
+        public string Name => "says";
+        public bool Required => false;
+        public Task<CheckResult> RunAsync(CancellationToken ct) => Task.FromResult(CheckResult.Fail(detail, "none"));
+    }
+
+    [Theory]
+    [InlineData("Incorrect API key provided: sk-...ABCD. You can find your API key at https://platform.openai.com.", "ABCD")]
+    [InlineData("Incorrect API key provided: sk-proj-abc12*************************wxyz9.", "wxyz9")]
+    [InlineData("rejected header Authorization: Bearer tok_live_1234567890abcdef", "1234567890abcdef")]
+    [InlineData("sent Authorization=Basic dXNlcjpwYXNz", "dXNlcjpwYXNz")]
+    [InlineData("got Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig back", "eyJhbGci")]
+    public async Task A_key_the_provider_echoes_in_its_own_shortened_form_is_masked(string said, string leak)
+    {
+        var row = await RunAsync(new SaysCheck(said));
+
+        Assert.DoesNotContain(leak, row.Result.Detail, StringComparison.Ordinal);
+        Assert.Contains("***", row.Result.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ordinary_words_are_not_masked()
+    {
+        var row = await RunAsync(new SaysCheck("the task is risky and the desk-lamp is on; ask basic questions"));
+
+        Assert.Equal("the task is risky and the desk-lamp is on; ask basic questions", row.Result.Detail);
+    }
+
     // feed source
 
     private sealed class FakeProbe(CheckResult result, string name = "built-in reader") : IFeedSourceProbe
