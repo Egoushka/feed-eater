@@ -1,0 +1,3 @@
+# Files shipped in the image that may name the owner, one per line: path | reason.
+# OwnerTermsTests fails on a match anywhere else, and on an entry here that no longer matches.
+config/watch.example.json | the owner's real list of what they run, kept as the example of the format; the deployment mounts its own copy through Watch:FallbackPath

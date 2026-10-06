@@ -15,6 +15,13 @@ public sealed class KarakeepClient(HttpClient http)
         return Json.Str(Json.Parse(await response.Content.ReadAsStringAsync(ct)), "id") ?? throw new InvalidOperationException("Karakeep returned no bookmark id");
     }
 
+    /// <summary>One bookmark read; fails on a bad key or URL.</summary>
+    public async Task PingAsync(CancellationToken ct)
+    {
+        using var response = await http.GetAsync("api/v1/bookmarks?limit=1", ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<(IReadOnlyList<Bookmark> Items, string? Next)> PageAsync(string? cursor, CancellationToken ct)
     {
         var query = cursor is null ? "" : "&cursor=" + Uri.EscapeDataString(cursor);

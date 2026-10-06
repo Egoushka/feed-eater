@@ -149,7 +149,7 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
     {
         var time = new FakeTimeProvider(now);
         var sent = new List<string>();
-        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", Telegram = new TelegramOptions { AllowedUserId = 42 } });
         var stub = new StubHandler((_, body) =>
         {
             if (telegramFails)

@@ -9,8 +9,8 @@ public sealed record ClusterMember(long Id, string Title, string Url, string Fee
 public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl, bool Muted = false, string? FeedUrl = null);
 
 public sealed record NewItem(
-    long EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
-    string? LinkUrl = null, long? HnId = null);
+    long? EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
+    string? LinkUrl = null, long? HnId = null, string? SourceKey = null);
 
 public sealed record PendingLink(long Id, string? LinkUrl, long? HnId);
 
@@ -138,23 +138,23 @@ public sealed class ItemStore(FeedDb db)
     }
 
     /// <summary>
-    /// Inserts one Miniflux entry; null when it is already stored. A row whose canonical URL, or whose title hash within
-    /// 7 days, matches an earlier row points at it through duplicate_of. An empty URL or hash never matches.
+    /// Inserts one entry; null when its source key (the Miniflux entry id, or the feed and guid) is already stored. A row whose
+    /// canonical URL, or whose title hash within 7 days, matches an earlier row points at it through duplicate_of. An empty URL or hash never matches.
     /// </summary>
     public async Task<long?> InsertAsync(NewItem item, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.ExecuteScalarAsync<long?>(new CommandDefinition(
             """
-            insert into items (miniflux_entry_id, feed_id, url, canonical_url, title_hash, title, published_at, content, link_url, hn_id, duplicate_of)
-            values (@EntryId, @FeedId, @Url, @CanonicalUrl, @TitleHash, @Title, @PublishedAt, @Content, @LinkUrl, @HnId,
+            insert into items (miniflux_entry_id, source_key, feed_id, url, canonical_url, title_hash, title, published_at, content, link_url, hn_id, duplicate_of)
+            values (@EntryId, coalesce(@SourceKey, 'mf:' || @EntryId::text), @FeedId, @Url, @CanonicalUrl, @TitleHash, @Title, @PublishedAt, @Content, @LinkUrl, @HnId,
                     coalesce(
                         (select id from items where @CanonicalUrl <> '' and canonical_url = @CanonicalUrl order by id limit 1),
                         (select id from items
                          where @TitleHash <> '' and title_hash = @TitleHash
                            and published_at between @PublishedAt - interval '7 days' and @PublishedAt + interval '7 days'
                          order by id limit 1)))
-            on conflict (miniflux_entry_id) do nothing
+            on conflict do nothing
             returning id
             """, item, cancellationToken: ct));
     }

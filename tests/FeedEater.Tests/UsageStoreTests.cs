@@ -40,4 +40,22 @@ public sealed class UsageStoreTests(PostgresFixture pg)
         Assert.Equal([(new DateOnly(2026, 10, 5), 1.75m)], days.Select(d => (d.Day, d.Cost)));
         Assert.Equal([("read", "haiku", 1, 1m), ("triage", "nano", 2, 0.75m)], purposes.Select(p => (p.Purpose, p.Model, p.Calls, p.Cost)));
     }
+
+    [Fact]
+    public async Task A_call_with_an_unknown_cost_is_counted_apart_and_never_summed_as_zero()
+    {
+        await pg.ResetAsync();
+        var store = new UsageStore(pg.Db);
+        await store.AddAsync("triage", "nano", 100, 20, null, default);
+        await store.AddAsync("triage", "nano", 100, 20, 0.25m, default);
+        await store.AddAsync("read", "mini", 1000, 100, null, default);
+        var since = DateTimeOffset.UtcNow.AddHours(-1);
+
+        Assert.Equal(0.25m, await store.SpendSinceAsync(since, default));
+        Assert.Equal(2, await store.UnpricedSinceAsync(since, default));
+        var days = await store.SpendByDayAsync(since, "UTC", default);
+        Assert.Equal([(0.25m, 1340L, 2)], days.Select(d => (d.Cost, d.Tokens, d.Unpriced)));
+        var purposes = await store.SpendByPurposeAsync(since, default);
+        Assert.Equal([("triage", 0.25m, 240L, 1), ("read", 0m, 1100L, 1)], purposes.Select(p => (p.Purpose, p.Cost, p.Tokens, p.Unpriced)));
+    }
 }

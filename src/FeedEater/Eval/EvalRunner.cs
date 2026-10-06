@@ -41,6 +41,10 @@ public sealed record EvalSettings(int MaxItems, decimal MaxUsd, bool Reads, stri
     }
 }
 
+/// <summary>A call came back with no cost: no gateway header and no <c>Llm:Prices</c> entry, so the spend limit cannot be enforced.</summary>
+public sealed class CostUnknownException(string model) : Exception(
+    $"The cost of {model} is unknown: the gateway sent no x-litellm-response-cost header and FeedEater:Llm:Prices has no entry for it, so --max-usd cannot be enforced. Set the model's price (USD per million tokens) and run again.");
+
 /// <summary>
 /// Re-runs the current triage (and optionally read) prompts over voted items and reports how they agree with the votes.
 /// It reads the archive and calls the models; it writes nothing but usage rows (purpose eval-triage and eval-read).
@@ -58,7 +62,7 @@ public sealed class EvalRunner(EvalStore store, ProfileStore profiles, LiteLlmCl
         var sample = Balanced(golden, settings.MaxItems);
         var profileList = await profiles.AllAsync(ct);
         var keys = profileList.Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
-        var about = Profiles.ProfileFile.Load(o.ProfilePath).About;
+        var about = Profiles.ProfileFile.LoadOrExample(o.ProfilePath).File.About;
 
         decimal spent = 0;
         string? stopped = null;
@@ -75,14 +79,14 @@ public sealed class EvalRunner(EvalStore store, ProfileStore profiles, LiteLlmCl
             {
                 var (system, user) = Prompts.Triage(about, profileList, g.Title, g.Feed, g.Content, o.Caps.TriageChars, Clip(g.ExtraText, 1200));
                 var triage = await llm.ChatAsync(o.Llm.TriageModel, system, user, TriageMaxTokens, "eval-triage", ct);
-                spent += triage.Cost;
+                spent += triage.Cost ?? throw new CostUnknownException(o.Llm.TriageModel);
                 var t = LlmJson.Triage(triage.Content, keys);
                 string? summary = null;
                 if (settings.Reads && t.Relevance >= o.Caps.MinRelevance && spent < settings.MaxUsd)
                 {
                     var (rs, ru) = Prompts.Read(about, profileList, null, g.Title, "", g.Feed, g.Content, o.Caps.ReadChars, null, Clip(g.ExtraText, o.Fetch.PageChars));
                     var read = await llm.ChatAsync(o.Llm.ReadModel, rs, ru, ReadMaxTokens, "eval-read", ct);
-                    spent += read.Cost;
+                    spent += read.Cost ?? throw new CostUnknownException(o.Llm.ReadModel);
                     summary = LlmJson.Read(read.Content, keys)?.Summary;
                 }
 

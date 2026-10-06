@@ -12,11 +12,18 @@ public sealed record TgUpdate(long UpdateId, TgCallback? Callback, TgMessage? Me
 
 public sealed class TelegramException(string message) : Exception(message);
 
-/// <summary>The four Bot API calls feed-eater needs. The token is in the base address, so URIs are never logged.</summary>
-public sealed class TelegramClient(HttpClient http)
+/// <summary>The Bot API calls feed-eater needs. The token is in the base address, so URIs are never logged.</summary>
+public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? logger = null)
 {
+    /// <summary>Chat 0 is what an unset <c>AllowedUserId</c> gives; Telegram would answer "chat not found" after the work was paid for, so nothing is sent.</summary>
     public async Task<long> SendAsync(long chatId, OutMessage message, CancellationToken ct)
     {
+        if (chatId == 0)
+        {
+            logger?.LogWarning("Send refused: FeedEater:Telegram:AllowedUserId is 0. Send /start to the bot to get your id, set it and restart");
+            throw new TelegramException("FeedEater:Telegram:AllowedUserId is 0");
+        }
+
         var result = await CallAsync("sendMessage", new Dictionary<string, object?>
         {
             ["chat_id"] = chatId,
@@ -27,6 +34,9 @@ public sealed class TelegramClient(HttpClient http)
         }, ct);
         return result.GetProperty("message_id").GetInt64();
     }
+
+    /// <summary>The bot's username, which proves the token works.</summary>
+    public async Task<string?> GetMeAsync(CancellationToken ct) => Json.Str(await CallAsync("getMe", new Dictionary<string, object?>(), ct), "username");
 
     public Task EditButtonsAsync(long chatId, long messageId, IReadOnlyList<IReadOnlyList<Button>> keyboard, CancellationToken ct) =>
         CallAsync("editMessageReplyMarkup", new Dictionary<string, object?>

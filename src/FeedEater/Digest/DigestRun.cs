@@ -7,6 +7,7 @@ using FeedEater.Loops;
 using FeedEater.Profiles;
 using FeedEater.Ranking;
 using FeedEater.Signals;
+using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Telegram;
 using FeedEater.Text;
@@ -24,13 +25,19 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 public sealed class DigestRun(
     ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
     LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, LoopHealth health, TasteSwitch tasteSwitch,
-    IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger)
+    IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null, ArticleText? articles = null)
 {
     private const int TriageMaxTokens = 200;
     private const int ReadMaxTokens = 600;
 
     public async Task RunAsync(string date, CancellationToken ct)
     {
+        if (options.Value.Telegram.AllowedUserId == 0)
+        {
+            // Before any model call: a digest that cannot be sent is not worth paying for.
+            throw new InvalidOperationException("FeedEater:Telegram:AllowedUserId is 0; send /start to the bot to get your id");
+        }
+
         await digests.CloseStaleAsync(date, ct);
         var digest = await digests.GetAsync(date, ct);
         if (digest?.Status == "sent" || (digest?.Status == "failed" && digest.ItemIds.Length == 0))
@@ -95,6 +102,11 @@ public sealed class DigestRun(
             notes.Add("Miniflux was unreachable at the last poll; some items may be missing");
         }
 
+        if (feeds is not null)
+        {
+            notes.AddRange(await feeds.NotesAsync(ct));
+        }
+
         if (health.IsDown(Ingestor.EmbedName))
         {
             notes.Add("Embeddings were unavailable at the last poll; new items may be missing");
@@ -124,7 +136,13 @@ public sealed class DigestRun(
 
         var byId = candidates.ToDictionary(c => c.Id);
         var keys = profileList.Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
-        var about = ProfileFile.Load(o.ProfilePath).About;
+        var (profile, isExample) = ProfileFile.LoadOrExample(o.ProfilePath);
+        if (isExample)
+        {
+            notes.Add(ProfileFile.ExampleNote(o.ProfilePath));
+        }
+
+        var about = profile.About;
 
         var budgetSpent = false;
         var triaged = new List<(Scored Score, TriageResult Triage)>();
@@ -277,7 +295,12 @@ public sealed class DigestRun(
 
     private async Task<string> FullTextAsync(Candidate c, CancellationToken ct)
     {
-        if (c.Content.Length >= options.Value.Caps.ShortContentChars || c.MinifluxEntryId is not { } entryId)
+        if (articles is not null)
+        {
+            return c.Content.Length >= options.Value.Caps.ShortContentChars ? c.Content : await articles.FullTextAsync(c, ct);
+        }
+
+        if (c.Content.Length >= options.Value.Caps.ShortContentChars || !options.Value.Miniflux.Enabled || c.MinifluxEntryId is not { } entryId)
         {
             return c.Content;
         }
@@ -320,7 +343,9 @@ public sealed class DigestRun(
         var votes = await feedback.VotesSinceAsync(now.AddDays(-1), ct);
         var week = await feedback.VotesSinceAsync(now.AddDays(-7), ct);
         var weekUpRate = DigestStats.UpRate(week);
-        var spend = await usage.SpendSinceAsync(DigestStats.MonthStart(now, options.Value.Zone), ct);
+        var monthStart = DigestStats.MonthStart(now, options.Value.Zone);
+        var spend = await usage.SpendSinceAsync(monthStart, ct);
+        var unpriced = await usage.UnpricedSinceAsync(monthStart, ct);
         var byProject = shown
             .GroupBy(v => v.Project ?? "other")
             .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
@@ -329,7 +354,8 @@ public sealed class DigestRun(
         var header = DigestFormatter.Header(new DigestHeader(
             DateOnly.ParseExact(d.LocalDate, "yyyy-MM-dd", CultureInfo.InvariantCulture), shown.Count, d.Candidates, byProject,
             votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n'),
-            (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList()));
-        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null))];
+            (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList(), unpriced));
+        var style = ButtonStyle.From(options.Value);
+        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null, style))];
     }
 }

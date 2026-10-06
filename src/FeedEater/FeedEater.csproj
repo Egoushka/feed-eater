@@ -17,6 +17,8 @@
     <!-- Embedded as FeedEater.Migrations.<file>; DatabaseMigrator filters on ".Migrations." -->
     <EmbeddedResource Include="../../db/migrations/*.sql" LinkBase="Migrations" />
     <EmbeddedResource Include="Ui/assets/app.css" LogicalName="FeedEater.Ui.app.css" />
+    <!-- The interests used until the reader writes their own profile.json. -->
+    <EmbeddedResource Include="../../profile.example.json" LogicalName="FeedEater.profile.example.json" />
     <InternalsVisibleTo Include="FeedEater.Tests" />
   </ItemGroup>
 

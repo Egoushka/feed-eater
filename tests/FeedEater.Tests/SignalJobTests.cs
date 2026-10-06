@@ -32,9 +32,14 @@ public sealed class SignalJobTests(PostgresFixture pg) : IAsyncLifetime
         ? """[{"starred_at":"2026-10-02T08:00:00Z","repo":{"full_name":"pgvector/pgvector","html_url":"https://github.com/pgvector/pgvector","description":"Vector search for Postgres","topics":["postgres","vectors"]}}]"""
         : "[]"));
 
-    private SignalJob Build(StubHandler karakeep, StubHandler github, StubHandler llm, string token = "k", int embedBatch = 64)
+    private SignalJob Build(StubHandler karakeep, StubHandler github, StubHandler llm, string token = "k", int embedBatch = 64, string githubUser = "octocat")
     {
-        var options = Options.Create(new FeedEaterOptions { Karakeep = new KarakeepOptions { Token = token }, Llm = new LlmOptions { EmbedBatch = embedBatch } });
+        var options = Options.Create(new FeedEaterOptions
+        {
+            Karakeep = new KarakeepOptions { BaseUrl = "http://karakeep/", Token = token },
+            GitHub = new GitHubOptions { User = githubUser },
+            Llm = new LlmOptions { EmbedBatch = embedBatch },
+        });
         return new SignalJob(
             new KarakeepClient(karakeep.Client("http://karakeep/")), new GitHubStarsClient(github.Client("http://github/"), options),
             new SignalStore(pg.Db), new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
@@ -116,11 +121,34 @@ public sealed class SignalJobTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_job_fails_when_every_source_fails_so_it_retries()
+    public async Task When_every_source_is_down_the_run_ends_quietly_and_the_next_daily_run_catches_up()
     {
         var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
         var down = new StubHandler((_, _) => StubHandler.Json("{}", System.Net.HttpStatusCode.BadGateway));
 
-        await Assert.ThrowsAsync<AggregateException>(() => Build(down, down, llm).CollectAsync(default));
+        Assert.Equal(0, await Build(down, down, llm).CollectAsync(default));
+        Assert.Empty(llm.Calls);
+    }
+
+    [Fact]
+    public async Task Without_a_GitHub_user_there_is_no_stars_import()
+    {
+        var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
+        var github = GitHub();
+
+        Assert.Equal(2, await Build(Karakeep(), github, llm, githubUser: "").CollectAsync(default));
+        Assert.Empty(github.Calls);
+    }
+
+    [Fact]
+    public async Task With_neither_source_configured_nothing_is_called()
+    {
+        var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
+        var (karakeep, github) = (Karakeep(), GitHub());
+
+        Assert.Equal(0, await Build(karakeep, github, llm, token: "", githubUser: "").CollectAsync(default));
+        Assert.Empty(karakeep.Calls);
+        Assert.Empty(github.Calls);
+        Assert.Empty(llm.Calls);
     }
 }

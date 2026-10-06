@@ -13,7 +13,7 @@ public sealed class ScheduledJobTests(PostgresFixture pg) : IAsyncLifetime
     public Task DisposeAsync() => Task.CompletedTask;
 
     private sealed class CountingJob(CursorStore cursors, TimeProvider time, bool fail)
-        : ScheduledJob(cursors, Options.Create(new FeedEaterOptions()), new LoopHealth(time), time, NullLogger.Instance)
+        : ScheduledJob(cursors, Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv" }), new LoopHealth(time), time, NullLogger.Instance)
     {
         public List<string> Runs { get; } = [];
         protected override string Name => "counting";

@@ -1,3 +1,40 @@
+# Handoff — feed-eater, current state (2026-10-06 evening, v0.6.0 live)
+
+"continue" means: read this section; the older v0.1 handoff below is history.
+
+- `main` = 73edb31 (v0.6, PR #5 merged; tags v0.2.0, v0.3.0, v0.5.0, v0.6.0; #3 closed unmerged).
+- Next scheduled digest: 2026-10-07 07:30 Kyiv. Check it landed and read the 7-day 👍 rate in its header.
+- Validation table (`docs/specs/2026-10-05-validation.md`): first row due Monday 2026-10-12, still empty.
+- The parked v1 review findings (M1 to M3 in the old section below) were fixed in v0.2.
+- v0.6.0 is deployed (feed-eater#5 merged as 73edb31, tag v0.6.0, homelab-gitops#658 merged as 483cbd8, live at 17:08Z, healthy,
+  0 migrations). It adds /ask with checked citations, free-text replies to items, and the /learn switch.
+- Open check: the first reply to a digest item. The item id is read from the buttons of the replied-to message (no stored
+  map), and the Bot API docs don't say whether `reply_to_message` carries `reply_markup`. If a reply to an item falls through to
+  search, add a sent-message to item table instead.
+- Votes so far: 10 up, 1 down; the learned ranking needs 100 with 10 of each.
+
+## v0.7: anyone can run it (2026-10-06 evening, PR open)
+Spec: `docs/specs/2026-10-06-v0.7-portable.md` (also holds the v0.8 and v0.9 outlines and the integration facts to design v0.9 against).
+Decided with the owner: build all 14 buildable ideas across v0.7 (portable), v0.8 (learns faster) and v0.9 (hooks to the owner's setup);
+no social network or any public publishing; one PR per version.
+- Built by three Sonnet implementers (A decouple, B built-in reader, C setup/doctor), merged on branch `feat/v0.7`, 822 tests green.
+  A real-network smoke test with the example compose file passed: OPML import, three real feeds fetched (64 items), a dead feed
+  recorded as failing, `doctor` and `/ui/setup` agree. Not tried: a real LLM key and Telegram bot (the stranger test's first digest).
+- Deploy order for the owner (do not skip): 1) merge homelab-gitops#682 (states every value that was a code default; no behaviour
+  change on 0.6.0); 2) tag v0.7.0 after the PR merges; 3) pin 0.7.0 with `scripts/pin-image.sh --pr feed-eater 0.7.0`;
+  4) `hz deployed`, then `doctor` in the container must show no FAIL and the feed source in Miniflux mode.
+- Decisions changed while building (spec section "Built differently"): `Llm:BaseUrl` carries `/v1/`; `Ideas:Sink=auto`; migration 0010
+  does not rewrite existing items (a rewrite touches every vector index entry at startup); `Source:PollInterval` default 1 minute so a
+  new feed is fetched within a minute or two; new `Llm:EmbedDimensions` sends the `dimensions` parameter.
+- Follow-ups: `config/watch.example.json` is still the owner's 63-row list (replace with a neutral 5-row example once the owner's list
+  is mounted from homelab-gitops, which #682 does); `compose.example.yaml` pins `0.7.0`, which exists only after the release; CI's
+  multi-platform build has not run on GitHub yet; Hindsight ping path `GET v1/default/banks` is unverified; doctor shows Miniflux twice
+  in Miniflux mode.
+- v0.8 and v0.9: not started. Start v0.8 from the spec outline (Duel first, then Shipped-it, Backlog bloodhound, Follow this story,
+  Hype autopsy, Taste map) with a spec of its own, as for v0.7.
+
+---
+
 # Handoff — feed-eater (2026-10-05, Tasks 0–16 merged, Task 17 deployed except Telegram token and Miniflux cleanup)
 
 ## Goal

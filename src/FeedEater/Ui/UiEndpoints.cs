@@ -1,3 +1,4 @@
+using FeedEater.Sources;
 using FeedEater.Storage;
 
 namespace FeedEater.Ui;
@@ -93,11 +94,13 @@ public static class UiEndpoints
         secured.MapGet("/releases", h.ReleasesAsync);
         secured.MapGet("/ideas", h.IdeasAsync);
         secured.MapGet("/usage", h.UsageAsync);
+        secured.MapGet("/setup", app.ServiceProvider.GetRequiredService<SetupHandler>().GetAsync);
         secured.MapPost("/vote", h.VoteAsync);
         secured.MapPost("/feeds/mute", h.MuteFeedAsync);
         secured.MapPost("/digest/run", h.RunDigestAsync);
         secured.MapPost("/quiet", h.QuietAsync);
         secured.MapPost("/logout", UiHandlers.Logout);
+        app.ServiceProvider.GetService<SourcesUi>()?.Map(secured);
         return app;
     }
 }

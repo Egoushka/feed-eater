@@ -37,17 +37,33 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         await _app.DisposeAsync();
     }
 
-    private WebApplicationFactory<Program> Factory(string token, bool telegram = false) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
-            .UseSetting("ConnectionStrings:FeedEater", pg.ConnectionString)
-            .UseSetting("Mcp:Token", token)
-            .UseSetting("FeedEater:RunJobs", telegram ? "true" : "false")
-            .UseSetting("FeedEater:Telegram:Token", telegram ? "123:test" : "")
-            .UseSetting("FeedEater:Llm:BaseUrl", "http://127.0.0.1:9/")
-            .UseSetting("FeedEater:Llm:MonthlyBudget", "5")
-            .UseSetting("FeedEater:Karakeep:BaseUrl", "http://127.0.0.1:9/")   // nothing listens: saving reports Karakeep as down
-            .UseSetting("FeedEater:Karakeep:Token", token.Length > 0 ? "k" : "")
-            .ConfigureTestServices(s => s.RemoveAll<IHostedService>()));
+    /// <summary><paramref name="settings"/> are applied last, so they override the defaults below.</summary>
+    private WebApplicationFactory<Program> Factory(string token, bool telegram = false, params (string Key, string Value)[] settings) =>
+        new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            (string Key, string Value)[] defaults =
+            [
+                ("ConnectionStrings:FeedEater", pg.ConnectionString),
+                ("Mcp:Token", token),
+                ("FeedEater:RunJobs", telegram ? "true" : "false"),
+                ("FeedEater:Telegram:Token", telegram ? "123:test" : ""),
+                ("FeedEater:Llm:BaseUrl", "http://127.0.0.1:9/"),
+                ("FeedEater:Llm:MonthlyBudget", "5"),
+                ("FeedEater:Karakeep:BaseUrl", "http://127.0.0.1:9/"),   // nothing listens: saving reports Karakeep as down
+                ("FeedEater:Karakeep:Token", token.Length > 0 ? "k" : ""),
+                ("FeedEater:Plane:BaseUrl", "http://127.0.0.1:9/"),
+                ("FeedEater:Plane:Token", "p"),
+                ("FeedEater:Plane:Workspace", "homelab"),
+                ("FeedEater:Watch:FallbackPath", Path.Combine(AppContext.BaseDirectory, "config", "watch.example.json")),
+                ("FeedEater:ProfilePath", "Fixtures/profile.json"),
+            ];
+            foreach (var (key, value) in defaults.Concat(settings))
+            {
+                b.UseSetting(key, value);
+            }
+
+            b.ConfigureTestServices(s => s.RemoveAll<IHostedService>());
+        });
 
     private static HttpClient Client(WebApplicationFactory<Program> app) =>
         app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
@@ -921,5 +937,56 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         await PostAsync("/ui/quiet", cookie, ("mode", "off"));
         Assert.Contains("Turn quiet mode on", await GetAsync("/ui", cookie), StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/ui/quiet", cookie, ("mode", "sideways"))).StatusCode);
+    }
+    [Fact]
+    public async Task Without_Plane_or_Karakeep_the_idea_button_saves_locally_and_the_save_button_is_gone()
+    {
+        await using var app = Factory(Token, false, ("FeedEater:Plane:BaseUrl", ""), ("FeedEater:Karakeep:BaseUrl", ""));
+        var http = Client(app);
+        var (item, _) = await SeedDigestAsync();
+        var cookie = await LoginAsync(http);
+        var page = await (await http.SendAsync(Req(HttpMethod.Get, "/ui", cookie))).Content.ReadAsStringAsync();
+
+        Assert.Contains("💡 Save idea", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("File to Plane", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("📌 Save", page, StringComparison.Ordinal);
+
+        var response = await http.SendAsync(Req(HttpMethod.Post, "/ui/vote", cookie, "http://localhost",
+            [new("_csrf", CsrfOf(page)), new("item", item.ToString()), new("v", "idea"), new("back", "/ui#item-1")]));
+
+        Assert.Equal("/ui?notice=saved-idea#item-1", response.Headers.Location!.OriginalString);
+        var idea = (await new FeedbackStore(pg.Db).GetIdeaAsync(item, default))!;
+        Assert.Equal(("inbox", ""), (idea.PlaneProject, idea.PlaneIssueId));
+        var after = await (await http.SendAsync(Req(HttpMethod.Get, "/ui?notice=saved-idea", cookie))).Content.ReadAsStringAsync();
+        Assert.Contains("Saved as an idea.", after, StringComparison.Ordinal);
+        Assert.Contains("Upgrade the box.", await (await http.SendAsync(Req(HttpMethod.Get, "/ui/ideas", cookie))).Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_usage_page_says_cost_unknown_instead_of_showing_a_call_without_a_price_as_free()
+    {
+        var usage = new UsageStore(pg.Db);
+        await usage.AddAsync("triage", "gpt-4.1-nano", 100, 20, null, default);
+        var cookie = await LoginAsync();
+
+        var onlyUnknown = await GetAsync("/ui/usage", cookie);
+        Assert.Contains("cost unknown", onlyUnknown, StringComparison.Ordinal);
+        Assert.Contains(">120<", onlyUnknown, StringComparison.Ordinal);   // tokens still shown
+
+        await usage.AddAsync("read", "gpt-4.1-mini", 10, 10, 0.5m, default);
+        var mixed = await GetAsync("/ui/usage", cookie);
+        Assert.Contains("$0.50", mixed, StringComparison.Ordinal);
+        Assert.Contains("1 calls of unknown cost", mixed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_missing_profile_file_shows_the_example_interests_notice_on_every_page()
+    {
+        await using var app = Factory(Token, false, ("FeedEater:ProfilePath", "/nope/profile.json"));
+        var http = Client(app);
+        var cookie = await LoginAsync(http);
+
+        Assert.Contains("Using the example interests; edit /nope/profile.json", await (await http.SendAsync(Req(HttpMethod.Get, "/ui/ideas", cookie))).Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Using the example interests", await GetAsync("/ui/ideas", await LoginAsync()), StringComparison.Ordinal);   // the default factory has a profile
     }
 }

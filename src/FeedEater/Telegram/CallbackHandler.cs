@@ -38,7 +38,7 @@ public sealed class CallbackHandler(
                 }
 
                 await RefreshButtonsAsync(callback, idea.ItemId, ct);
-                await telegram.AnswerAsync(callback.Id, $"Filed in {project}", ct);
+                await telegram.AnswerAsync(callback.Id, ideas.Sink.Filed(project), ct);
                 break;
 
             case SaveCallback save:
@@ -73,7 +73,7 @@ public sealed class CallbackHandler(
             return SaveOutcome.NoItem;
         }
 
-        if (options.Value.Karakeep.Token.Length == 0)
+        if (!options.Value.Karakeep.Enabled)
         {
             return SaveOutcome.NotConfigured;
         }
@@ -143,7 +143,7 @@ public sealed class CallbackHandler(
         try
         {
             await telegram.EditButtonsAsync(callback.ChatId, callback.MessageId,
-                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved), ct);
+                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved, ButtonStyle.From(options.Value)), ct);
         }
         catch (TelegramException ex) when (ex.Message.Contains("not modified", StringComparison.OrdinalIgnoreCase))
         {

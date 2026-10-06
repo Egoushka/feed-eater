@@ -40,7 +40,7 @@ public sealed class PromptsTests
         foreach (var system in new[] { triage, read })
         {
             Assert.Contains("Never call a project or product new, recent", system, StringComparison.Ordinal);
-            Assert.Contains("new to his stack, not new in the world", system, StringComparison.Ordinal);
+            Assert.Contains("new to the reader's stack, not new in the world", system, StringComparison.Ordinal);
         }
 
         Assert.Contains("showing off their own tool is not evidence", read, StringComparison.Ordinal);

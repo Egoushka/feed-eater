@@ -8,7 +8,7 @@ public sealed record WatchedProduct(string Repo, IReadOnlyList<string> Services,
 
 /// <summary>
 /// What the owner runs. Primary: PINS.md from a file path or an HTTPS URL (the GitHub contents API works with an optional token).
-/// Fallback when that is unset or fails: the static watch.json shipped with the app. The image-to-upstream map is watch-map.json.
+/// Fallback when that is unset or fails: the static list at Watch:FallbackPath (config/watch.example.json shows the shape). The image-to-upstream map is watch-map.json.
 /// Read on every call, so a change needs no restart.
 /// </summary>
 public sealed class WatchSource(HttpClient http, IOptions<FeedEaterOptions> options, ILogger<WatchSource> logger)
@@ -81,7 +81,12 @@ public sealed class WatchSource(HttpClient http, IOptions<FeedEaterOptions> opti
 
     private IReadOnlyList<Pinned> FromFallback(WatchOptions o)
     {
-        var path = o.FallbackPath.Length > 0 ? o.FallbackPath : Path.Combine(Dir, "watch.json");
+        var path = o.FallbackPath;
+        if (path.Length == 0)
+        {
+            return [];
+        }
+
         try
         {
             var rows = JsonSerializer.Deserialize<List<Pinned>>(File.ReadAllText(path), Json.Options);

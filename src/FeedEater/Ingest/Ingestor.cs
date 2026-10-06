@@ -3,15 +3,16 @@ using Microsoft.Extensions.Options;
 using FeedEater.Fetch;
 using FeedEater.Llm;
 using FeedEater.Loops;
+using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Text;
 
 namespace FeedEater.Ingest;
 
-/// <summary>Copies new Miniflux entries into the archive, then embeds every row that has no vector yet.</summary>
+/// <summary>Copies new Miniflux entries into the archive (or, with the built-in reader, fetches the due feeds), then embeds every row that has no vector yet.</summary>
 public sealed class Ingestor(
     MinifluxClient miniflux, ItemStore items, StoryClusterer clusterer, FeedDiscoverer discovery, PageEnricher pages, LiteLlmClient llm, IOptions<FeedEaterOptions> options,
-    LoopHealth health, TimeProvider time, ILogger<Ingestor> logger)
+    LoopHealth health, TimeProvider time, ILogger<Ingestor> logger, FeedPoller? feeds = null)
     : PollingLoop(health, time, logger)
 {
     public const string LoopName = "miniflux";
@@ -20,12 +21,12 @@ public sealed class Ingestor(
     private const int RetryChars = 2000;
     private readonly HashSet<long> skipped = [];
 
-    protected override string Name => LoopName;
-    protected override TimeSpan Interval => options.Value.Miniflux.PollInterval;
+    protected override string Name => feeds is null ? LoopName : FeedPoller.LoopName;
+    protected override TimeSpan Interval => feeds is null ? options.Value.Miniflux.PollInterval : options.Value.Source.PollInterval;
 
     protected override async Task PollAsync(CancellationToken ct)
     {
-        var added = await IngestAsync(ct);
+        var added = feeds is null ? (options.Value.Miniflux.Enabled ? await IngestAsync(ct) : 0) : await feeds.RunAsync(ct);
         var embedded = await EmbedSafelyAsync(ct);
         var assigned = await items.AssignProfileKeysAsync(ct);
         var linked = await clusterer.RunAsync(ct);

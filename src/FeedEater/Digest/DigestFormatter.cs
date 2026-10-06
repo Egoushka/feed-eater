@@ -20,10 +20,21 @@ public sealed record DigestItem
     public IReadOnlyList<ClusterMember> AlsoIn { get; init; } = [];
 }
 
-/// <summary><c>MonthSpend</c> is spend since the 1st of the current month; <c>WeekUpRate</c> is the 👍 share of the last 7 days' votes, null when there were none.</summary>
+/// <summary>
+/// <c>MonthSpend</c> is the known spend since the 1st of the current month and <c>UnpricedCalls</c> the calls in it whose cost is unknown;
+/// <c>WeekUpRate</c> is the 👍 share of the last 7 days' votes, null when there were none.
+/// </summary>
 public sealed record DigestHeader(
     DateOnly Date, int Shown, int Candidates, IReadOnlyList<(string Key, int Count)> ByProject,
-    int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes, IReadOnlyList<string>? Releases = null);
+    int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes, IReadOnlyList<string>? Releases = null, int UnpricedCalls = 0);
+
+/// <summary>Which optional buttons a surface offers: 📌 needs Karakeep, and 💡 says where the idea goes.</summary>
+public sealed record ButtonStyle(bool CanSave, bool ToPlane)
+{
+    public static readonly ButtonStyle Default = new(true, true);
+
+    public static ButtonStyle From(FeedEaterOptions o) => new(o.Karakeep.Enabled, o.IdeaSink == IdeasOptions.PlaneSink);
+}
 
 /// <summary>
 /// Telegram HTML. Every field is escaped and clipped so the visible text stays under 4,096 characters
@@ -44,7 +55,7 @@ public static class DigestFormatter
             sb.Append('\n').Append(string.Join(" · ", h.ByProject.Select(p => string.Create(CultureInfo.InvariantCulture, $"{E(p.Key)} {p.Count}"))));
         }
 
-        sb.Append(CultureInfo.InvariantCulture, $"\nYesterday 👍 {h.VotesUp} · 👎 {h.VotesDown} · spend this month ${h.MonthSpend.ToString("0.00", CultureInfo.InvariantCulture)}");
+        sb.Append(CultureInfo.InvariantCulture, $"\nYesterday 👍 {h.VotesUp} · 👎 {h.VotesDown} · spend this month {Spend(h.MonthSpend, h.UnpricedCalls)}");
         if (h.WeekUpRate is { } rate)
         {
             sb.Append(CultureInfo.InvariantCulture, $"\n7-day 👍 rate {Math.Round(rate * 100, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture)}%");
@@ -72,7 +83,7 @@ public static class DigestFormatter
         return new OutMessage(sb.ToString());
     }
 
-    public static OutMessage Item(DigestItem i, short? vote, string? filedIn)
+    public static OutMessage Item(DigestItem i, short? vote, string? filedIn, ButtonStyle? style = null)
     {
         var title = E(Clip(i.Title, 300));
         var link = IsLinkable(i.Url) ? $"<a href=\"{E(i.Url)}\">{title}</a>" : title;
@@ -97,11 +108,11 @@ public static class DigestFormatter
             }
         }
 
-        return new OutMessage(html.ToString(), Buttons(i.Id, i.Suggestion is not null, vote, filedIn));
+        return new OutMessage(html.ToString(), Buttons(i.Id, i.Suggestion is not null, vote, filedIn, style: style));
     }
 
     /// <summary>One search hit as its own message, with the same buttons as a digest item.</summary>
-    public static OutMessage Result(SearchHit h, string publishedLocal)
+    public static OutMessage Result(SearchHit h, string publishedLocal, ButtonStyle? style = null)
     {
         var title = E(Clip(h.Title, 300));
         var link = IsLinkable(h.Url) ? $"<a href=\"{E(h.Url)}\">{title}</a>" : title;
@@ -112,30 +123,40 @@ public static class DigestFormatter
             html.Append("\n\n").Append(E(Clip(h.Summary.Trim(), 240)));
         }
 
-        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn, h.Saved));
+        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn, h.Saved, style));
     }
 
-    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn, bool saved = false)
+    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn, bool saved = false, ButtonStyle? style = null)
     {
-        var rows = new List<IReadOnlyList<Button>>
+        style ??= ButtonStyle.Default;
+        var first = new List<Button>
         {
-            new[]
-            {
-                new Button(vote == 1 ? "👍 ✓" : "👍", CallbackData.Vote(id, 1)),
-                new Button(vote == -1 ? "👎 ✓" : "👎", CallbackData.Vote(id, -1)),
-                saved ? new Button("📌 Saved ✓", CallbackData.Noop) : new Button("📌 Save", CallbackData.Save(id)),
-            },
+            new(vote == 1 ? "👍 ✓" : "👍", CallbackData.Vote(id, 1)),
+            new(vote == -1 ? "👎 ✓" : "👎", CallbackData.Vote(id, -1)),
         };
+        if (style.CanSave)
+        {
+            first.Add(saved ? new Button("📌 Saved ✓", CallbackData.Noop) : new Button("📌 Save", CallbackData.Save(id)));
+        }
+
+        var rows = new List<IReadOnlyList<Button>> { first };
         if (filedIn is not null)
         {
-            rows.Add(new[] { new Button($"✓ Filed in {filedIn}", CallbackData.Noop) });
+            rows.Add(new[] { new Button(style.ToPlane ? $"✓ Filed in {filedIn}" : "✓ Saved as an idea", CallbackData.Noop) });
         }
         else if (hasSuggestion)
         {
-            rows.Add(new[] { new Button("💡 To Plane", CallbackData.Idea(id)) });
+            rows.Add(new[] { new Button(style.ToPlane ? "💡 To Plane" : "💡 Save idea", CallbackData.Idea(id)) });
         }
 
         return rows;
+    }
+
+    /// <summary>A call with no cost header and no price is "unknown", never counted as free.</summary>
+    internal static string Spend(decimal known, int unpriced)
+    {
+        var money = "$" + known.ToString("0.00", CultureInfo.InvariantCulture);
+        return unpriced == 0 ? money : known == 0 ? "unknown" : $"{money} and {unpriced} calls of unknown cost";
     }
 
     private static string E(string text) => WebUtility.HtmlEncode(text);

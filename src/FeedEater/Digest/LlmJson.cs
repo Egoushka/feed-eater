@@ -76,7 +76,7 @@ public static class LlmJson
         return new ReleaseNote(changes, breaking is "yes" or "no" ? breaking : "unknown", Text(e, "evidence"));
     }
 
-    public static ReplyIntent Reply(string text, IReadOnlyCollection<string> planeProjects)
+    public static ReplyIntent Reply(string text, IReadOnlyCollection<string> projects)
     {
         if (ExtractObject(text) is not { } e || Text(e, "action")?.ToLowerInvariant() is not { } action || !Actions.Contains(action))
         {
@@ -84,7 +84,7 @@ public static class LlmJson
         }
 
         var named = Text(e, "project");
-        var project = named is null ? null : planeProjects.FirstOrDefault(p => string.Equals(p, named, StringComparison.OrdinalIgnoreCase));
+        var project = named is null ? null : projects.FirstOrDefault(p => string.Equals(p, named, StringComparison.OrdinalIgnoreCase));
         return new ReplyIntent(action, project, project is null ? named : null, Text(e, "idea"), Text(e, "question"));
     }
 

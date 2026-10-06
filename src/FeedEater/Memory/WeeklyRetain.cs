@@ -28,14 +28,21 @@ public sealed class WeeklyRetain(
 
         var sunday = DateTime.ParseExact(key, "yyyy-MM-dd", CultureInfo.InvariantCulture);
         var week = string.Create(CultureInfo.InvariantCulture, $"{ISOWeek.GetYear(sunday)}-W{ISOWeek.GetWeekOfYear(sunday):00}");
-        await hindsight.RetainAsync(Settings.Hindsight.Bank, Text(week, report), "feed-eater weekly reading",
-            TimeZoneInfo.ConvertTime(now, Settings.Zone), $"feed-eater-{week}", Tags, ct);
+        try
+        {
+            await hindsight.RetainAsync(Settings.Hindsight.Bank, Text(week, report), "feed-eater weekly reading",
+                TimeZoneInfo.ConvertTime(now, Settings.Zone), $"feed-eater-{week}", Tags, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            Logger.LogWarning(ex, "Hindsight unavailable; the weekly summary for {Week} is skipped", week);
+        }
     }
 
     internal static string Text(string week, WeekReport r)
     {
         var text = string.Create(CultureInfo.InvariantCulture,
-            $"feed-eater week {week}: {r.Digests} digests with {r.Highlights} highlights. Yehor voted up {r.Up}, down {r.Down}.");
+            $"feed-eater week {week}: {r.Digests} digests with {r.Highlights} highlights. The owner voted up {r.Up}, down {r.Down}.");
         if (r.Liked.Count > 0)
         {
             text += $" Liked: {string.Join("; ", r.Liked)}.";
@@ -43,7 +50,7 @@ public sealed class WeeklyRetain(
 
         if (r.Ideas.Count > 0)
         {
-            text += $" Ideas filed in Plane: {string.Join("; ", r.Ideas.Select(i => $"{i.Title} ({i.PlaneProject})"))}.";
+            text += $" Ideas filed: {string.Join("; ", r.Ideas.Select(i => $"{i.Title} ({i.PlaneProject})"))}.";
         }
 
         return text;

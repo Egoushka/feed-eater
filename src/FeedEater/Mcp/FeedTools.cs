@@ -12,10 +12,10 @@ namespace FeedEater.Mcp;
 public sealed class FeedTools(ArchiveSearch search, ItemStore items, DigestStore digests, FeedbackStore feedback)
 {
     [McpServerTool(Name = "feed_search", ReadOnly = true)]
-    [Description("Search Yehor's research archive: every item from his feeds (tech news, blogs, releases, Ukrainian tech), with an AI summary where one was written. Matches by meaning and by keywords. Optional filters: project or topic key, kind (improve, new, fyi), published range. Returns id, title, url, feed, date, summary, project, kind, his vote.")]
+    [Description("Search the owner's research archive: every item from their feeds (news, blogs, releases), with an AI summary where one was written. Matches by meaning and by keywords. Optional filters: project or topic key, kind (improve, new, fyi), published range. Returns id, title, url, feed, date, summary, project, kind, the owner's vote.")]
     public async Task<string> SearchAsync(
         [Description("What to look for, in words.")] string query,
-        [Description("Project or topic key, e.g. homelab, chargehand, postgres.")] string? project = null,
+        [Description("Project or topic key from the owner's profile.")] string? project = null,
         [Description("improve, new or fyi.")] string? kind = null,
         [Description("Published at or after, ISO 8601.")] DateTimeOffset? from = null,
         [Description("Published before, ISO 8601.")] DateTimeOffset? to = null,
@@ -31,7 +31,7 @@ public sealed class FeedTools(ArchiveSearch search, ItemStore items, DigestStore
     }
 
     [McpServerTool(Name = "feed_read", ReadOnly = true)]
-    [Description("One archived item in full: text, triage verdict, AI summary and suggestion, Yehor's vote, and the Plane project it was filed in.")]
+    [Description("One archived item in full: text, triage verdict, AI summary and suggestion, the owner's vote, and the project it was filed in.")]
     public async Task<string> ReadAsync([Description("Item id from feed_search or feed_digest.")] long id, CancellationToken ct = default) =>
         Json(await items.GetAsync(id, ct) ?? throw new McpProtocolException($"no item with id {id}.", McpErrorCode.InvalidParams));
 
@@ -52,9 +52,9 @@ public sealed class FeedTools(ArchiveSearch search, ItemStore items, DigestStore
     }
 
     [McpServerTool(Name = "feed_ideas", ReadOnly = true)]
-    [Description("Ideas Yehor filed from digests into Plane Intake, newest first, with the Plane project and the source item id.")]
+    [Description("Ideas the owner filed from digests, newest first, with the project (a Plane project when Plane is the idea sink) and the source item id.")]
     public async Task<string> IdeasAsync(
-        [Description("Plane project identifier, e.g. LAB, SKAR, FEED.")] string? planeProject = null,
+        [Description("Project identifier to filter by.")] string? planeProject = null,
         [Description("At most this many, 1 to 50; default 20.")] int limit = 20,
         CancellationToken ct = default) =>
         Json(await feedback.IdeasAsync(planeProject, Math.Clamp(limit, 1, 50), ct));

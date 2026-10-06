@@ -17,6 +17,11 @@ public sealed class PageEnricher(
     public async Task<int> RunAsync(CancellationToken ct)
     {
         var o = options.Value.Fetch;
+        if (!o.Enabled)
+        {
+            return 0;
+        }
+
         var done = 0;
         foreach (var p in await items.PendingLinksAsync(time.GetUtcNow().AddDays(-3), o.ShortChars, o.MaxPerPoll, ct))
         {

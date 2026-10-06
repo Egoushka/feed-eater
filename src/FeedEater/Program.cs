@@ -1,6 +1,8 @@
 using FeedEater;
 using FeedEater.Eval;
 using FeedEater.Mcp;
+using FeedEater.Setup;
+using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Ui;
 using Microsoft.Extensions.Options;
@@ -17,6 +19,16 @@ if (args.FirstOrDefault() == "taste")
     return await TasteCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "doctor")
+{
+    return await DoctorCommand.RunAsync(args[1..]);
+}
+
+if (args.FirstOrDefault() == "import-opml")
+{
+    return await ImportOpmlCommand.RunAsync(args[1..]);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, logging) => logging
     .ReadFrom.Configuration(context.Configuration)
@@ -24,6 +36,12 @@ builder.Host.UseSerilog((context, logging) => logging
 builder.Services.AddFeedEater(builder.Configuration);
 
 var app = builder.Build();
+var feedEater = app.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
+if (feedEater.Source.KindProblem is { } kindProblem)
+{
+    throw new InvalidOperationException(kindProblem);
+}
+
 app.Services.GetRequiredService<DatabaseMigrator>().Run();
 
 var token = app.Configuration["Mcp:Token"];
@@ -32,10 +50,14 @@ if (string.IsNullOrEmpty(token))
     app.Logger.LogWarning("Mcp:Token is not set; /mcp refuses every request");
 }
 
-var feedEater = app.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
 if (feedEater.RunJobs && feedEater.Telegram.Token.Length == 0)
 {
     app.Logger.LogWarning("FeedEater:Telegram:Token is not set; the digest and the Telegram poller are off");
+}
+
+if (feedEater.Telegram.Token.Length > 0 && feedEater.Telegram.AllowedUserId == 0)
+{
+    app.Logger.LogWarning("FeedEater:Telegram:AllowedUserId is 0: the bot only answers /start, with your Telegram id; set it and restart");
 }
 
 app.MapGet("/healthz", async (FeedDb db, CancellationToken ct) => await db.PingAsync(ct) ? Results.Ok() : Results.StatusCode(503));

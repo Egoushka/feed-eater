@@ -6,23 +6,31 @@ using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Ranking;
 using FeedEater.Search;
+using FeedEater.Sources;
 
 namespace FeedEater.Telegram;
 
 /// <summary>
-/// /digest and /digest resend, /search text, /ask question, /quiet, /learn, plain text as a search (or, ending in "?", a question),
-/// and replies to an item, from the allowed user only; anyone else is ignored without a reply. Each search hit is its own message so
+/// /digest and /digest resend, /search text, /ask question, /quiet, /learn, /feeds, plain text as a search (or, ending in "?", a question),
+/// and replies to an item, from the allowed user only; anyone else is ignored without a reply. While no user is allowed yet
+/// (<c>AllowedUserId</c> 0) only /start is answered, with the sender's own id. Each search hit is its own message so
 /// it carries its own 👍 👎 💡 buttons.
 /// </summary>
 public sealed class CommandHandler(
     TelegramClient telegram, DigestTrigger trigger, QuietHours quiet, ArchiveSearch search, ArchiveAnswer answers, ReplyHandler replies,
-    TasteSwitch taste, IOptions<FeedEaterOptions> options)
+    TasteSwitch taste, IOptions<FeedEaterOptions> options, FeedsCommand? feeds = null)
 {
     private const int MaxResults = 5;
     private const int MaxQuery = 300;
 
     public async Task HandleAsync(TgMessage message, CancellationToken ct)
     {
+        if (options.Value.Telegram.AllowedUserId == 0)
+        {
+            await BootstrapAsync(message, ct);
+            return;
+        }
+
         if (message.FromId != options.Value.Telegram.AllowedUserId || message.Text?.Trim() is not { Length: > 0 } text)
         {
             return;
@@ -76,7 +84,29 @@ public sealed class CommandHandler(
             case "/learn":
                 await LearnAsync(message, words.Length == 2 ? words[1] : null, ct);
                 break;
+            case "/feeds":
+                await ReplyAsync(message, feeds is null
+                    ? "Feeds are managed in Miniflux (FeedEater:Source:Kind is miniflux)."
+                    : await feeds.RunAsync(words.Length == 2 ? words[1] : null, ct), ct);
+                break;
         }
+    }
+
+    /// <summary>
+    /// Nobody is allowed yet, so the bot answers only /start, with the sender's own id and the setting to put it in. The id is not a
+    /// secret and it only tells a sender about themselves; every other message is ignored.
+    /// </summary>
+    private async Task BootstrapAsync(TgMessage message, CancellationToken ct)
+    {
+        if (message.Text?.Trim().Split(' ', 2)[0].Split('@')[0] != "/start" || message.FromId == 0)
+        {
+            return;
+        }
+
+        var id = message.FromId.ToString(CultureInfo.InvariantCulture);
+        await ReplyAsync(message,
+            $"Your Telegram user id is <code>{id}</code>. To make this bot yours, set <code>FeedEater__Telegram__AllowedUserId={id}</code> " +
+            "(the setting FeedEater:Telegram:AllowedUserId) and restart feed-eater. Until then it answers nothing else.", ct);
     }
 
     private async Task DigestAsync(TgMessage message, string? argument, CancellationToken ct)
@@ -154,7 +184,7 @@ public sealed class CommandHandler(
         foreach (var hit in hits)
         {
             var published = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(hit.PublishedAt, DateTimeKind.Utc), zone).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
-            await telegram.SendAsync(message.ChatId, DigestFormatter.Result(hit, published), ct);
+            await telegram.SendAsync(message.ChatId, DigestFormatter.Result(hit, published, ButtonStyle.From(options.Value)), ct);
         }
     }
 

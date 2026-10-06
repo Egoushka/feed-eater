@@ -107,6 +107,8 @@ public sealed class EvalRunnerTests(PostgresFixture pg) : IAsyncLifetime
     private int _calls;
     private string _reply = """{"relevance":3,"project":null,"kind":"new","reason":"r"}""";
     private decimal _cost = 0.01m;
+    private bool _sendCost = true;
+    private LlmOptions _llm = new();
     private HttpStatusCode _status = HttpStatusCode.OK;
 
     public async Task InitializeAsync()
@@ -119,13 +121,17 @@ public sealed class EvalRunnerTests(PostgresFixture pg) : IAsyncLifetime
 
     private EvalRunner Build()
     {
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json" });
+        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Llm = _llm });
         var stub = new StubHandler((_, body) =>
         {
             _calls++;
             var response = StubHandler.Json(
                 JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = _reply } } }, usage = new { prompt_tokens = 10, completion_tokens = 5 } }), _status);
-            response.Headers.Add("x-litellm-response-cost", _cost.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (_sendCost)
+            {
+                response.Headers.Add("x-litellm-response-cost", _cost.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
             return response;
         });
         return new EvalRunner(new EvalStore(pg.Db), new ProfileStore(pg.Db), new LiteLlmClient(stub.Client("http://llm/"), new UsageStore(pg.Db), options), options);
@@ -166,6 +172,34 @@ public sealed class EvalRunnerTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(3, _calls);   // 0.04 + 0.04 + 0.04 reaches the 0.10 limit
         Assert.Contains("Stopped early: the $0.10 limit was reached after 3 of 10 items", report, StringComparison.Ordinal);
         Assert.Contains("Spent $0.1200 of $0.10", report, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Refuses_to_run_when_a_call_comes_back_with_no_cost_header_and_no_price()
+    {
+        await VoteAsync(5, 1, "liked");
+        await VoteAsync(5, -1, "disliked");
+        _sendCost = false;
+
+        var error = await Assert.ThrowsAsync<CostUnknownException>(() => Build().RunAsync(new EvalSettings(10, 0.10m, false, null), default));
+
+        Assert.Contains("gpt-4.1-nano", error.Message, StringComparison.Ordinal);
+        Assert.Contains("FeedEater:Llm:Prices", error.Message, StringComparison.Ordinal);
+        Assert.Equal(1, _calls);   // the first call is the only one spent before it can tell
+    }
+
+    [Fact]
+    public async Task A_configured_price_lets_the_limit_work_without_a_cost_header()
+    {
+        await VoteAsync(5, 1, "liked");
+        await VoteAsync(5, -1, "disliked");
+        _sendCost = false;
+        _llm = new LlmOptions { Prices = { ["gpt-4.1-nano"] = new ModelPrice { Input = 4_000m } } };   // 10 input tokens cost $0.04
+
+        var report = await Build().RunAsync(new EvalSettings(10, 0.10m, false, null), default);
+
+        Assert.Equal(3, _calls);
+        Assert.Contains("Stopped early: the $0.10 limit was reached after 3 of 10 items", report, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -3,16 +3,21 @@ using System.Text;
 using FeedEater.Digest;
 using FeedEater.Fetch;
 using FeedEater.Loops;
+using FeedEater.Profiles;
 using FeedEater.Storage;
 using FeedEater.Watch;
 using static FeedEater.Ui.Html;
 
 namespace FeedEater.Ui;
 
-/// <summary>What every page needs: the anti-forgery value for its forms, the display zone and an optional fixed notice.</summary>
-public sealed record PageContext(string Csrf, TimeZoneInfo Zone, string? Notice);
+/// <summary>
+/// What every page needs: the anti-forgery value for its forms, the display zone and an optional fixed notice. <c>Style</c> says which
+/// optional buttons to show (null: all); <c>ExampleProfile</c> is the profile path to name in a banner while the built-in example is in use.
+/// </summary>
+public sealed record PageContext(string Csrf, TimeZoneInfo Zone, string? Notice, ButtonStyle? Style = null, string? ExampleProfile = null);
 
-public sealed record Figures(decimal MonthSpend, decimal Budget, double? WeekUpRate, VoteCounts Yesterday);
+/// <summary><c>UnpricedCalls</c> counts this month's calls whose cost is unknown; <c>MonthSpend</c> leaves them out.</summary>
+public sealed record Figures(decimal MonthSpend, decimal Budget, double? WeekUpRate, VoteCounts Yesterday, int UnpricedCalls = 0);
 
 /// <summary>The /ui/posts filters as the page shows them; <see cref="Url"/> is the only way a filtered link is built, so nothing raw is reflected.</summary>
 public sealed record PostsQuery(string? Category, long? Feed, string? Project, string? Kind, bool Unrated, bool Summary, int Days, bool ShowMuted = false)
@@ -54,18 +59,20 @@ public sealed record SourceRow(SourceStats Stats, string? Flag)
 /// Server-rendered pages. Every dynamic value goes through <see cref="Html.E"/>; links to feed URLs go through
 /// <see cref="Html.External"/>. There is no script, so the page needs no inline handler and the CSP allows none.
 /// </summary>
-public static class UiPages
+public static partial class UiPages
 {
     private static readonly (string Path, string Label)[] Nav =
     [
         ("/ui", "Today"), ("/ui/posts", "Posts"), ("/ui/feedback", "Feedback"), ("/ui/search", "Search"), ("/ui/digests", "Digests"), ("/ui/weekly", "Weekly"),
         ("/ui/sources", "Sources"), ("/ui/releases", "Releases"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
+        ("/ui/setup", "Setup"),
     ];
 
     private static readonly Dictionary<string, string> Notices = new()
     {
         ["filed"] = "Filed in Plane.",
-        ["file-failed"] = "Not filed: Plane did not accept it, or the item has no suggestion.",
+        ["saved-idea"] = "Saved as an idea.",
+        ["file-failed"] = "Not filed: the idea sink did not accept it, or the item has no suggestion.",
         ["queued"] = "Digest queued; it starts within a minute.",
         ["queued-resend"] = "Queued: today's digest will be sent again within a minute.",
         ["saved"] = "Saved to Karakeep.",
@@ -372,7 +379,7 @@ public static class UiPages
         return Layout(p, "Digests", "/ui/digests", h.ToString());
     }
 
-    public static string Sources(PageContext p, IReadOnlyList<SourceRow> rows, string sort, bool desc, bool flaggedOnly, IReadOnlyList<SuggestedFeed>? suggestions = null)
+    public static string Sources(PageContext p, IReadOnlyList<SourceRow> rows, string sort, bool desc, bool flaggedOnly, IReadOnlyList<SuggestedFeed>? suggestions = null, string? panel = null)
     {
         var h = new StringBuilder("<h1>Sources</h1><p class=\"meta\">Items published in the last 30 days, per Miniflux feed. Muting a feed keeps it ingested and searchable but leaves it out of digests and the Today brief.</p>");
         h.Append(flaggedOnly
@@ -381,6 +388,7 @@ public static class UiPages
         if (rows.Count == 0)
         {
             h.Append("<p class=\"empty\">No feeds.</p>");
+            h.Append(panel);
             Suggested(h, suggestions ?? []);
             return Layout(p, "Sources", "/ui/sources", h.ToString());
         }
@@ -413,6 +421,7 @@ public static class UiPages
         }
 
         h.Append("</tbody></table></div>");
+        h.Append(panel);
         Suggested(h, suggestions ?? []);
         return Layout(p, "Sources", "/ui/sources", h.ToString());
     }
@@ -534,7 +543,7 @@ public static class UiPages
         var h = new StringBuilder("<h1>Releases</h1><p class=\"meta\">Products you run (from PINS.md), matched to release feeds. Nothing is applied for you.</p>");
         if (watched.Count == 0)
         {
-            h.Append("<p class=\"empty\">Nothing is watched. Set FeedEater:Watch:Source or ship config/watch.json.</p>");
+            h.Append("<p class=\"empty\">Nothing is watched. Set FeedEater:Watch:Source or FeedEater:Watch:FallbackPath.</p>");
         }
         else
         {
@@ -596,7 +605,7 @@ public static class UiPages
         }
         else
         {
-            h.Append("<div class=\"scroll\"><table><thead><tr><th>Filed</th><th>Plane project</th><th>Idea</th><th>Source item</th></tr></thead><tbody>");
+            h.Append("<div class=\"scroll\"><table><thead><tr><th>Filed</th><th>Project</th><th>Idea</th><th>Source item</th></tr></thead><tbody>");
             foreach (var i in ideas)
             {
                 h.Append($"<tr><td>{E(Local(p, i.At))}</td><td><span class=\"badge\">{E(i.PlaneProject)}</span></td><td>{E(i.Title)}</td>")
@@ -609,10 +618,10 @@ public static class UiPages
         return Layout(p, "Ideas", "/ui/ideas", h.ToString());
     }
 
-    public static string Usage(PageContext p, decimal month, decimal budget, IReadOnlyList<DaySpend> days, IReadOnlyList<PurposeSpend> purposes, decimal total)
+    public static string Usage(PageContext p, decimal month, decimal budget, IReadOnlyList<DaySpend> days, IReadOnlyList<PurposeSpend> purposes, decimal total, int monthUnpriced = 0)
     {
         var h = new StringBuilder("<h1>Usage</h1>");
-        h.Append($"<p class=\"big\">{Money(month)} <span class=\"muted\">this month</span></p>");
+        h.Append($"<p class=\"big\">{SpendText(month, monthUnpriced)} <span class=\"muted\">this month</span></p>");
         if (budget > 0)
         {
             h.Append($"<p><meter min=\"0\" max=\"{Number(budget)}\" value=\"{Number(Math.Min(month, budget))}\" aria-label=\"Month spend against budget\"></meter> {Money(month)} of {Money(budget)} ({Percent((double)(month / budget))})</p>");
@@ -629,7 +638,7 @@ public static class UiPages
             h.Append("<div class=\"scroll\"><table><thead><tr><th>Day</th><th class=\"num\">Spend</th><th class=\"num\">Tokens</th><th></th></tr></thead><tbody>");
             foreach (var d in days)
             {
-                h.Append($"<tr><td>{d.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}</td><td class=\"num\">{Money(d.Cost)}</td><td class=\"num\">{d.Tokens.ToString("N0", CultureInfo.InvariantCulture)}</td>")
+                h.Append($"<tr><td>{d.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}</td><td class=\"num\">{SpendText(d.Cost, d.Unpriced)}</td><td class=\"num\">{d.Tokens.ToString("N0", CultureInfo.InvariantCulture)}</td>")
                     .Append($"<td><meter min=\"0\" max=\"{Number(max)}\" value=\"{Number(d.Cost)}\" aria-label=\"Spend on {d.Day.ToString("d MMM", CultureInfo.InvariantCulture)}\"></meter></td></tr>");
             }
 
@@ -643,10 +652,10 @@ public static class UiPages
         }
         else
         {
-            h.Append("<div class=\"scroll\"><table><thead><tr><th>Purpose</th><th>Model</th><th class=\"num\">Calls</th><th class=\"num\">Spend</th></tr></thead><tbody>");
+            h.Append("<div class=\"scroll\"><table><thead><tr><th>Purpose</th><th>Model</th><th class=\"num\">Calls</th><th class=\"num\">Tokens</th><th class=\"num\">Spend</th></tr></thead><tbody>");
             foreach (var s in purposes)
             {
-                h.Append($"<tr><td>{E(s.Purpose)}</td><td>{E(s.Model)}</td><td class=\"num\">{N(s.Calls)}</td><td class=\"num\">{Money(s.Cost)}</td></tr>");
+                h.Append($"<tr><td>{E(s.Purpose)}</td><td>{E(s.Model)}</td><td class=\"num\">{N(s.Calls)}</td><td class=\"num\">{s.Tokens.ToString("N0", CultureInfo.InvariantCulture)}</td><td class=\"num\">{SpendText(s.Cost, s.Unpriced)}</td></tr>");
             }
 
             h.Append("</tbody></table></div>");
@@ -658,7 +667,7 @@ public static class UiPages
     private static void Stats(StringBuilder h, Figures f)
     {
         h.Append("<dl class=\"stats\">")
-            .Append($"<div><dt>Spend this month</dt><dd>{Money(f.MonthSpend)}{(f.Budget > 0 ? $" <span class=\"muted\">of {Money(f.Budget)}</span>" : "")}</dd></div>")
+            .Append($"<div><dt>Spend this month</dt><dd>{SpendText(f.MonthSpend, f.UnpricedCalls)}{(f.Budget > 0 ? $" <span class=\"muted\">of {Money(f.Budget)}</span>" : "")}</dd></div>")
             .Append($"<div><dt>7-day 👍 rate</dt><dd>{Percent(f.WeekUpRate)}</dd></div>")
             .Append($"<div><dt>Yesterday</dt><dd>👍 {N(f.Yesterday.Up)} · 👎 {N(f.Yesterday.Down)}</dd></div></dl>");
     }
@@ -750,18 +759,25 @@ public static class UiPages
             .Append($"<input type=\"hidden\" name=\"item\" value=\"{N(v.Id)}\"><input type=\"hidden\" name=\"back\" value=\"{E(back)}#item-{N(v.Id)}\">")
             .Append($"<button type=\"submit\" name=\"v\" value=\"up\" aria-pressed=\"{(v.Vote == 1 ? "true" : "false")}\">👍 Like</button>")
             .Append($"<button type=\"submit\" name=\"v\" value=\"down\" aria-pressed=\"{(v.Vote == -1 ? "true" : "false")}\">👎 Dislike</button>");
+        var style = p.Style ?? ButtonStyle.Default;
         if (v.FiledIn is not null)
         {
-            h.Append($"<span class=\"badge good\">Filed in {E(v.FiledIn)}</span>");
+            h.Append($"<span class=\"badge good\">{(style.ToPlane ? $"Filed in {E(v.FiledIn)}" : "Saved as an idea")}</span>");
         }
         else if (v.Suggestion is not null)
         {
-            h.Append("<button type=\"submit\" name=\"v\" value=\"idea\">💡 File to Plane</button>");
+            h.Append($"<button type=\"submit\" name=\"v\" value=\"idea\">{(style.ToPlane ? "💡 File to Plane" : "💡 Save idea")}</button>");
         }
 
-        h.Append(v.Saved
-            ? "<span class=\"badge good\">📌 Saved</span>"
-            : "<button type=\"submit\" name=\"v\" value=\"save\">📌 Save</button>");
+        if (v.Saved)
+        {
+            h.Append("<span class=\"badge good\">📌 Saved</span>");
+        }
+        else if (style.CanSave)
+        {
+            h.Append("<button type=\"submit\" name=\"v\" value=\"save\">📌 Save</button>");
+        }
+
         if (v.Vote is not null)
         {
             h.Append("<button type=\"submit\" name=\"v\" value=\"clear\" class=\"quiet\">Clear vote</button>");
@@ -805,6 +821,11 @@ public static class UiPages
         var notice = p.Notice is not null && Notices.TryGetValue(p.Notice, out var text)
             ? $"<p class=\"notice good\" role=\"status\">{E(text)}</p>"
             : "";
+        if (p.ExampleProfile is not null)
+        {
+            notice += $"<p class=\"notice warn\" role=\"status\">{E(ProfileFile.ExampleNote(p.ExampleProfile))}</p>";
+        }
+
         return Shell(title,
             $"""
             <header class="top"><span class="brand">feed-eater</span>{nav}
@@ -839,6 +860,11 @@ public static class UiPages
     private static string N(long n) => n.ToString(CultureInfo.InvariantCulture);
 
     private static string Number(decimal d) => d.ToString("0.##########", CultureInfo.InvariantCulture);
+
+    /// <summary>A call with no cost header and no configured price is "unknown", never shown as free.</summary>
+    private static string SpendText(decimal known, int unpriced) => unpriced == 0
+        ? Money(known)
+        : known == 0 ? "<span class=\"muted\">cost unknown</span>" : $"{Money(known)} <span class=\"muted\">+ {N(unpriced)} calls of unknown cost</span>";
 
     private static string Money(decimal d) => "$" + (d >= 0.01m || d == 0 ? d.ToString("0.00", CultureInfo.InvariantCulture) : d.ToString("0.0000", CultureInfo.InvariantCulture));
 

@@ -17,7 +17,7 @@ public sealed class QuietHoursTests(PostgresFixture pg) : IAsyncLifetime
     private (QuietHours Quiet, FakeTimeProvider Time) Build(TimeSpan? from, TimeSpan? to, DateTimeOffset now, int manualHours = 12)
     {
         var time = new FakeTimeProvider(now);
-        var options = Options.Create(new FeedEaterOptions { Quiet = new QuietOptions { From = from, To = to, ManualHours = manualHours } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", Quiet = new QuietOptions { From = from, To = to, ManualHours = manualHours } });
         return (new QuietHours(new CursorStore(pg.Db), options, time), time);
     }
 

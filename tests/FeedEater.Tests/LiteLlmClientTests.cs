@@ -11,17 +11,32 @@ public sealed class LiteLlmClientTests
 
     private sealed class Sink : IUsageSink
     {
-        public List<(string Purpose, string Model, int In, int Out, decimal Cost)> Rows { get; } = [];
+        public List<(string Purpose, string Model, int In, int Out, decimal? Cost)> Rows { get; } = [];
 
-        public Task AddAsync(string purpose, string model, int inputTokens, int outputTokens, decimal cost, CancellationToken ct)
+        public Task AddAsync(string purpose, string model, int inputTokens, int outputTokens, decimal? cost, CancellationToken ct)
         {
             Rows.Add((purpose, model, inputTokens, outputTokens, cost));
             return Task.CompletedTask;
         }
     }
 
-    private static LiteLlmClient Client(StubHandler handler, Sink sink) =>
-        new(handler.Client("http://llm/"), sink, Options.Create(new FeedEaterOptions()));
+    private static LiteLlmClient Client(StubHandler handler, Sink sink, LlmOptions? llm = null) =>
+        new(handler.Client("http://llm/v1/"), sink, Options.Create(new FeedEaterOptions { Llm = llm ?? new LlmOptions() }));
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1536, true)]
+    public async Task Embed_sends_the_dimensions_parameter_only_when_configured(int configured, bool sent)
+    {
+        var json = JsonSerializer.Serialize(new { data = new[] { new { index = 0, embedding = TestVectors.OneHot(0) } }, usage = new { prompt_tokens = 1 } });
+        var handler = new StubHandler((_, _) => StubHandler.Json(json));
+
+        await Client(handler, new Sink(), new LlmOptions { EmbedDimensions = configured }).EmbedAsync(["a"], "embed", default);
+
+        var body = JsonSerializer.Deserialize<JsonElement>(handler.Calls.Single().Body);
+        Assert.Equal(sent, body.TryGetProperty("dimensions", out var d) && d.GetInt32() == 1536);
+        Assert.Equal(!sent, !body.TryGetProperty("dimensions", out _));
+    }
 
     [Fact]
     public async Task Embed_returns_unit_vectors_in_input_order_and_records_cost()
@@ -75,8 +90,63 @@ public sealed class LiteLlmClientTests
         var result = await Client(handler, sink).ChatAsync("gpt-4.1-nano", "sys", "user", 200, "triage", default);
 
         Assert.Equal("{\"relevance\":2}", result.Content);
-        Assert.Equal(("triage", "gpt-4.1-nano", 100, 7, 0m), sink.Rows.Single());
+        Assert.Equal(("triage", "gpt-4.1-nano", 100, 7, (decimal?)null), sink.Rows.Single());   // no header, no price: unknown, not free
         Assert.Contains("\"max_tokens\":200", handler.Calls.Single().Body, StringComparison.Ordinal);
+    }
+
+    private static StubHandler ChatReply(string? costHeader = null) => new((_, _) =>
+    {
+        var r = StubHandler.Json("""{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":2000000,"completion_tokens":500000}}""");
+        if (costHeader is not null)
+        {
+            r.Headers.Add("x-litellm-response-cost", costHeader);
+        }
+
+        return r;
+    });
+
+    private static LlmOptions Priced() => new() { Prices = { ["gpt-4.1-nano"] = new ModelPrice { Input = 0.1m, Output = 0.4m } } };
+
+    [Fact]
+    public async Task A_configured_price_estimates_the_cost_when_the_gateway_sends_no_header()
+    {
+        var sink = new Sink();
+
+        var result = await Client(ChatReply(), sink, Priced()).ChatAsync("gpt-4.1-nano", "s", "u", 10, "triage", default);
+
+        Assert.Equal(0.4m, result.Cost);   // 2 M tokens in at 0.10 plus 0.5 M out at 0.40
+        Assert.Equal(0.4m, sink.Rows.Single().Cost);
+    }
+
+    [Fact]
+    public async Task The_gateways_cost_header_wins_over_a_configured_price()
+    {
+        var result = await Client(ChatReply("0.0007"), new Sink(), Priced()).ChatAsync("gpt-4.1-nano", "s", "u", 10, "triage", default);
+
+        Assert.Equal(0.0007m, result.Cost);
+    }
+
+    [Fact]
+    public async Task A_model_without_a_price_or_header_has_an_unknown_cost_and_a_zero_price_is_free()
+    {
+        var sink = new Sink();
+
+        Assert.Null((await Client(ChatReply(), sink, Priced()).ChatAsync("other-model", "s", "u", 10, "triage", default)).Cost);
+        var free = new LlmOptions { Prices = { ["local"] = new ModelPrice() } };
+        Assert.Equal(0m, (await Client(ChatReply(), sink, free).ChatAsync("local", "s", "u", 10, "triage", default)).Cost);
+    }
+
+    [Fact]
+    public async Task Embeddings_are_priced_on_input_tokens_only()
+    {
+        var handler = new StubHandler((_, _) => StubHandler.Json(
+            """{"data":[{"index":0,"embedding":[1,0]}],"usage":{"prompt_tokens":1000000}}"""));
+        var sink = new Sink();
+        var llm = new LlmOptions { Prices = { ["text-embedding-3-small"] = new ModelPrice { Input = 0.02m } } };
+
+        await Client(handler, sink, llm).EmbedAsync(["a"], "embed", default);
+
+        Assert.Equal(0.02m, sink.Rows.Single().Cost);
     }
 
     [Fact]
