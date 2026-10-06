@@ -124,7 +124,13 @@ public sealed class DigestRun(
 
         var byId = candidates.ToDictionary(c => c.Id);
         var keys = profileList.Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
-        var about = ProfileFile.Load(o.ProfilePath).About;
+        var (profile, isExample) = ProfileFile.LoadOrExample(o.ProfilePath);
+        if (isExample)
+        {
+            notes.Add(ProfileFile.ExampleNote(o.ProfilePath));
+        }
+
+        var about = profile.About;
 
         var budgetSpent = false;
         var triaged = new List<(Scored Score, TriageResult Triage)>();
@@ -277,7 +283,7 @@ public sealed class DigestRun(
 
     private async Task<string> FullTextAsync(Candidate c, CancellationToken ct)
     {
-        if (c.Content.Length >= options.Value.Caps.ShortContentChars || c.MinifluxEntryId is not { } entryId)
+        if (c.Content.Length >= options.Value.Caps.ShortContentChars || !options.Value.Miniflux.Enabled || c.MinifluxEntryId is not { } entryId)
         {
             return c.Content;
         }
@@ -320,7 +326,9 @@ public sealed class DigestRun(
         var votes = await feedback.VotesSinceAsync(now.AddDays(-1), ct);
         var week = await feedback.VotesSinceAsync(now.AddDays(-7), ct);
         var weekUpRate = DigestStats.UpRate(week);
-        var spend = await usage.SpendSinceAsync(DigestStats.MonthStart(now, options.Value.Zone), ct);
+        var monthStart = DigestStats.MonthStart(now, options.Value.Zone);
+        var spend = await usage.SpendSinceAsync(monthStart, ct);
+        var unpriced = await usage.UnpricedSinceAsync(monthStart, ct);
         var byProject = shown
             .GroupBy(v => v.Project ?? "other")
             .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
@@ -329,7 +337,8 @@ public sealed class DigestRun(
         var header = DigestFormatter.Header(new DigestHeader(
             DateOnly.ParseExact(d.LocalDate, "yyyy-MM-dd", CultureInfo.InvariantCulture), shown.Count, d.Candidates, byProject,
             votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n'),
-            (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList()));
-        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null))];
+            (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList(), unpriced));
+        var style = ButtonStyle.From(options.Value);
+        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null, style))];
     }
 }

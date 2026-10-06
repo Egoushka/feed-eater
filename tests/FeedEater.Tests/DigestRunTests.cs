@@ -33,6 +33,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private bool _llmDown;
     private bool _readsDown;
     private bool _learn;
+    private string _profilePath = "Fixtures/profile.json";
+    private bool _miniflux = true;
     private System.Net.HttpStatusCode _githubStatus = HttpStatusCode.NotFound;
     private readonly List<string> _readPrompts = [];
     private readonly List<string> _githubCalls = [];
@@ -98,7 +100,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private (DigestRun Run, DigestStore Digests, StubHandler Miniflux) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 }, Taste = new TasteOptions { Learn = _learn } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Telegram = new TelegramOptions { AllowedUserId = 42 }, Taste = new TasteOptions { Learn = _learn } });
         var time = new FakeTimeProvider(Now);
         var miniflux = new StubHandler((_, _) => StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{LongText}</p>" })));
         var llm = new StubHandler((_, body) => body.Contains("\"input\"", StringComparison.Ordinal)
@@ -175,6 +177,43 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_missing_profile_file_uses_the_example_interests_and_the_header_says_so()
+    {
+        _profilePath = "/nope/profile.json";
+        await SeedAsync();
+        var (run, digests, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+        Assert.Contains("Using the example interests; edit /nope/profile.json", _sent[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_header_says_spend_is_unknown_when_no_call_came_with_a_cost()
+    {
+        await SeedAsync();
+        var (run, _, _) = Build();   // the stub model sends no cost header and no price is set
+
+        await run.RunAsync(Today, default);
+
+        Assert.Contains("spend this month unknown", _sent[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Without_Miniflux_the_read_uses_the_feed_text_and_never_calls_it()
+    {
+        await SeedAsync();
+        _miniflux = false;
+        var (run, _, miniflux) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Empty(miniflux.Calls);
+        Assert.Equal(3, _sent.Count);
+    }
+
+    [Fact]
     public async Task An_embedding_outage_is_not_reported_as_a_Miniflux_outage()
     {
         await SeedAsync();
@@ -221,7 +260,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     public async Task A_failed_job_run_keeps_the_digest_retryable_and_reports_once()
     {
         await SeedAsync();
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
         var (run, digests, _) = Build();
         var time = new FakeTimeProvider(Now);
         var notices = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
@@ -397,7 +436,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private (DigestRun Run, DigestStore Digests, DigestJob Job, DigestTrigger Trigger, StubHandler Notices) BuildForced()
     {
         var (run, digests, _) = Build();
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
         var time = new FakeTimeProvider(Evening);
         var notices = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
         return (run, digests, BuildJob(run, digests, notices, options, time), new DigestTrigger(new CursorStore(pg.Db), options, time), notices);
@@ -597,6 +636,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private static IOptions<FeedEaterOptions> QuietOptions() => Options.Create(new FeedEaterOptions
     {
+        TimeZone = "Europe/Kyiv",
         ProfilePath = "Fixtures/profile.json",
         Telegram = new TelegramOptions { AllowedUserId = 42 },
         Quiet = new FeedEater.QuietOptions { From = new TimeSpan(22, 0, 0), To = new TimeSpan(8, 0, 0) },

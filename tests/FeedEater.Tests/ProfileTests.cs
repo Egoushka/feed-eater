@@ -29,6 +29,42 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public void A_missing_profile_file_means_the_built_in_example_and_an_invalid_one_still_fails()
+    {
+        var (example, isExample) = ProfileFile.LoadOrExample("/nope/profile.json");
+        var (file, fromFile) = ProfileFile.LoadOrExample("Fixtures/profile.json");
+
+        Assert.True(isExample);
+        Assert.NotEmpty(example.About);
+        Assert.NotEmpty(example.Projects.Concat(example.Topics));
+        Assert.All(example.Projects, p => Assert.Null(p.Plane));   // an example must never route ideas to a Plane project
+        Assert.False(fromFile);
+        Assert.Equal(3, file.Projects.Count);
+        var broken = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
+        File.WriteAllText(broken, "{}");
+        Assert.ThrowsAny<Exception>(() => ProfileFile.LoadOrExample(broken));
+        Assert.Equal("Using the example interests; edit /config/profile.json", ProfileFile.ExampleNote("/config/profile.json"));
+    }
+
+    [Fact]
+    public async Task The_builder_builds_from_the_example_when_the_profile_file_is_missing()
+    {
+        LiteLlmClient.RetryDelay = TimeSpan.Zero;
+        var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "/nope/profile.json" });
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 5, 1, 0, 0, TimeSpan.Zero));
+        var profiles = new ProfileStore(pg.Db);
+        var builder = new ProfileBuilder(
+            new PlaneClient(new HttpClient(), options), profiles,
+            new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
+            new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<ProfileBuilder>.Instance);
+
+        await builder.TickAsync(default);
+
+        Assert.NotEmpty(await profiles.AllAsync(default));
+    }
+
+    [Fact]
     public void Rejects_duplicate_keys_missing_sections_and_empty_descriptions()
     {
         Assert.Throws<InvalidDataException>(() => ProfileFile.Parse(
@@ -54,7 +90,7 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
             _ => StubHandler.Json("{}", System.Net.HttpStatusCode.InternalServerError),
         });
         var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json" });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "t", Workspace = "homelab" } });
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 5, 1, 0, 0, TimeSpan.Zero)); // 04:00 Kyiv
         var profiles = new ProfileStore(pg.Db);
         var builder = new ProfileBuilder(
@@ -80,7 +116,7 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
         LiteLlmClient.RetryDelay = TimeSpan.Zero;
         var plane = new StubHandler((_, _) => StubHandler.Json("{}"));
         var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json" });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "t", Workspace = "homelab" } });
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 5, 1, 0, 0, TimeSpan.Zero));
         var profiles = new ProfileStore(pg.Db);
         var builder = new ProfileBuilder(

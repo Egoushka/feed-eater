@@ -6,16 +6,17 @@ using FeedEater.Ranking;
 
 namespace FeedEater.Llm;
 
-public sealed record ChatResult(string Content, int InputTokens, int OutputTokens, decimal Cost);
+/// <summary><c>Cost</c> is null when the gateway sent no cost header and <c>Llm:Prices</c> has no entry for the model: unknown, not free.</summary>
+public sealed record ChatResult(string Content, int InputTokens, int OutputTokens, decimal? Cost);
 
 public sealed class BudgetExceededException(string message) : Exception(message);
 
 public interface IUsageSink
 {
-    Task AddAsync(string purpose, string model, int inputTokens, int outputTokens, decimal cost, CancellationToken ct);
+    Task AddAsync(string purpose, string model, int inputTokens, int outputTokens, decimal? cost, CancellationToken ct);
 }
 
-/// <summary>OpenAI-compatible calls through LiteLLM. Every call's tokens and cost go to the usage sink.</summary>
+/// <summary>OpenAI-compatible calls (LiteLLM, OpenAI, others). Every call's tokens and cost go to the usage sink.</summary>
 public sealed class LiteLlmClient(HttpClient http, IUsageSink usage, IOptions<FeedEaterOptions> options)
 {
     private const int Retries = 2;
@@ -27,13 +28,14 @@ public sealed class LiteLlmClient(HttpClient http, IUsageSink usage, IOptions<Fe
     public async Task<IReadOnlyList<float[]>> EmbedAsync(IReadOnlyList<string> inputs, string purpose, CancellationToken ct)
     {
         var model = options.Value.Llm.EmbedModel;
-        using var response = await PostAsync("v1/embeddings", new { model, input = inputs }, ct);
+        using var response = await PostAsync("embeddings", new { model, input = inputs }, ct);
         var body = Json.Parse(await response.Content.ReadAsStringAsync(ct));
         var vectors = body.GetProperty("data").EnumerateArray()
             .OrderBy(d => d.GetProperty("index").GetInt32())
             .Select(d => Vectors.Normalize(d.GetProperty("embedding").EnumerateArray().Select(x => x.GetSingle()).ToArray()))
             .ToList();
-        await usage.AddAsync(purpose, model, Tokens(body, "prompt_tokens"), 0, Cost(response), ct);
+        var tokens = Tokens(body, "prompt_tokens");
+        await usage.AddAsync(purpose, model, tokens, 0, Cost(response, model, tokens, 0), ct);
         if (vectors.Count != inputs.Count)
         {
             throw new InvalidOperationException($"asked for {inputs.Count} embeddings, got {vectors.Count}");
@@ -44,7 +46,7 @@ public sealed class LiteLlmClient(HttpClient http, IUsageSink usage, IOptions<Fe
 
     public async Task<ChatResult> ChatAsync(string model, string system, string user, int maxTokens, string purpose, CancellationToken ct)
     {
-        using var response = await PostAsync("v1/chat/completions", new
+        using var response = await PostAsync("chat/completions", new
         {
             model,
             max_tokens = maxTokens,
@@ -53,7 +55,8 @@ public sealed class LiteLlmClient(HttpClient http, IUsageSink usage, IOptions<Fe
         }, ct);
         var body = Json.Parse(await response.Content.ReadAsStringAsync(ct));
         var content = body.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
-        var result = new ChatResult(content, Tokens(body, "prompt_tokens"), Tokens(body, "completion_tokens"), Cost(response));
+        var (input, output) = (Tokens(body, "prompt_tokens"), Tokens(body, "completion_tokens"));
+        var result = new ChatResult(content, input, output, Cost(response, model, input, output));
         await usage.AddAsync(purpose, model, result.InputTokens, result.OutputTokens, result.Cost, ct);
         return result;
     }
@@ -100,7 +103,10 @@ public sealed class LiteLlmClient(HttpClient http, IUsageSink usage, IOptions<Fe
     private static int Tokens(JsonElement body, string name) =>
         body.TryGetProperty("usage", out var u) && u.TryGetProperty(name, out var t) && t.ValueKind == JsonValueKind.Number ? t.GetInt32() : 0;
 
-    private static decimal Cost(HttpResponseMessage response) =>
+    /// <summary>The gateway's own figure when it sends one, else the configured price, else unknown.</summary>
+    private decimal? Cost(HttpResponseMessage response, string model, int inputTokens, int outputTokens) =>
         response.Headers.TryGetValues("x-litellm-response-cost", out var values)
-        && decimal.TryParse(values.First(), NumberStyles.Float, CultureInfo.InvariantCulture, out var cost) ? cost : 0m;
+        && decimal.TryParse(values.First(), NumberStyles.Float, CultureInfo.InvariantCulture, out var cost)
+            ? cost
+            : options.Value.Llm.Estimate(model, inputTokens, outputTokens);
 }

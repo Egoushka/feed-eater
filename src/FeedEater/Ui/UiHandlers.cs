@@ -206,9 +206,11 @@ public sealed class UiHandlers(
     {
         var now = time.GetUtcNow();
         var since = now.AddDays(-30);
-        var month = await usage.SpendSinceAsync(DigestStats.MonthStart(now, Settings.Zone), ct);
+        var monthStart = DigestStats.MonthStart(now, Settings.Zone);
+        var month = await usage.SpendSinceAsync(monthStart, ct);
         var days = await usage.SpendByDayAsync(since, Settings.TimeZone, ct);
-        return Html(UiPages.Usage(Context(ctx), month, Settings.Llm.MonthlyBudget, days, await usage.SpendByPurposeAsync(since, ct), days.Sum(d => d.Cost)));
+        return Html(UiPages.Usage(Context(ctx), month, Settings.Llm.MonthlyBudget, days, await usage.SpendByPurposeAsync(since, ct), days.Sum(d => d.Cost),
+            await usage.UnpricedSinceAsync(monthStart, ct)));
     }
 
     public async Task<IResult> VoteAsync(HttpContext ctx, CancellationToken ct)
@@ -241,7 +243,7 @@ public sealed class UiHandlers(
                 return SeeOther(ctx, saved is SaveOutcome.Saved or SaveOutcome.AlreadySaved ? back : WithNotice(back, saved == SaveOutcome.NotConfigured ? "save-off" : saved == SaveOutcome.Refused ? "save-refused" : "save-down"));
             case "idea":
                 var (project, _) = await callbacks.FileIdeaAsync(id, ct);
-                return SeeOther(ctx, WithNotice(back, project is null ? "file-failed" : "filed"));
+                return SeeOther(ctx, WithNotice(back, project is null ? "file-failed" : Settings.IdeaSink == IdeasOptions.PlaneSink ? "filed" : "saved-idea"));
             default:
                 return Results.BadRequest();
         }
@@ -299,15 +301,18 @@ public sealed class UiHandlers(
     private async Task<Figures> FiguresAsync(CancellationToken ct)
     {
         var now = time.GetUtcNow();
+        var monthStart = DigestStats.MonthStart(now, Settings.Zone);
         return new Figures(
-            await usage.SpendSinceAsync(DigestStats.MonthStart(now, Settings.Zone), ct), Settings.Llm.MonthlyBudget,
-            DigestStats.UpRate(await feedback.VotesSinceAsync(now.AddDays(-7), ct)), await feedback.VotesSinceAsync(now.AddDays(-1), ct));
+            await usage.SpendSinceAsync(monthStart, ct), Settings.Llm.MonthlyBudget,
+            DigestStats.UpRate(await feedback.VotesSinceAsync(now.AddDays(-7), ct)), await feedback.VotesSinceAsync(now.AddDays(-1), ct),
+            await usage.UnpricedSinceAsync(monthStart, ct));
     }
 
     private PageContext Context(HttpContext ctx)
     {
         var notice = ctx.Request.Query["notice"].ToString();
-        return new PageContext(session.AntiForgery(ctx.Request.Cookies[UiSession.CookieName] ?? ""), Settings.Zone, notice.Length == 0 ? null : notice);
+        return new PageContext(session.AntiForgery(ctx.Request.Cookies[UiSession.CookieName] ?? ""), Settings.Zone, notice.Length == 0 ? null : notice,
+            ButtonStyle.From(Settings), File.Exists(Settings.ProfilePath) ? null : Settings.ProfilePath);
     }
 
     private IResult NotFound(PageContext p) => Html(UiPages.Message(p, "Not found", "There is nothing here."), StatusCodes.Status404NotFound);

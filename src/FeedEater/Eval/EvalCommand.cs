@@ -18,7 +18,17 @@ public static class EvalCommand
         builder.Configuration["FeedEater:RunJobs"] = "false";
         builder.Services.AddFeedEater(builder.Configuration);
         using var host = builder.Build();
-        var report = await host.Services.GetRequiredService<EvalRunner>().RunAsync(settings, CancellationToken.None);
+        string report;
+        try
+        {
+            report = await host.Services.GetRequiredService<EvalRunner>().RunAsync(settings, CancellationToken.None);
+        }
+        catch (CostUnknownException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message);
+            return 1;
+        }
+
         Console.WriteLine(report);
         if (settings.OutPath is not null)
         {
