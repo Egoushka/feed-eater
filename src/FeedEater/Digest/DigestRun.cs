@@ -119,7 +119,7 @@ public sealed class DigestRun(
         var candidates = await items.CandidatesAsync(floor, dayStart, ct);
         var profileList = await profiles.AllAsync(ct);
         var taste = Taste.Build(
-            await feedback.PositiveVectorsAsync(o.Caps.Centroid, ct), await feedback.NegativeVectorsAsync(o.Caps.Centroid, ct),
+            await feedback.PositiveWeightedAsync(o.Caps.Centroid, ct), await feedback.NegativeWeightedAsync(o.Caps.Centroid, ct),
             await feedback.FeedVotesAsync(ct), o.Weights);
         if (await tasteSwitch.IsOnAsync(ct))
         {
