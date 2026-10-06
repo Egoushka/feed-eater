@@ -90,10 +90,13 @@ public static class UiEndpoints
         secured.MapGet("/digest/{date}", h.DigestAsync);
         secured.MapGet("/weekly", (HttpContext c, CancellationToken t) => h.WeeklyAsync(c, null, t));
         secured.MapGet("/weekly/{date}", h.WeeklyAsync);
+        secured.MapGet("/autopsy", (HttpContext c, CancellationToken t) => h.AutopsyAsync(c, null, t));
+        secured.MapGet("/autopsy/{date}", h.AutopsyAsync);
         secured.MapGet("/sources", h.SourcesAsync);
         secured.MapGet("/releases", h.ReleasesAsync);
         secured.MapGet("/ideas", h.IdeasAsync);
         secured.MapGet("/usage", h.UsageAsync);
+        secured.MapGet("/map", app.ServiceProvider.GetRequiredService<MapHandler>().GetAsync);
         secured.MapGet("/setup", app.ServiceProvider.GetRequiredService<SetupHandler>().GetAsync);
         secured.MapPost("/vote", h.VoteAsync);
         secured.MapPost("/feeds/mute", h.MuteFeedAsync);

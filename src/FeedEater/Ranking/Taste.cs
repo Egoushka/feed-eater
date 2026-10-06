@@ -8,12 +8,17 @@ public sealed record Taste(float[]? Positive, float[]? Negative, IReadOnlyDictio
     public static Taste Empty { get; } = new(null, null, new Dictionary<long, double>());
 
     public static Taste Build(
-        IReadOnlyList<float[]> positives, IReadOnlyList<float[]> negatives, IReadOnlyList<FeedVotes> feeds, WeightsOptions w)
+        IReadOnlyList<float[]> positives, IReadOnlyList<float[]> negatives, IReadOnlyList<FeedVotes> feeds, WeightsOptions w) =>
+        Build(positives.Select(v => new WeightedVector(v, 1)).ToList(), negatives.Select(v => new WeightedVector(v, 1)).ToList(), feeds, w);
+
+    /// <summary>The centroids are weighted means; "enough" counts vectors, not weights.</summary>
+    public static Taste Build(
+        IReadOnlyList<WeightedVector> positives, IReadOnlyList<WeightedVector> negatives, IReadOnlyList<FeedVotes> feeds, WeightsOptions w)
     {
         var enough = positives.Count >= w.MinPositives;
         return new Taste(
-            enough ? Vectors.Centroid(positives) : null,
-            enough ? Vectors.Centroid(negatives) : null,
+            enough ? Vectors.WeightedCentroid(positives) : null,
+            enough ? Vectors.WeightedCentroid(negatives) : null,
             feeds.Where(f => f.Up + f.Down >= w.MinFeedVotes).ToDictionary(f => f.FeedId, f => (double)f.Up / (f.Up + f.Down)));
     }
 }

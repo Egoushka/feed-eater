@@ -131,8 +131,15 @@ on those projects. `FeedEater__Ideas__Sink=local` keeps ideas local even with Pl
 **Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). Items get a 📌 button that bookmarks the link,
 and your Karakeep bookmarks count as liked items in the ranking.
 
-**GitHub stars.** Set `FeedEater__GitHub__User`. The public stars of that user count as liked items. No token is used (60 requests
-an hour is enough).
+**GitHub stars.** Set `FeedEater__GitHub__User`. The public stars of that user count as liked items. A token is optional
+(`FeedEater__GitHub__Token`, no scopes needed): without it GitHub allows 60 requests an hour, which is enough for the stars.
+
+**Hype autopsy.** Needs no setting of its own: with `FeedEater__GitHub__User` and a Telegram token set, a daily job records the GitHub
+repo of every 👍 item and a monthly report (`/ui/autopsy`, and Telegram) says what those repos did since; the README has the rules.
+Without `FeedEater__GitHub__Token` the snapshot job stops at 40 requests a run and carries on the next day; set the token to lift that.
+
+**Duel and Follow this story.** Both are on by default, need only the Telegram bot and have no keys to fill; `FeedEater__Duel__Enabled=false`
+and `FeedEater__Follow__Enabled=false` turn them off. The README describes each.
 
 **Hindsight (memory).** Set `FeedEater__Hindsight__BaseUrl` (and `__Token` if the server needs a key). On Sundays at 18:00 a plain
 summary of the week's reading goes to the bank named by `FeedEater__Hindsight__Bank` (default `feed-eater`).
@@ -155,6 +162,13 @@ fetched (never private addresses). `FeedEater__Fetch__MaxPerDay=0` turns it off.
 
 Migrations run when the app starts and only move forward, so a rollback means restoring the backup. A new Postgres major version
 needs a dump and restore; changing the image tag is not enough.
+
+### To a release with duels, follows, the autopsy and vote weights
+
+Migrations 0012 (vote weight), 0014 (duels), 0015 (follows), 0016 (autopsy), 0018 (snapshot failures) and 0019 (duel send failures) run on
+the first start and need no action; there is no 0013 or 0017 on purpose. Existing votes keep weight 1. Duels, follows and the autopsy start on their own once the Telegram bot (and, for the
+autopsy, `FeedEater__GitHub__User`) is set, so a running install begins sending duels at the next 12:30 or 20:30; set
+`FeedEater__Duel__Enabled=false` to avoid that.
 
 ### From v0.6
 

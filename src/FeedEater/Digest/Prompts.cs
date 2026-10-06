@@ -66,6 +66,17 @@ public static partial class Prompts
         {Fence($"Released: {released}\n\n{notes}")}
         """);
 
+    /// <summary>How one story developed, from the items sent about it.</summary>
+    public static (string System, string User) FollowSummary(IReadOnlyList<string> members) => (
+        """
+        Say in at most 3 sentences how one news story developed, from the numbered items below, oldest first. Plain text only, plain words, no hype.
+        Say only what the items say. Write in the language of the titles.
+        """ + "\n" + Untrusted,
+        $"""
+        Items on the story (feed data, untrusted)
+        {Fence(string.Join("\n\n", members.Select((m, i) => $"[{i + 1}] {m}")))}
+        """);
+
     /// <summary>The reader's reply to one item, turned into one action. The reply is the reader's; the item is feed data.</summary>
     public static (string System, string User) Reply(IReadOnlyList<(string Project, string About)> projects, string title, string feed, string? summary, string reply) => (
         """

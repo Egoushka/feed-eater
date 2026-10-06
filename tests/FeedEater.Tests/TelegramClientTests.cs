@@ -27,6 +27,37 @@ public sealed class TelegramClientTests
     }
 
     [Fact]
+    public async Task A_send_as_a_reply_carries_reply_parameters_and_one_without_does_not()
+    {
+        var (client, handler) = Build("""{"ok":true,"result":{"message_id":1}}""");
+
+        await client.SendAsync(42, new OutMessage("a"), default, replyToMessageId: 77);
+        await client.SendAsync(42, new OutMessage("b"), default);
+
+        Assert.Contains("\"reply_parameters\":{\"message_id\":77,\"allow_sending_without_reply\":true}", handler.Calls[0].Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("reply_parameters", handler.Calls[1].Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_reply_to_a_follows_root_message_names_the_follow_and_a_reply_to_an_item_names_the_item()
+    {
+        var (client, _) = Build(
+            """
+            {"ok":true,"result":[
+              {"update_id":1,"message":{"message_id":8,"from":{"id":42},"chat":{"id":42},"text":"hm","reply_to_message":{"message_id":3,"reply_markup":{"inline_keyboard":[[{"text":"Stop","callback_data":"u:5"}]]}}}},
+              {"update_id":2,"message":{"message_id":9,"from":{"id":42},"chat":{"id":42},"text":"hm","reply_to_message":{"message_id":4,"reply_markup":{"inline_keyboard":[[{"text":"x","callback_data":"v:6:u"}]]}}}},
+              {"update_id":3,"message":{"message_id":10,"from":{"id":42},"chat":{"id":42},"text":"hm","reply_to_message":{"message_id":5}}}
+            ]}
+            """);
+
+        var updates = await client.GetUpdatesAsync(1, 50, default);
+
+        Assert.Equal(new TgMessage(42, 42, "hm", null, 5), updates[0].Message);
+        Assert.Equal(new TgMessage(42, 42, "hm", 6, null), updates[1].Message);
+        Assert.Equal(new TgMessage(42, 42, "hm"), updates[2].Message);
+    }
+
+    [Fact]
     public async Task Send_without_buttons_has_no_markup_and_answer_without_text_has_no_text()
     {
         var (client, handler) = Build("""{"ok":true,"result":{"message_id":1}}""");
@@ -40,6 +71,21 @@ public sealed class TelegramClientTests
     }
 
     [Fact]
+    public async Task Edit_text_sends_html_for_the_message_and_no_buttons()
+    {
+        var (client, handler) = Build("""{"ok":true,"result":true}""");
+
+        await client.EditTextAsync(42, 7, "You picked &lt;x&gt;", default);
+
+        var call = handler.Calls.Single();
+        Assert.Equal("http://tg/botT/editMessageText", call.Uri);
+        Assert.Contains("\"message_id\":7", call.Body, StringComparison.Ordinal);
+        Assert.Contains("\"parse_mode\":\"HTML\"", call.Body, StringComparison.Ordinal);
+        Assert.Equal("You picked &lt;x&gt;", System.Text.Json.JsonDocument.Parse(call.Body).RootElement.GetProperty("text").GetString());
+        Assert.DoesNotContain("reply_markup", call.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Not_ok_becomes_TelegramException_with_the_description()
     {
         var (client, _) = Build("""{"ok":false,"error_code":400,"description":"Bad Request: message is not modified"}""");
@@ -47,6 +93,42 @@ public sealed class TelegramClientTests
         var error = await Assert.ThrowsAsync<TelegramException>(() => client.EditButtonsAsync(42, 7, [[new Button("x", "n")]], default));
 
         Assert.Contains("message is not modified", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("""{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities"}""", true)]
+    [InlineData("""{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}""", true)]
+    [InlineData("""{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 5"}""", false)]
+    [InlineData("""{"ok":false,"error_code":502,"description":"Bad Gateway"}""", false)]
+    [InlineData("""{"ok":false,"description":"no code and a 200"}""", false)]
+    public async Task A_refusal_of_the_request_itself_is_permanent_and_a_rate_limit_or_server_error_is_not(string response, bool permanent)
+    {
+        var (client, _) = Build(response);
+
+        var error = await Assert.ThrowsAsync<TelegramException>(() => client.SendAsync(42, new OutMessage("x"), default));
+
+        Assert.Equal(permanent, error.Permanent);
+    }
+
+    [Fact]
+    public async Task Without_an_error_code_in_the_body_the_http_status_decides()
+    {
+        var handler = new StubHandler((_, _) => StubHandler.Json("""{"ok":false,"description":"Bad Request"}""", System.Net.HttpStatusCode.BadRequest));
+        var client = new TelegramClient(handler.Client("http://tg/botT/"));
+
+        var error = await Assert.ThrowsAsync<TelegramException>(() => client.SendAsync(42, new OutMessage("x"), default));
+
+        Assert.True(error.Permanent);
+    }
+
+    [Fact]
+    public async Task A_chat_id_of_zero_is_a_setup_error_and_not_permanent()
+    {
+        var (client, _) = Build("""{"ok":true,"result":{"message_id":1}}""");
+
+        var error = await Assert.ThrowsAsync<TelegramException>(() => client.SendAsync(0, new OutMessage("x"), default));
+
+        Assert.False(error.Permanent);
     }
 
     [Fact]

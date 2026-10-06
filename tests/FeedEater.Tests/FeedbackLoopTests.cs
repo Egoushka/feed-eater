@@ -69,7 +69,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var feedback = new FeedbackStore(pg.Db);
         IIdeaSink sink = _localIdeas ? new LocalIdeaSink() : new PlaneIdeaSink(new PlaneClient(planeStub.Client("http://plane/"), options), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
-        var handler = new CallbackHandler(telegram, feedback, filer, items, new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
+        var handler = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
         // Embeddings fail, so search falls back to keywords; chat answers with the next _chat reply.
         var embedder = new StubHandler((request, body) =>
         {
@@ -181,7 +181,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         await poller.TickAsync(default);
 
         var markup = JsonSerializer.Deserialize<JsonElement>(_telegram.Single(t => t.Method == "editMessageReplyMarkup").Body);
-        Assert.Equal(["👍 ✓", "👎"], markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0].EnumerateArray().Select(b => b.GetProperty("text").GetString()));
+        Assert.Equal(["👍 ✓", "👎", "🧵"], markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0].EnumerateArray().Select(b => b.GetProperty("text").GetString()));
     }
 
     [Fact]
@@ -311,7 +311,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
         await poller.TickAsync(default);
 
-        var today = new DigestTrigger(new CursorStore(pg.Db), Options.Create(new FeedEaterOptions()), TimeProvider.System).Today();
+        var today = new DigestTrigger(new CursorStore(pg.Db), Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv" }), TimeProvider.System).Today();   // the poller's zone: the UTC date differs after local midnight
         Assert.Equal($"{mode}:{today}", await new CursorStore(pg.Db).GetAsync("digest:force", default));
         Assert.Contains("Queued", Assert.Single(_telegram, t => t.Method == "sendMessage").Body, StringComparison.Ordinal);
     }
@@ -668,6 +668,21 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.StartsWith("Nothing found for zzz", Assert.Single(Replies()).Text, StringComparison.Ordinal);
         Assert.Empty(_chatBodies);
+    }
+
+    [Fact]
+    public async Task A_reply_to_a_duel_message_names_no_item_so_it_is_a_plain_search_and_votes_on_nothing()
+    {
+        var a = await Seed.ItemAsync(pg, 1, "Backup tool", TestVectors.OneHot(1));
+        await Seed.ItemAsync(pg, 1, "Other thing", TestVectors.OneHot(2));
+        var (poller, _) = Build();
+        _updates = """{"ok":true,"result":[{"update_id":10,"message":{"message_id":9,"from":{"id":42},"chat":{"id":42},"text":"zzz","reply_to_message":{"message_id":3,"chat":{"id":42},"reply_markup":{"inline_keyboard":[[{"text":"first","callback_data":"d:1:a"},{"text":"second","callback_data":"d:1:b"},{"text":"skip","callback_data":"d:1:s"}]]}}}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.StartsWith("Nothing found for zzz", Assert.Single(Replies()).Text, StringComparison.Ordinal);
+        Assert.Empty(_chatBodies);
+        Assert.Null((await new ItemStore(pg.Db).GetAsync(a, default))!.Vote);
     }
 
     [Fact]

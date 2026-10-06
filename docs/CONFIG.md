@@ -21,6 +21,7 @@ An integration is off until its required settings are filled. An off integration
 | Plane | `Plane:BaseUrl`, `Plane:Token` and `Plane:Workspace` | Ideas go to the local list (see `Ideas:Sink`); open Plane work is not read into project vectors. |
 | Karakeep | `Karakeep:BaseUrl` and `Karakeep:Token` | No 📌 button and no bookmark import. |
 | GitHub stars | `GitHub:User` | No stars import. |
+| Hype autopsy | `GitHub:User` and `Telegram:Token` | No repo snapshots and no monthly autopsy; `GitHub:Token` is optional and lifts the 60 requests an hour limit. |
 | Hindsight | `Hindsight:BaseUrl` | No weekly summary is sent. |
 | Release watch | `Watch:Source` or `Watch:FallbackPath` | No release watch and no release alerts. |
 | Linked pages | `Fetch:MaxPerDay` above 0 | No linked page or Hacker News comment is fetched. |
@@ -56,6 +57,14 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Cluster:Threshold` | `0.84` | Cosine similarity at or above which items from different feeds count as one story. Raise it if unrelated items merge, lower it (0.82) if one story shows up twice. |
 | `FeedEater:Cluster:WindowDays` | `3` | Items published within this many days of each other can join one story. |
 
+## Duel
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Duel:Enabled` | `true` | False turns the twice-daily duel off: two unvoted items in one message, one tap picks the one you would rather read. Needs the Telegram bot. |
+| `FeedEater:Duel:PerDay` | `2` | Most duels sent per local day; later slots of the day are skipped. |
+| `FeedEater:Duel:Times` | `12:30,20:30` | Local times a duel is sent, comma separated (HH:mm). A slot missed while the service was down is sent only within 2 hours of its time. |
+
 ## Fetch
 
 | Key | Default | Description |
@@ -68,11 +77,21 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Fetch:PageChars` | `6000` | Characters of readable page text kept per item. |
 | `FeedEater:Fetch:ShortChars` | `800` | Only items whose own text is shorter than this many characters get their linked page fetched. |
 
+## Follow
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Follow:Days` | `14` | Days a story is followed before it is closed with a summary. |
+| `FeedEater:Follow:Enabled` | `true` | Follow this story: a 🧵 button on items that sends later items on the same story as replies to one message. False removes the button and the job. |
+| `FeedEater:Follow:MaxActive` | `5` | Stories followed at once. |
+| `FeedEater:Follow:MaxMessages` | `50` | Messages sent per followed story; the follow closes when it is reached. |
+
 ## GitHub
 
 | Key | Default | Description |
 |---|---|---|
 | `FeedEater:GitHub:BaseUrl` | `https://api.github.com/` | GitHub API URL. |
+| `FeedEater:GitHub:Token` | (empty) | GitHub token, sent on every GitHub call. Optional: it lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it). A token with no scopes is enough. |
 | `FeedEater:GitHub:User` | (empty) | GitHub user whose public stars count as liked items. Empty means no stars import. |
 
 ## Hindsight

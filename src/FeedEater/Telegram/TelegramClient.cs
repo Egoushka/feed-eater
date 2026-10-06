@@ -5,18 +5,26 @@ namespace FeedEater.Telegram;
 
 public sealed record TgCallback(string Id, long FromId, long ChatId, long MessageId, string? Data);
 
-/// <summary>A text message; <paramref name="ReplyToItemId"/> is the item whose message (digest item or search result) it replies to.</summary>
-public sealed record TgMessage(long FromId, long ChatId, string? Text, long? ReplyToItemId = null);
+/// <summary>
+/// A text message; <paramref name="ReplyToItemId"/> is the item whose message (digest item or search result) it replies to,
+/// <paramref name="ReplyToFollowId"/> the follow whose root message it replies to.
+/// </summary>
+public sealed record TgMessage(long FromId, long ChatId, string? Text, long? ReplyToItemId = null, long? ReplyToFollowId = null);
 
 public sealed record TgUpdate(long UpdateId, TgCallback? Callback, TgMessage? Message = null);
 
-public sealed class TelegramException(string message) : Exception(message);
+/// <summary><paramref name="code"/> is Telegram's <c>error_code</c>, else the HTTP status; 0 for a refusal made before any call.</summary>
+public sealed class TelegramException(string message, int code = 0) : Exception(message)
+{
+    /// <summary>The request itself is refused (400, 403): sending it again changes nothing, unlike a rate limit (429) or a server error.</summary>
+    public bool Permanent => code is 400 or 403;
+}
 
 /// <summary>The Bot API calls feed-eater needs. The token is in the base address, so URIs are never logged.</summary>
 public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? logger = null)
 {
     /// <summary>Chat 0 is what an unset <c>AllowedUserId</c> gives; Telegram would answer "chat not found" after the work was paid for, so nothing is sent.</summary>
-    public async Task<long> SendAsync(long chatId, OutMessage message, CancellationToken ct)
+    public async Task<long> SendAsync(long chatId, OutMessage message, CancellationToken ct, long? replyToMessageId = null)
     {
         if (chatId == 0)
         {
@@ -31,6 +39,7 @@ public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? log
             ["parse_mode"] = "HTML",
             ["link_preview_options"] = new { is_disabled = true },
             ["reply_markup"] = message.Keyboard is null ? null : Markup(message.Keyboard),
+            ["reply_parameters"] = replyToMessageId is null ? null : new { message_id = replyToMessageId, allow_sending_without_reply = true },
         }, ct);
         return result.GetProperty("message_id").GetInt64();
     }
@@ -44,6 +53,17 @@ public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? log
             ["chat_id"] = chatId,
             ["message_id"] = messageId,
             ["reply_markup"] = Markup(keyboard),
+        }, ct);
+
+    /// <summary>Replaces the text and, with no <c>reply_markup</c>, the buttons.</summary>
+    public Task EditTextAsync(long chatId, long messageId, string html, CancellationToken ct) =>
+        CallAsync("editMessageText", new Dictionary<string, object?>
+        {
+            ["chat_id"] = chatId,
+            ["message_id"] = messageId,
+            ["text"] = html,
+            ["parse_mode"] = "HTML",
+            ["link_preview_options"] = new { is_disabled = true },
         }, ct);
 
     public Task AnswerAsync(string callbackId, string? text, CancellationToken ct) =>
@@ -83,23 +103,28 @@ public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? log
     private static TgMessage? Message(JsonElement m) =>
         m.TryGetProperty("from", out var from) && m.TryGetProperty("chat", out var chat)
             ? new TgMessage(from.GetProperty("id").GetInt64(), chat.GetProperty("id").GetInt64(), Json.Str(m, "text"),
-                m.TryGetProperty("reply_to_message", out var replied) ? ItemOf(replied) : null)
+                m.TryGetProperty("reply_to_message", out var replied) ? ItemOf(replied) : null,
+                replied.ValueKind == JsonValueKind.Object ? FollowOf(replied) : null)
             : null;
 
     /// <summary>Item messages carry the item id in their buttons' callback data, so a reply needs no stored message map.</summary>
-    private static long? ItemOf(JsonElement message)
+    private static long? ItemOf(JsonElement message) => CallbackDataOf(message).Select(CallbackData.ItemIdOf).FirstOrDefault(id => id is not null);
+
+    /// <summary>A follow's root message carries its stop button, which names the follow.</summary>
+    private static long? FollowOf(JsonElement message) => CallbackDataOf(message).Select(CallbackData.FollowIdOf).FirstOrDefault(id => id is not null);
+
+    private static IEnumerable<string?> CallbackDataOf(JsonElement message)
     {
         if (!message.TryGetProperty("reply_markup", out var markup) || markup.ValueKind != JsonValueKind.Object || !markup.TryGetProperty("inline_keyboard", out var rows)
             || rows.ValueKind != JsonValueKind.Array)
         {
-            return null;
+            return [];
         }
 
         return rows.EnumerateArray()
             .Where(row => row.ValueKind == JsonValueKind.Array)
             .SelectMany(row => row.EnumerateArray())
-            .Select(b => CallbackData.ItemIdOf(Json.Str(b, "callback_data")))
-            .FirstOrDefault(id => id is not null);
+            .Select(b => Json.Str(b, "callback_data"));
     }
 
     private static object Markup(IReadOnlyList<IReadOnlyList<Button>> keyboard) =>
@@ -117,7 +142,8 @@ public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? log
         if (!body.TryGetProperty("ok", out var ok) || !ok.GetBoolean())
         {
             var description = Json.Str(body, "description") ?? response.StatusCode.ToString();
-            throw new TelegramException($"Telegram {method}: {description}");
+            var code = body.TryGetProperty("error_code", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : (int)response.StatusCode;
+            throw new TelegramException($"Telegram {method}: {description}", code);
         }
 
         return body.GetProperty("result");

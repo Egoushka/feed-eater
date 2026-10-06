@@ -54,7 +54,8 @@ prints the effective values with secrets masked.
 | `FeedEater:Plane:BaseUrl`, `Token`, `Workspace` | no | without them 💡 saves ideas to the local list (`/ui/ideas`) |
 | `FeedEater:Karakeep:BaseUrl`, `Token` | no | without them there is no 📌 button and no bookmark import |
 | `FeedEater:Hindsight:BaseUrl` | no | weekly summary to the `feed-eater` bank; off without it |
-| `FeedEater:GitHub:User` | no | stars of this user count as liked items; off without it |
+| `FeedEater:GitHub:User` | no | stars of this user count as liked items; off without it. With a Telegram token it also turns on the hype autopsy (`/ui/autopsy`) |
+| `FeedEater:GitHub:Token` | no | sent on every GitHub call; lifts the 60 requests an hour limit (the autopsy snapshots stop at 40 requests a run without it) |
 | `FeedEater:ProfilePath` | no | default `/config/profile.json`; shape in `profile.example.json`; a missing file means the example interests and a notice |
 
 ## Built-in feed reader
@@ -100,6 +101,15 @@ names the request's own host and carries a per-session anti-forgery value. Login
 keyset paging). `/ui/feedback` lists everything already rated, per 👍, 👎 and 💡, with the 7- and 30-day 👍 rate; a vote can be
 changed or cleared there. The top of Today has "the day in brief", built from the digest's stored reads with no extra model call.
 
+### Taste map
+
+`/ui/map` draws every voted item and a seeded sample of up to 1500 other embedded items from the last 90 days as points on a plane
+(PCA on the embeddings, computed on the server, cached 10 minutes), as one inline `<svg>` with no script. 👍 is a green circle, 👎 a red
+cross (shape and colour), no vote a small grey dot; a heavier vote is a bigger mark. Each profile key is written at the mean of its 10 nearest
+points; a dashed square marks a region with items where no digest ever showed one. The month links above the plot (`?month=YYYY-MM`) show the
+votes up to the end of that month while every item stays in place, so you can watch the taste form. A table below the plot gives the counts per
+vote kind and per profile for use without the picture. It needs at least 3 embedded items and no setting.
+
 ## v0.4 additions
 
 - **Story clustering.** An item whose embedding is within `FeedEater:Cluster:Threshold` (default 0.84, cosine) of an earlier
@@ -138,8 +148,8 @@ changed or cleared there. The top of Today has "the day in brief", built from th
 - **Taste learning, guarded.** `dotnet FeedEater.dll taste` is an offline report (held-out agreement of a learned model against the
   current ranking). `FeedEater:Taste:Learn` (default false) adds a bounded learned term; with under 100 votes (10 of each kind) it
   refuses and the digest header says so. The default ranking is unchanged.
-- **Quiet hours.** `FeedEater:Quiet:From` and `To` (local time, default none) hold the scheduled digest, the weekly review and release
-  alerts. `/quiet` (or `/quiet on|off|status`) and a button on Today toggle it by hand; `/digest` still works. Driving it from the
+- **Quiet hours.** `FeedEater:Quiet:From` and `To` (local time, default none) hold the scheduled digest, duels, followed stories, the weekly review,
+  the hype autopsy and release alerts. `/quiet` (or `/quiet on|off|status`) and a button on Today toggle it by hand; `/digest` still works. Driving it from the
   senses service is a follow-up.
 
 ## v0.6 additions
@@ -154,6 +164,43 @@ changed or cleared there. The top of Today has "the day in brief", built from th
 - **`/learn`.** `/learn status` gives the vote count and, with enough votes, the held-out agreement of the current and learned rankings.
   `/learn on|off` switches the learned term from the next digest and wins over `FeedEater:Taste:Learn`. The weekly review adds a
   "Ranking" line when the learned model is ahead by the required margin and still off.
+
+## Vote weight
+
+Every vote has a weight (`votes.weight`, above 0 and up to 3, default 1). The ranking learns from weighted votes: the 👍 and 👎
+centroids are weighted means, the learned model counts each vote by its weight, a feed's 👍 rate sums weights, and the taste map draws a
+heavier vote as a bigger mark. Only the duel writes a weight below 1 today (its 👎 counts half). A vote cast by hand replaces the earlier
+one with weight 1, and votes from before the weights keep 1, so the default ranking is unchanged. The thresholds that need "enough
+votes" (the learned term, the taste centroids) count votes, not weights; the weekly review and the feedback page count votes too.
+
+## Duel
+
+Twice a day (`FeedEater:Duel:Times`, default 12:30 and 20:30 local, at most `PerDay` 2) the bot sends one message with two items you have
+not voted on and asks which you would rather read. They come from the middle of the ranking, where it is least sure (items from the last
+7 days, embedded, scored, relevant, one per story, not in a muted feed; the pair that is least alike wins, and a pair is never sent
+twice). One tap on ◀ or ▶ records a 👍 for the pick (weight 1) and a 👎 for the other (weight 0.5) and rewrites the message to "You
+picked …"; skip records nothing. An item you voted on yourself is never overwritten. Needs six eligible items and the Telegram bot;
+`FeedEater:Duel:Enabled=false` turns it off. A slot missed while the service was down is sent only within 2 hours of its time, and quiet
+hours hold it. A reply to a duel message is an ordinary message (a search, or a question when it ends in "?").
+
+## Follow this story
+
+🧵 on a digest item or a search hit follows its story for `FeedEater:Follow:Days` (14): the bot sends a root message with a ⏹ button, then
+every later item on the same story as a reply to it, checked every 10 minutes (same cluster, or as similar as the cluster threshold minus
+0.04 to the root or to an item already sent; muted feeds are skipped). The story closes at the end, at `MaxMessages` (50) or on ⏹ with
+the read model's summary of it, or just the links when the model fails. `MaxActive` (5) stories can be followed at once; `/follows` lists them with stop
+buttons and `/unfollow [id]` stops one. A reply to an update acts on that item like a reply to a digest item; a reply to the root
+message gets the help text. Quiet hours hold the run, and `FeedEater:Follow:Enabled=false` removes the button and the job. Needs the
+Telegram bot.
+
+## Hype autopsy
+
+With `FeedEater:GitHub:User` and a Telegram token set, a daily job (05:00) records the GitHub repo of every 👍 item (stars, last push,
+latest release). On the 1st of each month (09:00) the autopsy scores each snapshot that is at least 87 days old, by first match: gone
+(404 or archived), grew (stars up 20% or more), alive (pushed in the last 30 days), quiet. It splits the result by the model's relevance
+and by feed, shows it at `/ui/autopsy` and sends it to Telegram; it calls no model, and quiet hours hold the message. Without
+`FeedEater:GitHub:Token` the snapshot job stops at 40 requests a run and the next day carries on. A duel pick is a 👍 too, so it is
+snapshotted like any other.
 
 ## Running a digest on demand
 

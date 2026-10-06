@@ -13,25 +13,24 @@
   search, add a sent-message to item table instead.
 - Votes so far: 10 up, 1 down; the learned ranking needs 100 with 10 of each.
 
-## v0.7: anyone can run it (2026-10-06 evening, PR open)
-Spec: `docs/specs/2026-10-06-v0.7-portable.md` (also holds the v0.8 and v0.9 outlines and the integration facts to design v0.9 against).
-Decided with the owner: build all 14 buildable ideas across v0.7 (portable), v0.8 (learns faster) and v0.9 (hooks to the owner's setup);
-no social network or any public publishing; one PR per version.
-- Built by three Sonnet implementers (A decouple, B built-in reader, C setup/doctor), merged on branch `feat/v0.7`, 822 tests green.
-  A real-network smoke test with the example compose file passed: OPML import, three real feeds fetched (64 items), a dead feed
-  recorded as failing, `doctor` and `/ui/setup` agree. Not tried: a real LLM key and Telegram bot (the stranger test's first digest).
-- Deploy order for the owner (do not skip): 1) merge homelab-gitops#682 (states every value that was a code default; no behaviour
-  change on 0.6.0); 2) tag v0.7.0 after the PR merges; 3) pin 0.7.0 with `scripts/pin-image.sh --pr feed-eater 0.7.0`;
-  4) `hz deployed`, then `doctor` in the container must show no FAIL and the feed source in Miniflux mode.
-- Decisions changed while building (spec section "Built differently"): `Llm:BaseUrl` carries `/v1/`; `Ideas:Sink=auto`; migration 0010
-  does not rewrite existing items (a rewrite touches every vector index entry at startup); `Source:PollInterval` default 1 minute so a
-  new feed is fetched within a minute or two; new `Llm:EmbedDimensions` sends the `dimensions` parameter.
-- Follow-ups: `config/watch.example.json` is still the owner's 63-row list (replace with a neutral 5-row example once the owner's list
-  is mounted from homelab-gitops, which #682 does); `compose.example.yaml` pins `0.7.0`, which exists only after the release; CI's
-  multi-platform build has not run on GitHub yet; Hindsight ping path `GET v1/default/banks` is unverified; doctor shows Miniflux twice
-  in Miniflux mode.
-- v0.8 and v0.9: not started. Start v0.8 from the spec outline (Duel first, then Shipped-it, Backlog bloodhound, Follow this story,
-  Hype autopsy, Taste map) with a spec of its own, as for v0.7.
+## v0.7 shipped, not yet deployed; v0.8 wave 1 built (2026-10-06 night)
+Specs: `docs/specs/2026-10-06-v0.7-portable.md`, `docs/specs/2026-10-06-v0.8-learns-faster.md` (each ends with what was built differently).
+Decided with the owner: build all 14 buildable ideas across v0.7 (portable), v0.8 (learns faster), v0.9 (hooks to the owner's setup); no social
+network or public publishing; one PR per version; every integration optional.
+- **v0.7:** feed-eater#6 merged (03b70b9), tag v0.7.0, image `ghcr.io/egoushka/feed-eater:0.7.0` published for amd64 and arm64 (first multi-platform
+  build worked). A risk review found 8 defects (poller stall on a NUL or long link or corrupt gzip, XML nesting stack overflow, AllowedHosts reaching
+  article fetches, and others), all fixed with tests. Real-network smoke test passed. NOT deployed: the owner's stack still runs 0.6.0.
+- **Deploy order for the owner (do not skip):** 1) merge homelab-gitops#682 (states every value that used to be a code default; no behaviour change on
+  0.6.0; recreates the container for seconds); 2) `scripts/pin-image.sh --pr feed-eater 0.7.0` (or the then-current tag) in homelab-gitops; 3) after
+  deploy, `doctor` in the container must show no FAIL, and the feed source must read Miniflux. The v0.7 migrations (0010, 0011) are cheap.
+- **v0.8 wave 1 (branch `feat/v0.8`, PR open):** vote weight, Duel, Follow this story, Hype autopsy, Taste map; 1093 tests green. Migrations 0012, 0014, 0015,
+  0016. Not built: Shipped-it (0013) and Backlog bloodhound (0017): they need Spike S1 (read-only: does the Plane intake id resolve as a work item and
+  change state?) and Spike S2 (comment endpoint; writes a throwaway issue in the owner's Plane, needs the owner's yes).
+- **Still to verify live:** the first real digest and `/start` with a real key and bot; reply-to-item in Telegram (Bot API docs do not say whether
+  `reply_to_message` carries the buttons); the Hindsight ping path `GET v1/default/banks`; Duel's first pairs; the first autopsy needs 87 days.
+- **v0.9:** not started; outline and integration facts at the end of the v0.7 spec.
+- **Follow-ups:** `config/watch.example.json` is still the owner's list (replace with a neutral 5-row example); doctor shows Miniflux twice in Miniflux mode;
+  a single poison entry mid-feed can still block newer entries of that feed (no per-entry catch).
 
 ---
 

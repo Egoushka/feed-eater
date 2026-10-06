@@ -2,10 +2,10 @@ using FeedEater.Storage;
 
 namespace FeedEater.Ranking;
 
-public sealed record LabeledVector(float[] X, bool Liked);
+public sealed record LabeledVector(float[] X, bool Liked, double Weight = 1);
 
 /// <summary>
-/// A ridge logistic regression on unit-length embeddings, trained by plain gradient descent with the classes weighted equally.
+/// A ridge logistic regression on unit-length embeddings, trained by plain gradient descent with the classes weighted equally by total vote weight.
 /// Small and deterministic: a few hundred votes train in well under a second.
 /// </summary>
 public sealed class LogisticModel
@@ -24,8 +24,8 @@ public sealed class LogisticModel
 
     public static LogisticModel? Train(IReadOnlyList<LabeledVector> data)
     {
-        var up = data.Count(d => d.Liked);
-        var down = data.Count - up;
+        var up = data.Where(d => d.Liked).Sum(d => d.Weight);
+        var down = data.Where(d => !d.Liked).Sum(d => d.Weight);
         if (up == 0 || down == 0)
         {
             return null;
@@ -48,7 +48,7 @@ public sealed class LogisticModel
                     z += w[i] * d.X[i];
                 }
 
-                var error = (1 / (1 + Math.Exp(-z)) - (d.Liked ? 1 : 0)) * (d.Liked ? upWeight : downWeight);
+                var error = (1 / (1 + Math.Exp(-z)) - (d.Liked ? 1 : 0)) * (d.Liked ? upWeight : downWeight) * d.Weight;
                 for (var i = 0; i < dims; i++)
                 {
                     grad[i] += error * d.X[i];
@@ -72,7 +72,7 @@ public sealed class LogisticModel
 /// <summary>Whether the learned term may be used, and the model when it may.</summary>
 public static class LearnedTaste
 {
-    /// <summary>Per-class minimum next to the total: one class alone teaches nothing.</summary>
+    /// <summary>Per-class minimum next to the total: one class alone teaches nothing. Both floors count votes, not weights.</summary>
     internal const int MinPerClass = 10;
 
     public static (LogisticModel? Model, string? Note) Prepare(IReadOnlyList<LabeledVector> data, TasteOptions o)
@@ -97,8 +97,8 @@ public static class LearnedTaste
             var train = data.Where((_, i) => i % 5 != fold).ToList();
             var test = data.Where((_, i) => i % 5 == fold).ToList();
             var model = LogisticModel.Train(train);
-            var pos = Vectors.Centroid(train.Where(d => d.Liked).Select(d => d.X).ToList());
-            var neg = Vectors.Centroid(train.Where(d => !d.Liked).Select(d => d.X).ToList());
+            var pos = Vectors.WeightedCentroid(train.Where(d => d.Liked).Select(d => new WeightedVector(d.X, d.Weight)).ToList());
+            var neg = Vectors.WeightedCentroid(train.Where(d => !d.Liked).Select(d => new WeightedVector(d.X, d.Weight)).ToList());
             foreach (var t in test)
             {
                 if (pos is not null && neg is not null)

@@ -119,7 +119,7 @@ public sealed class DigestRun(
         var candidates = await items.CandidatesAsync(floor, dayStart, ct);
         var profileList = await profiles.AllAsync(ct);
         var taste = Taste.Build(
-            await feedback.PositiveVectorsAsync(o.Caps.Centroid, ct), await feedback.NegativeVectorsAsync(o.Caps.Centroid, ct),
+            await feedback.PositiveWeightedAsync(o.Caps.Centroid, ct), await feedback.NegativeWeightedAsync(o.Caps.Centroid, ct),
             await feedback.FeedVotesAsync(ct), o.Weights);
         if (await tasteSwitch.IsOnAsync(ct))
         {
@@ -356,6 +356,6 @@ public sealed class DigestRun(
             votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n'),
             (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList(), unpriced));
         var style = ButtonStyle.From(options.Value);
-        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null, style))];
+        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null, style, options.Value.Follow.Enabled))];
     }
 }

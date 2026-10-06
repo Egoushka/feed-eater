@@ -2,6 +2,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using FeedEater.Digest;
+using FeedEater.Duels;
+using FeedEater.Follow;
+using FeedEater.Hype;
 using FeedEater.Ingest;
 using FeedEater.Memory;
 using FeedEater.Plane;
@@ -50,7 +53,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true, extra: AllIntegrations);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(TelegramPoller) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(RepoSnapshotJob), typeof(AutopsyJob) }, Jobs(host));
     }
 
     [Fact]
@@ -74,12 +77,23 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(DigestJob), typeof(WeeklyReview), typeof(TelegramPoller) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob) }, Jobs(host));
+    }
+
+    [Fact]
+    public void The_duel_is_off_with_its_switch()
+    {
+        using var host = Build(runJobs: true, extra: new Dictionary<string, string?> { ["FeedEater:Duel:Enabled"] = "false" });
+
+        Assert.DoesNotContain(typeof(DuelJob), Jobs(host));
     }
 
     [Theory]
     [InlineData("FeedEater:Karakeep:BaseUrl", "http://karakeep/", typeof(SignalJob), false)]   // the API key is missing too
     [InlineData("FeedEater:GitHub:User", "octocat", typeof(SignalJob), true)]
+    [InlineData("FeedEater:GitHub:User", "octocat", typeof(RepoSnapshotJob), true)]
+    [InlineData("FeedEater:GitHub:User", "octocat", typeof(AutopsyJob), true)]
+    [InlineData("FeedEater:GitHub:Token", "gh-token", typeof(AutopsyJob), false)]   // a token alone does not turn the integration on
     [InlineData("FeedEater:Hindsight:BaseUrl", "http://hindsight/", typeof(WeeklyRetain), true)]
     [InlineData("FeedEater:Watch:FallbackPath", "/watch.json", typeof(ReleaseWatcher), true)]
     [InlineData("FeedEater:Watch:Source", "/PINS.md", typeof(ReleaseWatcher), true)]
@@ -97,6 +111,16 @@ public sealed class CompositionTests
 
         Assert.DoesNotContain(typeof(WeeklyRetain), Jobs(host));
         Assert.DoesNotContain(typeof(ReleaseWatcher), Jobs(host));
+    }
+
+    [Fact]
+    public void The_follow_job_needs_a_bot_token_and_the_setting_on()
+    {
+        using var off = Build(runJobs: true, extra: new Dictionary<string, string?> { ["FeedEater:Follow:Enabled"] = "false" });
+        using var noBot = Build(runJobs: true, telegramToken: "");
+
+        Assert.DoesNotContain(typeof(FollowJob), Jobs(off));
+        Assert.DoesNotContain(typeof(FollowJob), Jobs(noBot));
     }
 
     [Fact]

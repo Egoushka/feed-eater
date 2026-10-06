@@ -44,6 +44,8 @@ public sealed class FeedEaterOptions
     public WatchOptions Watch { get; set; } = new();
     public TasteOptions Taste { get; set; } = new();
     public QuietOptions Quiet { get; set; } = new();
+    public DuelOptions Duel { get; set; } = new();
+    public FollowOptions Follow { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -147,6 +149,34 @@ public sealed class QuietOptions
     /// <summary>How long a manual "quiet on" lasts.</summary>
     [Description("Hours a manual /quiet on lasts.")]
     public int ManualHours { get; set; } = 12;
+}
+
+public sealed class DuelOptions
+{
+    [Description("False turns the twice-daily duel off: two unvoted items in one message, one tap picks the one you would rather read. Needs the Telegram bot.")]
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>A string, not a list: the configuration binder appends to a list default instead of replacing it.</summary>
+    [Description("Local times a duel is sent, comma separated (HH:mm). A slot missed while the service was down is sent only within 2 hours of its time.")]
+    public string Times { get; set; } = "12:30,20:30";
+
+    [Description("Most duels sent per local day; later slots of the day are skipped.")]
+    public int PerDay { get; set; } = 2;
+}
+
+public sealed class FollowOptions
+{
+    [Description("Follow this story: a 🧵 button on items that sends later items on the same story as replies to one message. False removes the button and the job.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("Days a story is followed before it is closed with a summary.")]
+    public int Days { get; set; } = 14;
+
+    [Description("Stories followed at once.")]
+    public int MaxActive { get; set; } = 5;
+
+    [Description("Messages sent per followed story; the follow closes when it is reached.")]
+    public int MaxMessages { get; set; } = 50;
 }
 
 public sealed class TasteOptions
@@ -332,6 +362,10 @@ public sealed class GitHubOptions
 
     [Description("GitHub user whose public stars count as liked items. Empty means no stars import.")]
     public string User { get; set; } = "";
+
+    [Secret]
+    [Description("GitHub token, sent on every GitHub call. Optional: it lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it). A token with no scopes is enough.")]
+    public string Token { get; set; } = "";
 }
 
 public sealed class HindsightOptions
