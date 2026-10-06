@@ -16,12 +16,13 @@ public sealed class OptionsTests
         Assert.Equal(3, o.Caps.CandidateDays);
         Assert.Equal(2, o.Caps.MinRelevance);
         Assert.Equal("gpt-4.1-nano", o.Llm.TriageModel);
-        Assert.Equal("claude-haiku-4-5", o.Llm.ReadModel);
+        Assert.Equal("gpt-4.1-mini", o.Llm.ReadModel);
         Assert.Equal("text-embedding-3-small", o.Llm.EmbedModel);
         Assert.Equal(0.5, o.Weights.Taste);
         Assert.Equal(0.2, o.Weights.Prior);
-        Assert.Equal("FEED", o.Plane.FallbackProject);
-        Assert.Equal("Europe/Kyiv", o.Zone.Id);
+        Assert.Equal("", o.Plane.FallbackProject);
+        Assert.Equal("UTC", o.Zone.Id);
+        Assert.Equal("https://api.openai.com/v1/", o.Llm.BaseUrl);
     }
 
     [Fact]

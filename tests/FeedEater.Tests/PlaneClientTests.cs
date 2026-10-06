@@ -6,7 +6,7 @@ namespace FeedEater.Tests;
 
 public sealed class PlaneClientTests
 {
-    private static PlaneClient Client(StubHandler handler) => new(handler.Client("http://plane/"), Options.Create(new FeedEaterOptions()));
+    private static PlaneClient Client(StubHandler handler) => new(handler.Client("http://plane/"), Options.Create(new FeedEaterOptions { Plane = new PlaneOptions { Workspace = "homelab" } }));
 
     private static HttpResponseMessage Projects() => StubHandler.Json("""{"results":[{"id":"p1","identifier":"FEED"}]}""");
 

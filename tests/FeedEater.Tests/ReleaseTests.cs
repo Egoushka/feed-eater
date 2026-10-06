@@ -168,9 +168,9 @@ public sealed class WatchSourceTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_shipped_lists_load_and_map_the_images_that_are_obvious()
+    public async Task The_shipped_example_list_loads_and_maps_the_images_that_are_obvious()
     {
-        var watched = await Source(new WatchOptions()).LoadAsync(default);
+        var watched = await Source(new WatchOptions { FallbackPath = Path.Combine(AppContext.BaseDirectory, "config", "watch.example.json") }).LoadAsync(default);
 
         Assert.Contains(watched, w => w.Repo == "juanfont/headscale" && w.Running is not null);
         Assert.Contains(watched, w => w.Repo == "makeplane/plane" && w.Services.Count == 6);

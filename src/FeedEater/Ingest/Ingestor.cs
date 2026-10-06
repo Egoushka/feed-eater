@@ -25,7 +25,7 @@ public sealed class Ingestor(
 
     protected override async Task PollAsync(CancellationToken ct)
     {
-        var added = await IngestAsync(ct);
+        var added = options.Value.Miniflux.Enabled ? await IngestAsync(ct) : 0;
         var embedded = await EmbedSafelyAsync(ct);
         var assigned = await items.AssignProfileKeysAsync(ct);
         var linked = await clusterer.RunAsync(ct);

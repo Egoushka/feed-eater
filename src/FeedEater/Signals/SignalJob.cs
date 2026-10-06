@@ -24,15 +24,17 @@ public sealed class SignalJob(
     {
         var fresh = new List<(NewSignal Signal, string Text)>();
         var sources = new List<(string Name, Func<CancellationToken, Task<List<(NewSignal, string)>>> Fetch)>();
-        if (Settings.Karakeep.Token.Length > 0)
+        if (Settings.Karakeep.Enabled)
         {
             sources.Add(("karakeep", NewBookmarksAsync));
         }
 
-        sources.Add(("github", NewStarsAsync));
+        if (Settings.GitHub.Enabled)
+        {
+            sources.Add(("github", NewStarsAsync));
+        }
 
         // Oldest first: a run that dies midway leaves a stored prefix, so the next run's newest-first scan still reaches the rest.
-        var failed = new List<Exception>();
         foreach (var (name, fetch) in sources)
         {
             try
@@ -42,13 +44,7 @@ public sealed class SignalJob(
             catch (Exception ex) when (ex is HttpRequestException or JsonException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
             {
                 Logger.LogWarning(ex, "Signals from {Source} unavailable; the next daily run catches up", name);
-                failed.Add(ex);
             }
-        }
-
-        if (failed.Count == sources.Count)
-        {
-            throw new AggregateException("Every signal source failed", failed);
         }
 
         foreach (var chunk in fresh.Chunk(Settings.Llm.EmbedBatch))

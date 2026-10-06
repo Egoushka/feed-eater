@@ -54,14 +54,14 @@ public static class ServiceRegistration
         services.AddHttpClient<LiteLlmClient>((sp, http) =>
         {
             var o = Settings(sp).Llm;
-            http.BaseAddress = new Uri(o.BaseUrl);
+            http.BaseAddress = new Uri(o.BaseUrl.TrimEnd('/') + "/");   // request paths are relative to it, so a missing slash would drop its last segment
             http.Timeout = TimeSpan.FromSeconds(120);
             Bearer(http, o.ApiKey);
         });
         services.AddHttpClient<MinifluxClient>((sp, http) =>
         {
             var o = Settings(sp).Miniflux;
-            http.BaseAddress = new Uri(o.BaseUrl);
+            BaseAddress(http, o.BaseUrl);
             http.DefaultRequestHeaders.Add("X-Auth-Token", o.Token);
         });
         services.AddHttpClient<TelegramClient>((sp, http) =>
@@ -73,13 +73,13 @@ public static class ServiceRegistration
         services.AddHttpClient<PlaneClient>((sp, http) =>
         {
             var o = Settings(sp).Plane;
-            http.BaseAddress = new Uri(o.BaseUrl);
+            BaseAddress(http, o.BaseUrl);
             http.DefaultRequestHeaders.Add("X-API-Key", o.Token);
         });
         services.AddHttpClient<KarakeepClient>((sp, http) =>
         {
             var o = Settings(sp).Karakeep;
-            http.BaseAddress = new Uri(o.BaseUrl);
+            BaseAddress(http, o.BaseUrl);
             Bearer(http, o.Token);
         });
         services.AddHttpClient<GitHubStarsClient>((sp, http) =>
@@ -109,11 +109,16 @@ public static class ServiceRegistration
         services.AddHttpClient<HindsightClient>((sp, http) =>
         {
             var o = Settings(sp).Hindsight;
-            http.BaseAddress = new Uri(o.BaseUrl);
+            BaseAddress(http, o.BaseUrl);
             Bearer(http, o.Token);
         });
 
         services.AddSingleton<DigestRun>();
+        services.AddSingleton<PlaneIdeaSink>();
+        services.AddSingleton<LocalIdeaSink>();
+        services.AddSingleton<IIdeaSink>(sp => Settings(sp).IdeaSink == IdeasOptions.PlaneSink
+            ? sp.GetRequiredService<PlaneIdeaSink>()
+            : sp.GetRequiredService<LocalIdeaSink>());
         services.AddSingleton<IdeaFiler>();
         services.AddSingleton<CallbackHandler>();
         services.AddSingleton<ArchiveSearch>();
@@ -127,7 +132,10 @@ public static class ServiceRegistration
         {
             services.AddHostedService<Ingestor>();
             services.AddHostedService<ProfileBuilder>();
-            services.AddHostedService<SignalJob>();
+            if (settings.Karakeep.Enabled || settings.GitHub.Enabled)
+            {
+                services.AddHostedService<SignalJob>();
+            }
 
             // Without a bot token a digest would pay for triage and then fail to send.
             var telegram = settings.Telegram.Token.Length > 0;
@@ -136,8 +144,16 @@ public static class ServiceRegistration
                 services.AddHostedService<DigestJob>();
             }
 
-            services.AddHostedService<WeeklyRetain>();
-            services.AddHostedService<ReleaseWatcher>();
+            if (settings.Hindsight.Enabled)
+            {
+                services.AddHostedService<WeeklyRetain>();
+            }
+
+            if (settings.Watch.Enabled)
+            {
+                services.AddHostedService<ReleaseWatcher>();
+            }
+
             if (telegram)
             {
                 services.AddHostedService<WeeklyReview>();
@@ -154,6 +170,15 @@ public static class ServiceRegistration
     }
 
     private static FeedEaterOptions Settings(IServiceProvider sp) => sp.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
+
+    /// <summary>An integration that is off has no URL; its client is never called, and must still be buildable.</summary>
+    private static void BaseAddress(HttpClient http, string url)
+    {
+        if (url.Length > 0)
+        {
+            http.BaseAddress = new Uri(url);
+        }
+    }
 
     private static void Bearer(HttpClient http, string token)
     {
