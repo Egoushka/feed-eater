@@ -41,6 +41,7 @@ public record ItemView
     public string Title { get; init; } = "";
     public string Url { get; init; } = "";
     public string Feed { get; init; } = "";
+    public long? FeedId { get; init; }
     public string? Category { get; init; }
     public bool FeedMuted { get; init; }
     public DateTime PublishedAt { get; init; }
@@ -301,7 +302,7 @@ public sealed class ItemStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.QuerySingleOrDefaultAsync<ItemView>(new CommandDefinition(
             $"""
-            select i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, coalesce(f.muted, false) as feed_muted, i.published_at, i.content, i.profile_key,
+            select i.id, i.title, i.url, coalesce(f.title, '') as feed, f.id as feed_id, f.category, coalesce(f.muted, false) as feed_muted, i.published_at, i.content, i.profile_key,
                    t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
                    coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in, (sv.item_id is not null) as saved, {AlsoColumn}
             from items i

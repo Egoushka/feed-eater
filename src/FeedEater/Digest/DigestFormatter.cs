@@ -140,7 +140,7 @@ public static class DigestFormatter
 
     private static string E(string text) => WebUtility.HtmlEncode(text);
 
-    private static bool IsLinkable(string url) =>
+    internal static bool IsLinkable(string url) =>
         url.Length <= MaxLinkedUrl && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 
     private static string Clip(string text, int max)

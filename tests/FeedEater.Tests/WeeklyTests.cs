@@ -160,7 +160,7 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
             sent.Add(body);
             return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
         });
-        return (new WeeklyReview(new WeeklyStore(pg.Db), new TelegramClient(stub.Client("http://tg/botT/")), new QuietHours(new CursorStore(pg.Db), options, time), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<WeeklyReview>.Instance), time, sent);
+        return (new WeeklyReview(new WeeklyStore(pg.Db), new TelegramClient(stub.Client("http://tg/botT/")), new QuietHours(new CursorStore(pg.Db), options, time), new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<WeeklyReview>.Instance), time, sent);
     }
 
     [Fact]

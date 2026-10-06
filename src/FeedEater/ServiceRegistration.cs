@@ -11,6 +11,7 @@ using FeedEater.Memory;
 using FeedEater.Mcp;
 using FeedEater.Plane;
 using FeedEater.Profiles;
+using FeedEater.Ranking;
 using FeedEater.Review;
 using FeedEater.Watch;
 using FeedEater.Search;
@@ -116,6 +117,9 @@ public static class ServiceRegistration
         services.AddSingleton<IdeaFiler>();
         services.AddSingleton<CallbackHandler>();
         services.AddSingleton<ArchiveSearch>();
+        services.AddSingleton<ArchiveAnswer>();
+        services.AddSingleton<ReplyHandler>();
+        services.AddSingleton<TasteSwitch>();
         services.AddSingleton<CommandHandler>();
         services.AddSingleton<DigestTrigger>();
 
