@@ -7,6 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 using FeedEater.Digest;
 using FeedEater.Ingest;
 using FeedEater.Llm;
+using FeedEater.Signals;
 using FeedEater.Loops;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -31,6 +32,10 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private int _triageCalls;
     private bool _llmDown;
     private bool _readsDown;
+    private bool _learn;
+    private System.Net.HttpStatusCode _githubStatus = HttpStatusCode.NotFound;
+    private readonly List<string> _readPrompts = [];
+    private readonly List<string> _githubCalls = [];
 
     public async Task InitializeAsync()
     {
@@ -67,6 +72,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
             throw new InvalidOperationException("read model exploded");
         }
 
+        _readPrompts.Add(body);
+
         if (body.Contains("Title: Keep A", StringComparison.Ordinal))
         {
             return StubHandler.Json(Chat("""{"summary":"A is new.","why":"Box runs it.","kind":"improve","project":"homelab","suggestion":"Turn A on."}"""));
@@ -91,7 +98,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private (DigestRun Run, DigestStore Digests, StubHandler Miniflux) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 }, Taste = new TasteOptions { Learn = _learn } });
         var time = new FakeTimeProvider(Now);
         var miniflux = new StubHandler((_, _) => StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{LongText}</p>" })));
         var llm = new StubHandler((_, body) => body.Contains("\"input\"", StringComparison.Ordinal)
@@ -100,17 +107,38 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var telegram = new StubHandler((_, body) => Telegram(body));
         var digests = new DigestStore(pg.Db);
         var run = new DigestRun(
-            new ItemStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), digests, new UsageStore(pg.Db),
+            new ItemStore(pg.Db), new ReleaseStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), digests, new UsageStore(pg.Db),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new MinifluxClient(miniflux.Client("http://miniflux/")),
+            new GitHubStarsClient(new StubHandler((request, _) => GitHub(request)).Client("http://github/"), options),
             new TelegramClient(telegram.Client("http://tg/botT/")),
             _health, options, time, NullLogger<DigestRun>.Instance);
         return (run, digests, miniflux);
     }
 
+    private HttpResponseMessage GitHub(HttpRequestMessage request)
+    {
+        var path = request.RequestUri!.AbsolutePath;
+        _githubCalls.Add(path);
+        if (_githubStatus != HttpStatusCode.OK)
+        {
+            return StubHandler.Json("""{"message":"nope"}""", _githubStatus);
+        }
+
+        return path.EndsWith("/releases/latest", StringComparison.Ordinal)
+            ? StubHandler.Json("""{"tag_name":"v2.3.0","published_at":"2026-09-20T10:00:00Z"}""")
+            : StubHandler.Json("""{"full_name":"acme/widget","created_at":"2024-03-02T08:00:00Z","pushed_at":"2026-10-01T09:00:00Z","stargazers_count":1240}""");
+    }
+
+    private async Task LinkRepoAsync(params string[] titles)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await c.ExecuteAsync("update items set content = @content where title = any(@titles)", new { content = LongText + " Source: https://github.com/acme/widget/issues/4", titles });
+    }
+
     private DigestJob BuildJob(DigestRun run, DigestStore digests, StubHandler notices, IOptions<FeedEaterOptions> options, FakeTimeProvider time) =>
         new(run, digests, new TelegramClient(notices.Client("http://tg/botT/")), new DigestTrigger(new CursorStore(pg.Db), options, time),
-            new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DigestJob>.Instance);
+            new QuietHours(new CursorStore(pg.Db), options, time), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DigestJob>.Instance);
 
     private async Task SeedAsync()
     {
@@ -457,5 +485,157 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Null(await new DigestTrigger(cursors, options, time).PendingAsync(default));
         Assert.Null(await cursors.GetAsync("digest:force", default));
+    }
+
+    [Fact]
+    public async Task The_read_prompt_carries_repository_facts_when_the_item_links_a_github_repo()
+    {
+        await SeedAsync();
+        await LinkRepoAsync("Keep A", "Keep B");
+        _githubStatus = HttpStatusCode.OK;
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Equal(2, _readPrompts.Count);
+        Assert.All(_readPrompts, p => Assert.Contains("Repository facts: created 2024-03-02, last push 2026-10-01, 1,240 stars, latest release v2.3.0 on 2026-09-20", p, StringComparison.Ordinal));
+        Assert.Equal(["/repos/acme/widget", "/repos/acme/widget/releases/latest"], _githubCalls);   // one lookup for both items
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task Without_an_answer_from_github_the_read_goes_ahead_with_no_facts_line(HttpStatusCode status)
+    {
+        await SeedAsync();
+        await LinkRepoAsync("Keep A");
+        _githubStatus = status;
+        var (run, digests, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.DoesNotContain(_readPrompts, p => p.Contains("Repository facts", StringComparison.Ordinal));
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+    }
+
+    [Fact]
+    public async Task Items_with_no_github_link_never_call_github()
+    {
+        await SeedAsync();
+        _githubStatus = HttpStatusCode.OK;
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Empty(_githubCalls);
+        Assert.DoesNotContain(_readPrompts, p => p.Contains("Repository facts", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_fetched_page_and_comments_reach_the_read_prompt_fenced_as_untrusted()
+    {
+        await SeedAsync();
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update items set extra_text = @t where title = 'Keep A'", new { t = "Linked page (pingularity.dev):\nFirst released in 2024.\n\nTop comments:\n- Solid." });
+        }
+
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        var prompt = Assert.Single(_readPrompts, p => p.Contains("Title: Keep A", StringComparison.Ordinal));
+        Assert.Contains("untrusted_page", prompt, StringComparison.Ordinal);   // the body is JSON, so the angle brackets are escaped
+        Assert.Contains("First released in 2024.", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(_readPrompts, p => p.Contains("Title: Keep B", StringComparison.Ordinal) && p.Contains("First released", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_header_lists_releases_of_things_he_runs_and_a_resume_keeps_the_same_list()
+    {
+        await SeedAsync();
+        var releases = new ReleaseStore(pg.Db);
+        await releases.AddAsync(new ReleaseRow { Repo = "juanfont/headscale", Tag = "v0.30.0", Version = "0.30.0", Title = "t", Url = "https://x", Newer = true, Summary = "<b>Fixes.</b>", Breaking = "no" }, default);
+        var (run, _, _) = Build();
+        _failTelegramAt = 2;
+
+        await Assert.ThrowsAsync<TelegramException>(() => run.RunAsync(Today, default));
+        await releases.AddAsync(new ReleaseRow { Repo = "late/arrival", Tag = "v1.0.0", Version = "1.0.0", Title = "t", Url = "https://x", Newer = true }, default);
+        await run.RunAsync(Today, default);
+
+        var header = JsonSerializer.Deserialize<JsonElement>(_sent[0]).GetProperty("text").GetString()!;
+        Assert.Contains("Updates for what you run", header, StringComparison.Ordinal);
+        Assert.Contains("juanfont/headscale 0.30.0 is out (breaking: no): &lt;b&gt;Fixes.&lt;/b&gt;", header, StringComparison.Ordinal);
+        Assert.DoesNotContain("late/arrival", string.Concat(_sent), StringComparison.Ordinal);
+        Assert.Equal(["late/arrival"], (await releases.TakeForDigestAsync("2026-10-06", default)).Select(r => r.Repo));
+    }
+
+    [Fact]
+    public async Task Switching_the_learned_taste_on_with_too_few_votes_is_refused_in_the_header_and_ranking_stays_default()
+    {
+        await SeedAsync();
+        _learn = true;
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        var header = JsonSerializer.Deserialize<JsonElement>(_sent[0]).GetProperty("text").GetString()!;
+        Assert.Contains("Learned taste is switched on but needs 100 votes", header, StringComparison.Ordinal);
+        Assert.Equal(3, _sent.Count);   // the digest still went out with the default ranking
+    }
+
+    [Fact]
+    public async Task Without_the_flag_the_header_says_nothing_about_learned_taste()
+    {
+        await SeedAsync();
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.DoesNotContain("Learned taste", _sent[0], StringComparison.Ordinal);
+    }
+
+    private static IOptions<FeedEaterOptions> QuietOptions() => Options.Create(new FeedEaterOptions
+    {
+        ProfilePath = "Fixtures/profile.json",
+        Telegram = new TelegramOptions { AllowedUserId = 42 },
+        Quiet = new FeedEater.QuietOptions { From = new TimeSpan(22, 0, 0), To = new TimeSpan(8, 0, 0) },
+    });
+
+    [Fact]
+    public async Task A_due_digest_waits_for_quiet_hours_to_end_and_then_runs_once()
+    {
+        await SeedAsync();
+        var (run, digests, _) = Build();
+        var options = QuietOptions();
+        var time = new FakeTimeProvider(Now);   // 07:30 Kyiv, inside 22:00 to 08:00
+        var job = BuildJob(run, digests, new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""")), options, time);
+
+        await job.TickAsync(default);
+        await job.TickAsync(default);
+        Assert.Empty(_sent);
+        Assert.Null(await digests.GetAsync(Today, default));
+
+        time.Advance(TimeSpan.FromMinutes(35));   // 08:05
+        await job.TickAsync(default);
+        await job.TickAsync(default);
+
+        Assert.Equal(3, _sent.Count);
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+    }
+
+    [Fact]
+    public async Task A_digest_asked_for_by_hand_is_not_held_by_quiet_hours()
+    {
+        await SeedAsync();
+        var (run, digests, _) = Build();
+        var options = QuietOptions();
+        var time = new FakeTimeProvider(Now);
+        var job = BuildJob(run, digests, new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""")), options, time);
+        await new DigestTrigger(new CursorStore(pg.Db), options, time).RequestAsync(false, default);
+
+        await job.TickAsync(default);
+
+        Assert.Equal(3, _sent.Count);
     }
 }

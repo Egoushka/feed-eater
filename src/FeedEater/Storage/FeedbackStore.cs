@@ -53,6 +53,20 @@ public sealed class FeedbackStore(FeedDb db)
             """, new { itemId, value }, cancellationToken: ct));
     }
 
+    public async Task<bool> IsSavedAsync(long itemId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<bool>(new CommandDefinition("select exists (select 1 from saved where item_id = @itemId)", new { itemId }, cancellationToken: ct));
+    }
+
+    /// <summary>The first save wins; a second one for the same item is ignored.</summary>
+    public async Task AddSavedAsync(long itemId, string karakeepId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        await c.ExecuteAsync(new CommandDefinition(
+            "insert into saved (item_id, karakeep_id) values (@itemId, @karakeepId) on conflict (item_id) do nothing", new { itemId, karakeepId }, cancellationToken: ct));
+    }
+
     public async Task ClearVoteAsync(long itemId, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
@@ -91,6 +105,22 @@ public sealed class FeedbackStore(FeedDb db)
         where v.value = -1 and i.embedding is not null
         order by v.at desc limit @limit
         """, limit, ct);
+
+    /// <summary>Every vote on an embedded item, newest first, as a training example.</summary>
+    public async Task<IReadOnlyList<FeedEater.Ranking.LabeledVector>> LabeledVectorsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        var rows = await c.QueryAsync<LabeledRow>(new CommandDefinition(
+            "select i.embedding::real[] as embedding, v.value::int as value from votes v join items i on i.id = v.item_id where i.embedding is not null order by v.at desc",
+            cancellationToken: ct));
+        return rows.Select(r => new FeedEater.Ranking.LabeledVector(r.Embedding, r.Value > 0)).ToList();
+    }
+
+    private sealed record LabeledRow
+    {
+        public float[] Embedding { get; init; } = [];
+        public int Value { get; init; }
+    }
 
     public async Task<IReadOnlyList<FeedVotes>> FeedVotesAsync(CancellationToken ct)
     {

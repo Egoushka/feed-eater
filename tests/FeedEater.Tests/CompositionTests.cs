@@ -5,6 +5,8 @@ using FeedEater.Digest;
 using FeedEater.Ingest;
 using FeedEater.Memory;
 using FeedEater.Profiles;
+using FeedEater.Review;
+using FeedEater.Watch;
 using FeedEater.Signals;
 using FeedEater.Telegram;
 
@@ -35,7 +37,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(TelegramPoller) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(TelegramPoller) }, Jobs(host));
     }
 
     [Fact]
@@ -51,6 +53,6 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true, telegramToken: "");
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(WeeklyRetain) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(WeeklyRetain), typeof(ReleaseWatcher) }, Jobs(host));
     }
 }

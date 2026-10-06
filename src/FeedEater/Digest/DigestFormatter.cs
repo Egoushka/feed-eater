@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using FeedEater.Storage;
 using FeedEater.Telegram;
 
 namespace FeedEater.Digest;
@@ -16,12 +17,13 @@ public sealed record DigestItem
     public string Summary { get; init; } = "";
     public string Why { get; init; } = "";
     public string? Suggestion { get; init; }
+    public IReadOnlyList<ClusterMember> AlsoIn { get; init; } = [];
 }
 
 /// <summary><c>MonthSpend</c> is spend since the 1st of the current month; <c>WeekUpRate</c> is the 👍 share of the last 7 days' votes, null when there were none.</summary>
 public sealed record DigestHeader(
     DateOnly Date, int Shown, int Candidates, IReadOnlyList<(string Key, int Count)> ByProject,
-    int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes);
+    int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes, IReadOnlyList<string>? Releases = null);
 
 /// <summary>
 /// Telegram HTML. Every field is escaped and clipped so the visible text stays under 4,096 characters
@@ -53,6 +55,20 @@ public static class DigestFormatter
             sb.Append("\n⚠️ ").Append(E(Clip(note, 300)));
         }
 
+        if (h.Releases is { Count: > 0 })
+        {
+            sb.Append("\n\n<b>Updates for what you run</b>");
+            foreach (var line in h.Releases.Take(8))
+            {
+                sb.Append("\n• ").Append(E(Clip(line, 160)));
+            }
+
+            if (h.Releases.Count > 8)
+            {
+                sb.Append(CultureInfo.InvariantCulture, $"\n+{h.Releases.Count - 8} more");
+            }
+        }
+
         return new OutMessage(sb.ToString());
     }
 
@@ -71,10 +87,35 @@ public static class DigestFormatter
             html.Append("\n\n💡 ").Append(E(Clip(i.Suggestion, 800)));
         }
 
+        if (i.AlsoIn.Count > 0)
+        {
+            var links = i.AlsoIn.Take(3).Select(m => IsLinkable(m.Url) ? $"<a href=\"{E(m.Url)}\">{E(Clip(m.Feed, 40))}</a>" : E(Clip(m.Feed, 40)));
+            html.Append("\n\nAlso in: ").Append(string.Join(", ", links));
+            if (i.AlsoIn.Count > 3)
+            {
+                html.Append(CultureInfo.InvariantCulture, $" +{i.AlsoIn.Count - 3}");
+            }
+        }
+
         return new OutMessage(html.ToString(), Buttons(i.Id, i.Suggestion is not null, vote, filedIn));
     }
 
-    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn)
+    /// <summary>One search hit as its own message, with the same buttons as a digest item.</summary>
+    public static OutMessage Result(SearchHit h, string publishedLocal)
+    {
+        var title = E(Clip(h.Title, 300));
+        var link = IsLinkable(h.Url) ? $"<a href=\"{E(h.Url)}\">{title}</a>" : title;
+        var meta = string.Join(" · ", new[] { Clip(h.Feed, 80), publishedLocal, Clip(h.Project ?? "", 40) }.Where(s => s.Length > 0).Select(E));
+        var html = new StringBuilder($"<b>{link}</b>\n<i>{meta}</i>");
+        if (!string.IsNullOrWhiteSpace(h.Summary))
+        {
+            html.Append("\n\n").Append(E(Clip(h.Summary.Trim(), 240)));
+        }
+
+        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn, h.Saved));
+    }
+
+    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn, bool saved = false)
     {
         var rows = new List<IReadOnlyList<Button>>
         {
@@ -82,6 +123,7 @@ public static class DigestFormatter
             {
                 new Button(vote == 1 ? "👍 ✓" : "👍", CallbackData.Vote(id, 1)),
                 new Button(vote == -1 ? "👎 ✓" : "👎", CallbackData.Vote(id, -1)),
+                saved ? new Button("📌 Saved ✓", CallbackData.Noop) : new Button("📌 Save", CallbackData.Save(id)),
             },
         };
         if (filedIn is not null)

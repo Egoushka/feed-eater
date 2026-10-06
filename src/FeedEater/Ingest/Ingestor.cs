@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Options;
+using FeedEater.Fetch;
 using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Storage;
@@ -9,7 +10,7 @@ namespace FeedEater.Ingest;
 
 /// <summary>Copies new Miniflux entries into the archive, then embeds every row that has no vector yet.</summary>
 public sealed class Ingestor(
-    MinifluxClient miniflux, ItemStore items, LiteLlmClient llm, IOptions<FeedEaterOptions> options,
+    MinifluxClient miniflux, ItemStore items, StoryClusterer clusterer, FeedDiscoverer discovery, PageEnricher pages, LiteLlmClient llm, IOptions<FeedEaterOptions> options,
     LoopHealth health, TimeProvider time, ILogger<Ingestor> logger)
     : PollingLoop(health, time, logger)
 {
@@ -27,7 +28,10 @@ public sealed class Ingestor(
         var added = await IngestAsync(ct);
         var embedded = await EmbedSafelyAsync(ct);
         var assigned = await items.AssignProfileKeysAsync(ct);
-        Logger.LogInformation("Ingested {Added} entries, embedded {Embedded}, assigned {Assigned} profile keys", added, embedded, assigned);
+        var linked = await clusterer.RunAsync(ct);
+        var fetched = await pages.RunAsync(ct);
+        await discovery.RunAsync(ct);
+        Logger.LogInformation("Ingested {Added} entries, embedded {Embedded}, assigned {Assigned} profile keys, clustered {Linked}, fetched {Fetched} pages", added, embedded, assigned, linked, fetched);
     }
 
     /// <summary>An embedding outage is its own health entry, so it is not reported as a Miniflux outage; the next poll retries.</summary>
@@ -57,7 +61,7 @@ public sealed class Ingestor(
             var page = await miniflux.EntriesAfterAsync(await items.MaxEntryIdAsync(ct), pageSize, ct);
             foreach (var e in page)
             {
-                await items.UpsertFeedAsync(new Feed(e.FeedId, e.FeedTitle, e.Category, e.SiteUrl), ct);
+                await items.UpsertFeedAsync(new Feed(e.FeedId, e.FeedTitle, e.Category, e.SiteUrl, FeedUrl: e.FeedUrl), ct);
                 if (await items.InsertAsync(ToNewItem(e), ct) is not null)
                 {
                     added++;
@@ -144,7 +148,10 @@ public sealed class Ingestor(
         return text.Length > 0 ? text : url;
     }
 
-    private static NewItem ToNewItem(MinifluxEntry e) => new(
-        e.Id, e.FeedId, e.Url, UrlCanonicalizer.Canonical(e.Url), TitleHash.Of(e.Title), e.Title,
-        e.PublishedAt.UtcDateTime, HtmlText.ToPlain(e.Content));
+    private static NewItem ToNewItem(MinifluxEntry e)
+    {
+        var (link, hn) = LinkExtractor.Find(e.Url, e.Content);
+        return new(e.Id, e.FeedId, e.Url, UrlCanonicalizer.Canonical(e.Url), TitleHash.Of(e.Title), e.Title,
+            e.PublishedAt.UtcDateTime, HtmlText.ToPlain(e.Content), link, hn);
+    }
 }

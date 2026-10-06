@@ -2,12 +2,15 @@ using Microsoft.Extensions.Options;
 using System.Text.Json;
 using FeedEater.Digest;
 using FeedEater.Plane;
+using FeedEater.Signals;
 using FeedEater.Storage;
 
 namespace FeedEater.Telegram;
 
+public enum SaveOutcome { Saved, AlreadySaved, NotConfigured, Down, Refused, NoItem }
+
 public sealed class CallbackHandler(
-    TelegramClient telegram, FeedbackStore feedback, IdeaFiler ideas, ItemStore items,
+    TelegramClient telegram, FeedbackStore feedback, IdeaFiler ideas, ItemStore items, KarakeepClient karakeep,
     IOptions<FeedEaterOptions> options, ILogger<CallbackHandler> logger)
 {
     public async Task HandleAsync(TgCallback callback, CancellationToken ct)
@@ -38,6 +41,16 @@ public sealed class CallbackHandler(
                 await telegram.AnswerAsync(callback.Id, $"Filed in {project}", ct);
                 break;
 
+            case SaveCallback save:
+                var outcome = await SaveAsync(save.ItemId, ct);
+                if (outcome is SaveOutcome.Saved or SaveOutcome.AlreadySaved)
+                {
+                    await RefreshButtonsAsync(callback, save.ItemId, ct);
+                }
+
+                await telegram.AnswerAsync(callback.Id, SaveMessage(outcome), ct);
+                break;
+
             default:
                 await telegram.AnswerAsync(callback.Id, null, ct);
                 break;
@@ -46,6 +59,55 @@ public sealed class CallbackHandler(
 
     /// <summary>Also used by the web UI, so a vote means the same on both surfaces.</summary>
     public Task VoteAsync(long itemId, short value, CancellationToken ct) => feedback.SetVoteAsync(itemId, value, ct);
+
+    /// <summary>Saves the item's link as a Karakeep bookmark, once. Karakeep being down is an outcome, not an exception.</summary>
+    public async Task<SaveOutcome> SaveAsync(long itemId, CancellationToken ct)
+    {
+        if (await feedback.IsSavedAsync(itemId, ct))
+        {
+            return SaveOutcome.AlreadySaved;
+        }
+
+        if (await items.GetAsync(itemId, ct) is not { } item)
+        {
+            return SaveOutcome.NoItem;
+        }
+
+        if (options.Value.Karakeep.Token.Length == 0)
+        {
+            return SaveOutcome.NotConfigured;
+        }
+
+        if (!Uri.TryCreate(item.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        {
+            return SaveOutcome.Refused;
+        }
+
+        string id;
+        try
+        {
+            id = await karakeep.CreateLinkAsync(item.Url, item.Title, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException
+            || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            logger.LogWarning(ex, "Saving item {Item} to Karakeep failed", itemId);
+            return SaveOutcome.Down;
+        }
+
+        await feedback.AddSavedAsync(itemId, id, ct);
+        return SaveOutcome.Saved;
+    }
+
+    public static string SaveMessage(SaveOutcome outcome) => outcome switch
+    {
+        SaveOutcome.Saved => "📌 Saved to Karakeep",
+        SaveOutcome.AlreadySaved => "Already saved",
+        SaveOutcome.NotConfigured => "Karakeep is not configured",
+        SaveOutcome.Down => "Karakeep is not reachable; try again later",
+        SaveOutcome.Refused => "This item has no link to save",
+        _ => "No such item",
+    };
 
     public Task ClearVoteAsync(long itemId, CancellationToken ct) => feedback.ClearVoteAsync(itemId, ct);
 
@@ -78,7 +140,7 @@ public sealed class CallbackHandler(
         try
         {
             await telegram.EditButtonsAsync(callback.ChatId, callback.MessageId,
-                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn), ct);
+                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved), ct);
         }
         catch (TelegramException ex) when (ex.Message.Contains("not modified", StringComparison.OrdinalIgnoreCase))
         {

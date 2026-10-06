@@ -2,6 +2,8 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using FeedEater.Digest;
+using FeedEater.Eval;
+using FeedEater.Fetch;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -9,6 +11,8 @@ using FeedEater.Memory;
 using FeedEater.Mcp;
 using FeedEater.Plane;
 using FeedEater.Profiles;
+using FeedEater.Review;
+using FeedEater.Watch;
 using FeedEater.Search;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -32,11 +36,16 @@ public static class ServiceRegistration
         services.AddSingleton(new FeedDb(NpgsqlDataSource.Create(connectionString)));
         services.AddSingleton<CursorStore>();
         services.AddSingleton<ItemStore>();
+        services.AddSingleton<ClusterStore>();
+        services.AddSingleton<StoryClusterer>();
         services.AddSingleton<ProfileStore>();
         services.AddSingleton<FeedbackStore>();
         services.AddSingleton<AnalysisStore>();
         services.AddSingleton<DigestStore>();
         services.AddSingleton<SignalStore>();
+        services.AddSingleton<WeeklyStore>();
+        services.AddSingleton<ReleaseStore>();
+        services.AddSingleton<QuietHours>();
         services.AddSingleton<UsageStore>();
         services.AddSingleton<IUsageSink>(sp => sp.GetRequiredService<UsageStore>());
         services.AddSingleton<LoopHealth>();
@@ -75,8 +84,26 @@ public static class ServiceRegistration
         services.AddHttpClient<GitHubStarsClient>((sp, http) =>
         {
             http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.2");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.5.0");
         });
+
+        services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(SafeFetcher.CreateHandler);
+        services.AddSingleton(sp => new SafeFetcher(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(SafeFetcher.ClientName), sp.GetRequiredService<IOptions<FeedEaterOptions>>(),
+            sp.GetRequiredService<CursorStore>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SafeFetcher>>()));
+        services.AddHttpClient<HnClient>((sp, http) =>
+        {
+            http.BaseAddress = new Uri(Settings(sp).Fetch.HnApiBase);
+            http.Timeout = TimeSpan.FromSeconds(10);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+        });
+        services.AddSingleton<PageEnricher>();
+        services.AddSingleton<DiscoveryStore>();
+        services.AddSingleton<EvalStore>();
+        services.AddSingleton<EvalRunner>();
+        services.AddSingleton<FeedDiscoverer>();
+        // The client carries the PINS bearer token, so it must never follow a redirect to another host.
+        services.AddHttpClient<WatchSource>().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
         services.AddHttpClient<HindsightClient>((sp, http) =>
         {
@@ -106,8 +133,10 @@ public static class ServiceRegistration
             }
 
             services.AddHostedService<WeeklyRetain>();
+            services.AddHostedService<ReleaseWatcher>();
             if (telegram)
             {
+                services.AddHostedService<WeeklyReview>();
                 services.AddHostedService<TelegramPoller>();
             }
         }

@@ -4,7 +4,7 @@ namespace FeedEater.Ingest;
 
 public sealed record MinifluxEntry(
     long Id, long FeedId, string FeedTitle, string? Category, string? SiteUrl,
-    string Url, string Title, string Content, DateTimeOffset PublishedAt);
+    string Url, string Title, string Content, DateTimeOffset PublishedAt, string? FeedUrl = null);
 
 /// <summary>Read-only: entries by id and the full-text fetch. Never changes read/unread state.</summary>
 public sealed class MinifluxClient(HttpClient http)
@@ -36,6 +36,7 @@ public sealed class MinifluxClient(HttpClient http)
             Json.Str(e, "url") ?? "",
             Json.Str(e, "title") ?? "",
             Json.Str(e, "content") ?? "",
-            e.GetProperty("published_at").GetDateTimeOffset());
+            e.GetProperty("published_at").GetDateTimeOffset(),
+            Json.Str(feed, "feed_url"));
     }
 }

@@ -19,10 +19,18 @@ public abstract class ScheduledJob(CursorStore cursors, IOptions<FeedEaterOption
 
     protected abstract Task RunAsync(string key, CancellationToken ct);
 
+    /// <summary>True to leave a due run for the next tick (quiet hours); the key is not stored, so it runs when released.</summary>
+    protected virtual Task<bool> HoldAsync(CancellationToken ct) => Task.FromResult(false);
+
     protected override async Task PollAsync(CancellationToken ct)
     {
         var key = DueKey(Schedule.Local(Time.GetUtcNow(), options.Value.Zone));
         if (key is null || await cursors.GetAsync($"job:{Name}", ct) == key)
+        {
+            return;
+        }
+
+        if (await HoldAsync(ct))
         {
             return;
         }

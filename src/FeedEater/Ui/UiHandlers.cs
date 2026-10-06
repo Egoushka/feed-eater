@@ -3,15 +3,18 @@ using System.Reflection;
 using System.Text;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
+using FeedEater.Fetch;
+using FeedEater.Loops;
 using FeedEater.Search;
 using FeedEater.Storage;
 using FeedEater.Telegram;
+using FeedEater.Watch;
 
 namespace FeedEater.Ui;
 
 public sealed class UiHandlers(
     ItemStore items, DigestStore digests, FeedbackStore feedback, ProfileStore profiles, UsageStore usage, ArchiveSearch search,
-    CallbackHandler callbacks, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
+    CallbackHandler callbacks, FeedDiscoverer discovery, QuietHours quiet, WeeklyStore weekly, WatchSource watch, ReleaseStore releases, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
     IOptions<FeedEaterOptions> options, TimeProvider time)
 {
     private const int SearchLimit = 30;
@@ -83,7 +86,7 @@ public sealed class UiHandlers(
             latest is { Status: "sent" } && latest.LocalDate == today,
             pending is null ? null : pending.Resend ? "A send-again" : "A",
             await trigger.LastResultAsync(ct));
-        return Html(UiPages.Today(p, latest, latest is null ? [] : await ShownAsync(latest, ct), await FiguresAsync(ct), run));
+        return Html(UiPages.Today(p, latest, latest is null ? [] : await ShownAsync(latest, ct), await FiguresAsync(ct), run, await quiet.StatusAsync(ct)));
     }
 
     public async Task<IResult> DigestAsync(HttpContext ctx, string date, CancellationToken ct)
@@ -126,14 +129,15 @@ public sealed class UiHandlers(
             query["kind"].ToString() is "improve" or "new" or "fyi" ? query["kind"].ToString() : null,
             query["unrated"] == "1",
             query["summary"] == "1",
-            int.TryParse(query["days"], NumberStyles.None, CultureInfo.InvariantCulture, out var days) && PostsQuery.DayChoices.Contains(days) ? days : 7);
+            int.TryParse(query["days"], NumberStyles.None, CultureInfo.InvariantCulture, out var days) && PostsQuery.DayChoices.Contains(days) ? days : 7,
+            query["muted"] == "1");
         var before = PageCursor.Parse(query["before"]);
         var rows = await items.PostsAsync(
-            new PostFilter(time.GetUtcNow().AddDays(-q.Days), q.Category, q.Feed, q.Project, q.Kind, q.Unrated, q.Summary), before, PageSize + 1, ct);
+            new PostFilter(time.GetUtcNow().AddDays(-q.Days), q.Category, q.Feed, q.Project, q.Kind, q.Unrated, q.Summary, q.ShowMuted), before, PageSize + 1, ct);
         var shown = rows.Take(PageSize).ToList();
         var next = rows.Count > PageSize ? PageCursor.Of(shown[^1].PublishedAt, shown[^1].Id).ToString() : null;
         var projects = (await profiles.AllAsync(ct)).Select(x => x.Key).ToList();
-        return Html(UiPages.Posts(Context(ctx), q, await items.CategoriesAsync(ct), await items.FeedsAsync(ct), projects, shown, next, before is not null));
+        return Html(UiPages.Posts(Context(ctx), q, await items.CategoriesAsync(ct), await items.FeedsAsync(ct), projects, await items.WithMembersAsync(shown, ct), next, before is not null));
     }
 
     public async Task<IResult> FeedbackAsync(HttpContext ctx, CancellationToken ct)
@@ -148,19 +152,19 @@ public sealed class UiHandlers(
         return Html(UiPages.Feedback(
             Context(ctx), tab, await feedback.TotalsAsync(ct),
             DigestStats.UpRate(await feedback.VotesSinceAsync(now.AddDays(-7), ct)), DigestStats.UpRate(await feedback.VotesSinceAsync(now.AddDays(-30), ct)),
-            shown, next, before is not null));
+            await items.WithMembersAsync(shown, ct), next, before is not null));
     }
 
     public async Task<IResult> ItemAsync(HttpContext ctx, long id, CancellationToken ct)
     {
         var p = Context(ctx);
-        return await items.GetAsync(id, ct) is { } item ? Html(UiPages.Item(p, item)) : NotFound(p);
+        return await items.GetAsync(id, ct) is { } item ? Html(UiPages.Item(p, (await items.WithMembersAsync([item], ct))[0])) : NotFound(p);
     }
 
     public async Task<IResult> SourcesAsync(HttpContext ctx, CancellationToken ct)
     {
         var query = ctx.Request.Query;
-        var sort = query["sort"].ToString() is "feed" or "items" or "candidates" or "shown" or "up" or "down" or "rate" or "flag" ? query["sort"].ToString() : "items";
+        var sort = query["sort"].ToString() is "feed" or "items" or "perweek" or "candidates" or "shown" or "up" or "down" or "rate" or "flag" ? query["sort"].ToString() : "items";
         var desc = query["dir"].ToString() != "asc";
         var flaggedOnly = query["flag"].ToString() == "1";
         var rows = (await items.SourceStatsAsync(time.GetUtcNow().AddDays(-30), ct)).Select(s => new SourceRow(s, Flag(s))).ToList();
@@ -169,8 +173,31 @@ public sealed class UiHandlers(
             rows = rows.Where(r => r.Flag is not null).ToList();
         }
 
-        return Html(UiPages.Sources(Context(ctx), SortSources(rows, sort, desc), sort, desc, flaggedOnly));
+        return Html(UiPages.Sources(Context(ctx), SortSources(rows, sort, desc), sort, desc, flaggedOnly, await discovery.SuggestionsAsync(ct)));
     }
+
+    public async Task<IResult> WeeklyAsync(HttpContext ctx, string? date, CancellationToken ct)
+    {
+        var p = Context(ctx);
+        WeeklyRow? row;
+        if (date is null)
+        {
+            row = await weekly.LatestAsync(ct);
+        }
+        else if (DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) && await weekly.GetAsync(date, ct) is { } found)
+        {
+            row = found;
+        }
+        else
+        {
+            return NotFound(p);
+        }
+
+        return Html(UiPages.Weekly(p, row, await weekly.ListAsync(52, ct)));
+    }
+
+    public async Task<IResult> ReleasesAsync(HttpContext ctx, CancellationToken ct) =>
+        Html(UiPages.Releases(Context(ctx), await watch.LoadAsync(ct), await releases.ListAsync(500, ct)));
 
     public async Task<IResult> IdeasAsync(HttpContext ctx, CancellationToken ct) =>
         Html(UiPages.Ideas(Context(ctx), await feedback.IdeasAsync(null, 100, ct)));
@@ -209,12 +236,38 @@ public sealed class UiHandlers(
             case "clear":
                 await callbacks.ClearVoteAsync(id, ct);
                 return SeeOther(ctx, back);
+            case "save":
+                var saved = await callbacks.SaveAsync(id, ct);
+                return SeeOther(ctx, saved is SaveOutcome.Saved or SaveOutcome.AlreadySaved ? back : WithNotice(back, saved == SaveOutcome.NotConfigured ? "save-off" : saved == SaveOutcome.Refused ? "save-refused" : "save-down"));
             case "idea":
                 var (project, _) = await callbacks.FileIdeaAsync(id, ct);
                 return SeeOther(ctx, WithNotice(back, project is null ? "file-failed" : "filed"));
             default:
                 return Results.BadRequest();
         }
+    }
+
+    public async Task<IResult> MuteFeedAsync(HttpContext ctx, CancellationToken ct)
+    {
+        var form = await ctx.Request.ReadFormAsync(ct);
+        if (!long.TryParse(form["feed"], NumberStyles.None, CultureInfo.InvariantCulture, out var feed) || form["mute"].ToString() is not ("0" or "1"))
+        {
+            return Results.BadRequest();
+        }
+
+        return await items.SetFeedMutedAsync(feed, form["mute"] == "1", ct) ? SeeOther(ctx, SafeBack(form["back"])) : NotFound(Context(ctx));
+    }
+
+    public async Task<IResult> QuietAsync(HttpContext ctx, CancellationToken ct)
+    {
+        var mode = (await ctx.Request.ReadFormAsync(ct))["mode"].ToString();
+        if (mode is not ("on" or "off"))
+        {
+            return Results.BadRequest();
+        }
+
+        await quiet.SetAsync(mode == "on", ct);
+        return SeeOther(ctx, "/ui?notice=" + (mode == "on" ? "quiet-on" : "quiet-off"));
     }
 
     public async Task<IResult> RunDigestAsync(HttpContext ctx, CancellationToken ct)
@@ -240,7 +293,7 @@ public sealed class UiHandlers(
             }
         }
 
-        return shown;
+        return await items.WithMembersAsync(shown, ct);
     }
 
     private async Task<Figures> FiguresAsync(CancellationToken ct)
@@ -272,6 +325,7 @@ public sealed class UiHandlers(
 
         double? Key(SourceRow r) => sort switch
         {
+            "perweek" => r.Stats.PostsPerWeek,
             "candidates" => r.Stats.Candidates,
             "shown" => r.Stats.Shown,
             "up" => r.Stats.Up,

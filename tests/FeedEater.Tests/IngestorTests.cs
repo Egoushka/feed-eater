@@ -20,6 +20,10 @@ public sealed class IngestorTests(PostgresFixture pg) : IAsyncLifetime
         return new Ingestor(
             new MinifluxClient(miniflux.Client("http://miniflux/")),
             new ItemStore(pg.Db),
+            new StoryClusterer(new ClusterStore(pg.Db), options, NullLogger<StoryClusterer>.Instance),
+            new FeedEater.Fetch.FeedDiscoverer(new DiscoveryStore(pg.Db), new ItemStore(pg.Db), new FeedEater.Fetch.SafeFetcher(new HttpClient(new StubHandler((_, _) => StubHandler.Json("x"))), options, new CursorStore(pg.Db), TimeProvider.System, NullLogger<FeedEater.Fetch.SafeFetcher>.Instance), options, TimeProvider.System, NullLogger<FeedEater.Fetch.FeedDiscoverer>.Instance),
+            new PageEnricher(new ItemStore(pg.Db), new FeedEater.Fetch.SafeFetcher(new HttpClient(new StubHandler((_, _) => StubHandler.Json("x"))), options, new CursorStore(pg.Db), TimeProvider.System, NullLogger<FeedEater.Fetch.SafeFetcher>.Instance),
+                new FeedEater.Fetch.HnClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://hn/")), options, TimeProvider.System, NullLogger<PageEnricher>.Instance),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             options, new LoopHealth(TimeProvider.System), TimeProvider.System, NullLogger<Ingestor>.Instance);
     }
@@ -170,5 +174,26 @@ public sealed class IngestorTests(PostgresFixture pg) : IAsyncLifetime
     {
         Assert.Equal("https://x.example/", Ingestor.EmbedText("", "", "https://x.example/", 8000));
         Assert.Equal(8 + 1 + 5, Ingestor.EmbedText("Headline", new string('a', 50), "u", 5).Length);
+    }
+
+    [Fact]
+    public async Task Stores_where_a_reddit_or_hn_link_post_points()
+    {
+        var entries = """
+            {"total":2,"entries":[
+              {"id":201,"feed_id":20,"title":"Pingularity","url":"https://www.reddit.com/r/selfhosted/comments/abc/p/","published_at":"2026-10-05T10:00:00Z",
+               "content":"<a href=\"https://pingularity.dev/\">[link]</a> <a href=\"https://www.reddit.com/r/selfhosted/comments/abc/p/\">[comments]</a>",
+               "feed":{"id":20,"title":"r/selfhosted","site_url":"https://reddit.com","category":null}},
+              {"id":202,"feed_id":21,"title":"A tool","url":"https://tool.example/","published_at":"2026-10-05T11:00:00Z",
+               "content":"<a href=\"https://news.ycombinator.com/item?id=777\">Comments</a>",
+               "feed":{"id":21,"title":"HN","site_url":"https://news.ycombinator.com","category":null}}]}
+            """;
+        var miniflux = new StubHandler((request, _) => StubHandler.Json(request.RequestUri!.Query.Contains("after_entry_id=0", StringComparison.Ordinal) ? entries : """{"total":0,"entries":[]}"""));
+
+        await Build(miniflux, Llm()).IngestAsync(default);
+
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        var rows = (await c.QueryAsync<(long Entry, string? Link, long? Hn)>("select miniflux_entry_id, link_url, hn_id from items order by 1")).ToList();
+        Assert.Equal([(201L, "https://pingularity.dev/", (long?)null), (202L, "https://tool.example/", 777L)], rows);
     }
 }

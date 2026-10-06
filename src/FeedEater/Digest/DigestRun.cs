@@ -6,6 +6,7 @@ using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Profiles;
 using FeedEater.Ranking;
+using FeedEater.Signals;
 using FeedEater.Storage;
 using FeedEater.Telegram;
 using FeedEater.Text;
@@ -21,8 +22,8 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 /// Every step is stored, so a rerun resumes: results per item in triage/reads, delivered messages in sent_count.
 /// </summary>
 public sealed class DigestRun(
-    ItemStore items, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
-    LiteLlmClient llm, MinifluxClient miniflux, TelegramClient telegram, LoopHealth health,
+    ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
+    LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, LoopHealth health,
     IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger)
 {
     private const int TriageMaxTokens = 200;
@@ -108,6 +109,16 @@ public sealed class DigestRun(
         var taste = Taste.Build(
             await feedback.PositiveVectorsAsync(o.Caps.Centroid, ct), await feedback.NegativeVectorsAsync(o.Caps.Centroid, ct),
             await feedback.FeedVotesAsync(ct), o.Weights);
+        if (o.Taste.Learn)
+        {
+            var (model, note) = LearnedTaste.Prepare(await feedback.LabeledVectorsAsync(ct), o.Taste);
+            taste = taste with { Learned = model };
+            if (note is not null)
+            {
+                notes.Add(note);
+            }
+        }
+
         var scored = candidates.Select(c => Scorer.Score(c.Id, c.FeedId, c.Embedding, profileList, taste, o.Weights)).ToList();
         await items.SetScoresAsync(scored, ct);
 
@@ -129,7 +140,7 @@ public sealed class DigestRun(
                 }
 
                 var c = byId[s.ItemId];
-                var (system, user) = Prompts.Triage(about, profileList, c.Title, c.FeedTitle, c.Content, o.Caps.TriageChars);
+                var (system, user) = Prompts.Triage(about, profileList, c.Title, c.FeedTitle, c.Content, o.Caps.TriageChars, Clip(c.ExtraText, 1200));
                 triageCalls++;
                 try
                 {
@@ -165,6 +176,7 @@ public sealed class DigestRun(
             .Take(o.Caps.Read)
             .ToList();
 
+        var repoFacts = new Dictionary<(string, string), string?>();
         var read = new List<(Scored Score, TriageResult Triage, ReadResult Read)>();
         int readCalls = 0, readTransportFailures = 0, readsCached = 0;
         foreach (var (s, t) in picked)
@@ -183,7 +195,8 @@ public sealed class DigestRun(
                 {
                     var text = await FullTextAsync(c, ct);
                     var match = profileList.FirstOrDefault(p => p.Key == (t.Project ?? s.ProfileKey));
-                    var (system, user) = Prompts.Read(about, profileList, match, c.Title, c.Url, c.FeedTitle, text, o.Caps.ReadChars);
+                    var facts = await RepoFactsAsync(repoFacts, c.Url, text, ct);
+                    var (system, user) = Prompts.Read(about, profileList, match, c.Title, c.Url, c.FeedTitle, text, o.Caps.ReadChars, facts, Clip(c.ExtraText, o.Fetch.PageChars));
                     r = LlmJson.Read((await llm.ChatAsync(o.Llm.ReadModel, system, user, ReadMaxTokens, "read", ct)).Content, keys);
                     if (r is not null)
                     {
@@ -222,6 +235,45 @@ public sealed class DigestRun(
             .ToList();
         return new Selection(candidates.Count, triaged.Count, ordered, notes);
     }
+
+    /// <summary>One line of GitHub facts for a repo the item links, fetched once per repo per run; null when there is no link or GitHub does not answer.</summary>
+    private async Task<string?> RepoFactsAsync(Dictionary<(string, string), string?> cache, string url, string text, CancellationToken ct)
+    {
+        if (GitHubRepos.Find(url, text) is not var (owner, repo))
+        {
+            return null;
+        }
+
+        var key = (owner.ToLowerInvariant(), repo.ToLowerInvariant());
+        if (cache.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        string? line = null;
+        try
+        {
+            line = (await github.RepoFactsAsync(owner, repo, ct))?.Line();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException
+            || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            logger.LogDebug(ex, "GitHub facts for {Owner}/{Repo} unavailable", owner, repo);
+        }
+
+        if (line is null)
+        {
+            logger.LogDebug("No GitHub facts for {Owner}/{Repo}", owner, repo);
+        }
+
+        cache[key] = line;
+        return line;
+    }
+
+    private static string ReleaseLine(ReleaseRow r) =>
+        $"{r.Repo} {r.Version} is out (breaking: {r.Breaking ?? "unknown"}){(r.Summary is null ? "" : ": " + r.Summary)}";
+
+    private static string? Clip(string? text, int max) => text is null || text.Length <= max ? text : text[..max];
 
     private async Task<string> FullTextAsync(Candidate c, CancellationToken ct)
     {
@@ -276,7 +328,8 @@ public sealed class DigestRun(
             .ToList();
         var header = DigestFormatter.Header(new DigestHeader(
             DateOnly.ParseExact(d.LocalDate, "yyyy-MM-dd", CultureInfo.InvariantCulture), shown.Count, d.Candidates, byProject,
-            votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n')));
+            votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n'),
+            (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList()));
         return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null))];
     }
 }

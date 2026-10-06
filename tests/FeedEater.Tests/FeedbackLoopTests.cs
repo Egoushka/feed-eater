@@ -18,6 +18,9 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
     private bool _editNotModified;
     private bool _editFails;
     private bool _answerFails;
+    private System.Net.HttpStatusCode _karakeepStatus = System.Net.HttpStatusCode.Created;
+    private string _karakeepToken = "k";
+    private readonly List<string> _karakeepBodies = [];
     private System.Net.HttpStatusCode _planeStatus = System.Net.HttpStatusCode.Created;
     private string _planeBody = """{"issue":{"id":"issue-1"}}""";
 
@@ -29,7 +32,12 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
     private (TelegramPoller Poller, StubHandler Plane) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42 }, Karakeep = new KarakeepOptions { Token = _karakeepToken } });
+        var karakeepStub = new StubHandler((_, body) =>
+        {
+            _karakeepBodies.Add(body);
+            return StubHandler.Json("""{"id":"bm-1"}""", _karakeepStatus);
+        });
         var telegramStub = new StubHandler((request, body) =>
         {
             var method = request.RequestUri!.Segments[^1];
@@ -39,6 +47,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
                 "getUpdates" => StubHandler.Json(Interlocked.Exchange(ref _updates, """{"ok":true,"result":[]}""")),
                 "editMessageReplyMarkup" when _editNotModified => StubHandler.Json("""{"ok":false,"description":"Bad Request: message is not modified"}"""),
                 "editMessageReplyMarkup" when _editFails => StubHandler.Json("""{"ok":false,"description":"Bad Request: message to edit not found"}"""),
+                "sendMessage" => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""),
                 "answerCallbackQuery" when _answerFails => StubHandler.Json("""{"ok":false,"description":"Bad Request: query is too old"}"""),
                 _ => StubHandler.Json("""{"ok":true,"result":true}"""),
             };
@@ -50,8 +59,10 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var items = new ItemStore(pg.Db);
         var feedback = new FeedbackStore(pg.Db);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), new PlaneClient(planeStub.Client("http://plane/"), options), options, TimeProvider.System);
-        var handler = new CallbackHandler(telegram, feedback, filer, items, options, NullLogger<CallbackHandler>.Instance);
-        var commands = new CommandHandler(telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), options);
+        var handler = new CallbackHandler(telegram, feedback, filer, items, new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
+        var embedder = new StubHandler((_, _) => StubHandler.Json("{}", System.Net.HttpStatusCode.ServiceUnavailable));   // search falls back to keywords
+        var llm = new FeedEater.Llm.LiteLlmClient(embedder.Client("http://llm/"), new UsageStore(pg.Db), options);
+        var commands = new CommandHandler(telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new QuietHours(new CursorStore(pg.Db), options, TimeProvider.System), new FeedEater.Search.ArchiveSearch(items, llm), options);
         var poller = new TelegramPoller(telegram, handler, commands, new CursorStore(pg.Db), new LoopHealth(TimeProvider.System), TimeProvider.System, NullLogger<TelegramPoller>.Instance);
         return (poller, planeStub);
     }
@@ -250,8 +261,10 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
     [Theory]
     [InlineData(999, "/digest")]
-    [InlineData(42, "hello")]
-    public async Task Other_senders_and_other_text_queue_nothing(long from, string text)
+    [InlineData(999, "hnsw")]
+    [InlineData(999, "/search hnsw")]
+    [InlineData(42, "/start")]
+    public async Task Other_senders_and_unknown_commands_do_nothing(long from, string text)
     {
         var (poller, _) = Build();
         _updates = $$"""{"ok":true,"result":[{{Message(10, from, text)}}]}""";
@@ -260,5 +273,187 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Null(await new CursorStore(pg.Db).GetAsync("digest:force", default));
         Assert.DoesNotContain(_telegram, t => t.Method == "sendMessage");
+    }
+
+    private List<(string Text, string Markup)> Replies() => _telegram.Where(t => t.Method == "sendMessage")
+        .Select(t => { var j = JsonSerializer.Deserialize<JsonElement>(t.Body); return (j.GetProperty("text").GetString()!, j.TryGetProperty("reply_markup", out var m) ? Buttons(m) : ""); }).ToList();
+
+    private static string Buttons(JsonElement markup) => string.Join(' ', markup.GetProperty("inline_keyboard").EnumerateArray()
+        .SelectMany(row => row.EnumerateArray()).Select(b => $"{b.GetProperty("text").GetString()}={b.GetProperty("callback_data").GetString()}"));
+
+    [Theory]
+    [InlineData("/search hnsw")]
+    [InlineData("/search@feed_bot hnsw")]
+    [InlineData("hnsw")]
+    public async Task A_search_command_or_plain_text_replies_with_one_message_per_result_and_buttons(string text)
+    {
+        LiteLlmClientRetry();
+        var id = await Seed.ItemAsync(pg, 1, "HNSW <b>tuning</b> in pgvector", TestVectors.OneHot(1), new DateTime(2026, 10, 5, 22, 30, 0, DateTimeKind.Utc));
+        await Seed.ReadAsync(pg, id, "homelab", "improve");
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await Dapper.SqlMapper.ExecuteAsync(c, "update items set url = 'https://example.com/hnsw?a=1&b=2' where id = @id; update reads set suggestion = 'Tune it.' where item_id = @id", new { id });
+        }
+
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 42, text)}}]}""";
+
+        await poller.TickAsync(default);
+
+        var (html, markup) = Assert.Single(Replies());
+        Assert.Contains("<b><a href=\"https://example.com/hnsw?a=1&amp;b=2\">HNSW &lt;b&gt;tuning&lt;/b&gt; in pgvector</a></b>", html, StringComparison.Ordinal);
+        Assert.Contains("Feed 1", html, StringComparison.Ordinal);
+        Assert.Contains("6 Oct 2026", html, StringComparison.Ordinal);   // 22:30 UTC is already the 6th in Kyiv
+        Assert.Contains("homelab", html, StringComparison.Ordinal);
+        Assert.Contains($"v:{id}:u", markup, StringComparison.Ordinal);
+        Assert.Contains($"v:{id}:d", markup, StringComparison.Ordinal);
+        Assert.Contains($"i:{id}", markup, StringComparison.Ordinal);
+        Assert.Contains("s", html[(html.IndexOf("\n\n", StringComparison.Ordinal) + 2)..], StringComparison.Ordinal);   // the one-line summary follows
+    }
+
+    private static void LiteLlmClientRetry() => FeedEater.Llm.LiteLlmClient.RetryDelay = TimeSpan.Zero;
+
+    [Fact]
+    public async Task A_search_sends_at_most_five_results_and_says_when_there_are_none()
+    {
+        LiteLlmClientRetry();
+        for (var i = 0; i < 7; i++)
+        {
+            await Seed.ItemAsync(pg, 1, $"hnsw post {i}", TestVectors.OneHot(1 + i));
+        }
+
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 42, "/search hnsw")}},{{Message(11, 42, "/search <nothing>")}}]}""";
+
+        await poller.TickAsync(default);
+
+        var replies = Replies();
+        Assert.Equal(6, replies.Count);
+        Assert.Equal(5, replies.Count(r => r.Text.Contains("hnsw post", StringComparison.Ordinal)));
+        Assert.Contains("Nothing found for &lt;nothing&gt;.", replies[^1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_bare_search_command_explains_itself_and_a_filed_item_shows_no_idea_button()
+    {
+        LiteLlmClientRetry();
+        var id = await SeedReadItemAsync("Try it.");
+        await new FeedbackStore(pg.Db).AddIdeaAsync(new Idea { ItemId = id, PlaneProject = "LAB", PlaneIssueId = "x", Title = "t", At = DateTime.UtcNow }, default);
+        await new FeedbackStore(pg.Db).SetVoteAsync(id, 1, default);
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 42, "/search")}},{{Message(11, 42, "/search backup")}}]}""";
+
+        await poller.TickAsync(default);
+
+        var replies = Replies();
+        Assert.StartsWith("Usage: /search", replies[0].Text, StringComparison.Ordinal);
+        Assert.Contains("Filed in LAB", replies[1].Markup, StringComparison.Ordinal);
+        Assert.Contains("👍 ✓", replies[1].Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain($"i:{id}", replies[1].Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Pressing_a_button_on_a_search_result_votes_through_the_same_handler()
+    {
+        var id = await SeedReadItemAsync("Try it.");
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"v:{id}:d")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Equal(-1, (await new ItemStore(pg.Db).GetAsync(id, default))!.Vote);
+    }
+
+    [Fact]
+    public async Task The_save_button_creates_one_karakeep_bookmark_marks_the_buttons_and_is_idempotent()
+    {
+        var id = await SeedReadItemAsync("Try it.");
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"s:{id}")}},{{Callback(11, 42, $"s:{id}")}}]}""";
+
+        await poller.TickAsync(default);
+
+        var body = JsonSerializer.Deserialize<JsonElement>(Assert.Single(_karakeepBodies));
+        Assert.Equal("link", body.GetProperty("type").GetString());
+        Assert.StartsWith("https://example.com/", body.GetProperty("url").GetString(), StringComparison.Ordinal);
+        Assert.Equal("Backup tool", body.GetProperty("title").GetString());
+        Assert.True((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
+        Assert.Contains("Saved to Karakeep", Answers(), StringComparison.Ordinal);
+        Assert.Contains("Already saved", Answers(), StringComparison.Ordinal);
+        var markup = JsonSerializer.Deserialize<JsonElement>(_telegram.First(t => t.Method == "editMessageReplyMarkup").Body);
+        Assert.Equal("📌 Saved ✓", markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0][2].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task When_karakeep_is_down_nothing_is_recorded_and_the_button_says_so_and_works_later()
+    {
+        var id = await SeedReadItemAsync("Try it.");
+        _karakeepStatus = System.Net.HttpStatusCode.ServiceUnavailable;
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"s:{id}")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.False((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
+        Assert.Contains("Karakeep is not reachable", Answers(), StringComparison.Ordinal);
+        Assert.DoesNotContain(_telegram, t => t.Method == "editMessageReplyMarkup");
+
+        _karakeepStatus = System.Net.HttpStatusCode.Created;
+        _updates = $$"""{"ok":true,"result":[{{Callback(11, 42, $"s:{id}")}}]}""";
+        await poller.TickAsync(default);
+        Assert.True((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
+    }
+
+    [Fact]
+    public async Task Saving_without_a_token_or_without_a_web_link_or_from_someone_else_does_nothing()
+    {
+        var id = await SeedReadItemAsync("Try it.");
+        _karakeepToken = "";
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"s:{id}")}},{{Callback(11, 999, $"s:{id}")}}]}""";
+        await poller.TickAsync(default);
+        Assert.Contains("Karakeep is not configured", Answers(), StringComparison.Ordinal);
+        Assert.Contains("Not for you.", Answers(), StringComparison.Ordinal);
+
+        _karakeepToken = "k";
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await Dapper.SqlMapper.ExecuteAsync(c, "update items set url = 'javascript:alert(1)' where id = @id", new { id });
+        }
+
+        var (second, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Callback(12, 42, $"s:{id}")}}]}""";
+        await second.TickAsync(default);
+        Assert.Contains("no link to save", Answers(), StringComparison.Ordinal);
+        Assert.Empty(_karakeepBodies);
+        Assert.False((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
+    }
+
+    [Theory]
+    [InlineData("/quiet", "Quiet mode is on until")]
+    [InlineData("/quiet on", "Quiet mode is on until")]
+    [InlineData("/quiet off", "Quiet mode is off.")]
+    [InlineData("/quiet status", "Quiet mode is off.")]
+    [InlineData("/quiet maybe", "Usage: /quiet")]
+    public async Task The_quiet_command_toggles_and_reports(string text, string expected)
+    {
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 42, text)}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.StartsWith(expected, Assert.Single(Replies()).Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Only_the_owner_can_change_quiet_mode()
+    {
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 999, "/quiet on")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Empty(Replies());
+        Assert.Null(await new CursorStore(pg.Db).GetAsync("quiet:manual", default));
     }
 }

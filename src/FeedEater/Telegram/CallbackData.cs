@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace FeedEater.Telegram;
 
-/// <summary>Button payloads: <c>v:{id}:u</c>, <c>v:{id}:d</c>, <c>i:{id}</c>, <c>n</c>. Telegram allows 64 bytes.</summary>
+/// <summary>Button payloads: <c>v:{id}:u</c>, <c>v:{id}:d</c>, <c>i:{id}</c>, <c>s:{id}</c>, <c>n</c>. Telegram allows 64 bytes.</summary>
 public abstract record CallbackData
 {
     public const string Noop = "n";
@@ -11,11 +11,14 @@ public abstract record CallbackData
 
     public static string Idea(long itemId) => string.Create(CultureInfo.InvariantCulture, $"i:{itemId}");
 
+    public static string Save(long itemId) => string.Create(CultureInfo.InvariantCulture, $"s:{itemId}");
+
     public static CallbackData? Parse(string? data) => data?.Split(':') switch
     {
         ["v", var id, "u"] when Id(id) is { } i => new VoteCallback(i, 1),
         ["v", var id, "d"] when Id(id) is { } i => new VoteCallback(i, -1),
         ["i", var id] when Id(id) is { } i => new IdeaCallback(i),
+        ["s", var id] when Id(id) is { } i => new SaveCallback(i),
         [Noop] => new NoopCallback(),
         _ => null,
     };
@@ -26,5 +29,7 @@ public abstract record CallbackData
 public sealed record VoteCallback(long ItemId, short Value) : CallbackData;
 
 public sealed record IdeaCallback(long ItemId) : CallbackData;
+
+public sealed record SaveCallback(long ItemId) : CallbackData;
 
 public sealed record NoopCallback : CallbackData;

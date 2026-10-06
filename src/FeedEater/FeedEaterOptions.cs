@@ -22,8 +22,89 @@ public sealed class FeedEaterOptions
     public KarakeepOptions Karakeep { get; set; } = new();
     public GitHubOptions GitHub { get; set; } = new();
     public HindsightOptions Hindsight { get; set; } = new();
+    public ClusterOptions Cluster { get; set; } = new();
+    public FetchOptions Fetch { get; set; } = new();
+    public WatchOptions Watch { get; set; } = new();
+    public TasteOptions Taste { get; set; } = new();
+    public QuietOptions Quiet { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
+}
+
+public sealed class ClusterOptions
+{
+    /// <summary>
+    /// Cosine similarity (title and start of the text, text-embedding-3-small) at or above which two items from different feeds
+    /// count as one story. Measured on the real archive (2026-10-06): same stories scored 0.80 to 0.86, related but different
+    /// ones stayed under 0.80. 0.84 merges only the clear cases. Raise it if unrelated items merge, lower it (0.82) if the same
+    /// story shows up twice in a digest.
+    /// </summary>
+    public double Threshold { get; set; } = 0.84;
+
+    /// <summary>Items published within this many days of each other can cluster.</summary>
+    public int WindowDays { get; set; } = 3;
+}
+
+public sealed class FetchOptions
+{
+    /// <summary>Pages fetched per ingest poll, newest items first.</summary>
+    public int MaxPerPoll { get; set; } = 40;
+
+    /// <summary>Fetches per UTC day across the whole service.</summary>
+    public int MaxPerDay { get; set; } = 400;
+
+    /// <summary>Only items whose own text is shorter than this get their linked page fetched.</summary>
+    public int ShortChars { get; set; } = 800;
+
+    /// <summary>Characters of readable page text kept per item.</summary>
+    public int PageChars { get; set; } = 6000;
+
+    public int Comments { get; set; } = 5;
+    public string HnApiBase { get; set; } = "https://hn.algolia.com/api/v1/";
+
+    /// <summary>Hosts never fetched (login-walled or hostile); subdomains match.</summary>
+    public string[] BlockedHosts { get; set; } =
+    [
+        "facebook.com", "instagram.com", "x.com", "twitter.com", "linkedin.com", "tiktok.com", "youtube.com", "youtu.be",
+        "t.me", "discord.com", "medium.com", "nytimes.com", "wsj.com", "bloomberg.com", "ft.com",
+    ];
+}
+
+public sealed class WatchOptions
+{
+    /// <summary>PINS.md as a file path or an https URL (for a private GitHub repo: the contents API URL plus <see cref="Token"/>). Empty uses the static list.</summary>
+    public string Source { get; set; } = "";
+
+    /// <summary>Bearer token for <see cref="Source"/>; leave empty for a public URL.</summary>
+    public string Token { get; set; } = "";
+
+    /// <summary>Static list used when Source is empty or fails; empty means config/watch.json beside the app.</summary>
+    public string FallbackPath { get; set; } = "";
+
+    /// <summary>Image to upstream GitHub repo map; empty means config/watch-map.json beside the app.</summary>
+    public string MapPath { get; set; } = "";
+}
+
+public sealed class QuietOptions
+{
+    /// <summary>Local time (in <c>FeedEater:TimeZone</c>) at which quiet hours start; both From and To must be set. A window may cross midnight.</summary>
+    public TimeSpan? From { get; set; }
+
+    public TimeSpan? To { get; set; }
+
+    /// <summary>How long a manual "quiet on" lasts.</summary>
+    public int ManualHours { get; set; } = 12;
+}
+
+public sealed class TasteOptions
+{
+    /// <summary>
+    /// Adds a learned (logistic regression on embeddings) term to the ranking. Off by default; with fewer than <see cref="MinVotes"/>
+    /// votes it refuses to switch on and the digest header says so. Run <c>dotnet FeedEater.dll taste</c> first.
+    /// </summary>
+    public bool Learn { get; set; }
+
+    public int MinVotes { get; set; } = 100;
 }
 
 public sealed class MinifluxOptions
@@ -66,6 +147,9 @@ public sealed class WeightsOptions
     public double Prior { get; set; } = 0.2;
     public int MinPositives { get; set; } = 10;
     public int MinFeedVotes { get; set; } = 5;
+
+    /// <summary>Weight of the learned term when <c>Taste:Learn</c> is on: (probability - 0.5) times this.</summary>
+    public double Learned { get; set; } = 0.3;
 }
 
 public sealed class TelegramOptions

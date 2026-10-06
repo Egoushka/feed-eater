@@ -36,8 +36,9 @@ public sealed class DigestFormatterTests
         var filed = DigestFormatter.Buttons(42, true, 1, "SKAR");
         var plain = DigestFormatter.Buttons(42, false, null, null);
 
-        Assert.Equal(["👍", "👎"], fresh[0].Select(b => b.Text));
-        Assert.Equal(["v:42:u", "v:42:d"], fresh[0].Select(b => b.Data));
+        Assert.Equal(["👍", "👎", "📌 Save"], fresh[0].Select(b => b.Text));
+        Assert.Equal(["v:42:u", "v:42:d", "s:42"], fresh[0].Select(b => b.Data));
+        Assert.Equal(("📌 Saved ✓", "n"), (DigestFormatter.Buttons(42, false, null, null, saved: true)[0][2].Text, DigestFormatter.Buttons(42, false, null, null, saved: true)[0][2].Data));
         Assert.Equal("i:42", fresh[1].Single().Data);
         Assert.Equal("👍 ✓", voted[0][0].Text);
         Assert.Equal(("✓ Filed in SKAR", "n"), (filed[1].Single().Text, filed[1].Single().Data));

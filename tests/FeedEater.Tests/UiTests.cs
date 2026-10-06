@@ -45,6 +45,8 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
             .UseSetting("FeedEater:Telegram:Token", telegram ? "123:test" : "")
             .UseSetting("FeedEater:Llm:BaseUrl", "http://127.0.0.1:9/")
             .UseSetting("FeedEater:Llm:MonthlyBudget", "5")
+            .UseSetting("FeedEater:Karakeep:BaseUrl", "http://127.0.0.1:9/")   // nothing listens: saving reports Karakeep as down
+            .UseSetting("FeedEater:Karakeep:Token", token.Length > 0 ? "k" : "")
             .ConfigureTestServices(s => s.RemoveAll<IHostedService>()));
 
     private static HttpClient Client(WebApplicationFactory<Program> app) =>
@@ -123,7 +125,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
     public static TheoryData<string> Pages =>
     [
-        "/ui", "/ui/posts", "/ui/feedback", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
+        "/ui", "/ui/posts", "/ui/feedback", "/ui/weekly", "/ui/weekly/2026-10-04", "/ui/releases", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
         "/ui/item/1", "/ui/digest/2026-10-05", "/ui/digest/run",
     ];
 
@@ -714,5 +716,210 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.True(page.IndexOf("The day in brief", StringComparison.Ordinal) < page.IndexOf("Spend this month", StringComparison.Ordinal));
         Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("The day in brief", await GetAsync("/ui/digests", cookie), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Posts_search_and_the_item_page_show_where_else_a_story_appeared()
+    {
+        var first = await PostAsync(1, "Story hnsw first", 3, url: "https://a.example/1");
+        var second = await PostAsync(2, "Story hnsw second", 2, url: "https://b.example/2");
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update items set cluster_of = @first where id = @second", new { first, second });
+            await c.ExecuteAsync("update feeds set title = @t where id = 2", new { t = $"{Hostile} feed" });
+        }
+
+        var cookie = await LoginAsync();
+        var posts = await GetAsync("/ui/posts", cookie);
+        var search = await GetAsync("/ui/search?q=hnsw", cookie);
+        var item = await GetAsync($"/ui/item/{first}", cookie);
+
+        Assert.Contains("Also in: <a href=\"https://b.example/2\" rel=\"noopener noreferrer\" target=\"_blank\">&lt;script&gt;alert(1)&lt;/script&gt; feed</a>", posts, StringComparison.Ordinal);
+        Assert.Contains("Also in: <a href=\"https://a.example/1\"", posts, StringComparison.Ordinal);
+        Assert.Contains("+1 similar", search, StringComparison.Ordinal);
+        Assert.Contains("Also in:", item, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", posts, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task The_sources_page_mutes_and_unmutes_a_feed_and_shows_posts_per_week()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            await PostAsync(1, $"busy {i}", i + 1);
+        }
+
+        await PostAsync(2, "quiet", 1);
+        var cookie = await LoginAsync();
+        var items = new ItemStore(pg.Db);
+
+        var page = await GetAsync("/ui/sources?sort=perweek&dir=desc", cookie);
+        Assert.Contains("Posts/week", page, StringComparison.Ordinal);
+        Assert.Contains("0.7", page, StringComparison.Ordinal);   // 3 posts in 30 days
+        Assert.True(page.IndexOf("Feed 1", StringComparison.Ordinal) < page.IndexOf("Feed 2", StringComparison.Ordinal));
+        Assert.Contains("aria-label=\"Mute Feed 1\"", page, StringComparison.Ordinal);
+
+        var mute = await PostAsync("/ui/feeds/mute", cookie, ("feed", "1"), ("mute", "1"), ("back", "/ui/sources?sort=perweek&dir=desc"));
+        Assert.Equal("/ui/sources?sort=perweek&dir=desc", mute.Headers.Location!.OriginalString);
+        Assert.True((await items.FeedsAsync(default)).Single(f => f.Id == 1).Muted);
+        var after = await GetAsync("/ui/sources", cookie);
+        Assert.Contains("<span class=\"badge\">muted</span>", after, StringComparison.Ordinal);
+        Assert.Contains("aria-label=\"Unmute Feed 1\"", after, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("busy 0", await GetAsync("/ui/posts", cookie), StringComparison.Ordinal);
+        Assert.Contains("busy 0", await GetAsync("/ui/posts?muted=1", cookie), StringComparison.Ordinal);
+        Assert.Contains("Show muted feeds", await GetAsync("/ui/posts", cookie), StringComparison.Ordinal);
+
+        await PostAsync("/ui/feeds/mute", cookie, ("feed", "1"), ("mute", "0"));
+        Assert.False((await items.FeedsAsync(default)).Single(f => f.Id == 1).Muted);
+        Assert.Equal(HttpStatusCode.NotFound, (await PostAsync("/ui/feeds/mute", cookie, ("feed", "99"), ("mute", "1"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/ui/feeds/mute", cookie, ("feed", "1"), ("mute", "maybe"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Muting_needs_the_same_csrf_protection_as_other_posts()
+    {
+        await PostAsync(1, "x", 1);
+        var cookie = await LoginAsync();
+
+        var response = await _http.SendAsync(Req(HttpMethod.Post, "/ui/feeds/mute", cookie, "https://evil.example", [new("feed", "1"), new("mute", "1"), new("_csrf", "x")]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False((await new ItemStore(pg.Db).FeedsAsync(default)).Single().Muted);
+    }
+
+    [Fact]
+    public async Task The_today_brief_skips_items_from_muted_feeds()
+    {
+        var (item, _) = await SeedDigestAsync();
+        await new ItemStore(pg.Db).SetFeedMutedAsync(1, true, default);
+
+        var page = await GetAsync("/ui", await LoginAsync());
+
+        Assert.DoesNotContain("The day in brief", page, StringComparison.Ordinal);
+        Assert.Contains("Postgres 19 lands", page, StringComparison.Ordinal);   // the digest itself is history and stays
+    }
+
+    [Fact]
+    public async Task The_weekly_page_shows_the_latest_review_history_and_encodes_hostile_content()
+    {
+        var cookie = await LoginAsync();
+        Assert.Contains("No review yet", await GetAsync("/ui/weekly", cookie), StringComparison.Ordinal);
+
+        var hostile = new FeedEater.Storage.WeeklyReport(
+            DateTimeOffset.UtcNow.AddDays(-7), DateTimeOffset.UtcNow, 40, 12, 6, 2, 1,
+            [new WeeklyItem(7, $"{Hostile} top", "javascript:alert(1)", $"{Hostile} feed")],
+            [new ProjectTally($"{Hostile} project", 3, 1)], [new WeeklyIdea(7, $"{Hostile} idea", "LAB")],
+            [new FeedCount(1, $"{Hostile} best", 4)], [new FeedCount(2, $"{Hostile} noisy", 30)]);
+        var store = new WeeklyStore(pg.Db);
+        await store.SaveAsync("2026-10-04", DateTimeOffset.UtcNow.AddDays(-7), hostile, "old", default);
+        await store.SaveAsync("2026-10-11", DateTimeOffset.UtcNow, hostile, "new", default);
+        await store.MarkSentAsync("2026-10-11", DateTimeOffset.UtcNow, default);
+
+        var latest = await GetAsync("/ui/weekly", cookie);
+        var older = await GetAsync("/ui/weekly/2026-10-04", cookie);
+
+        Assert.Contains("Week ending 2026-10-11", latest, StringComparison.Ordinal);
+        Assert.Contains("Shown in digests", latest, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/weekly/2026-10-04\"", latest, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/sources?sort=perweek&amp;dir=desc\"", latest, StringComparison.Ordinal);
+        Assert.Contains("Week ending 2026-10-04", older, StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; noisy", latest, StringComparison.Ordinal);
+        foreach (var page in new[] { latest, older })
+        {
+            Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("javascript:", page, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await GetAsync("/ui/weekly/2001-01-01", cookie, HttpStatusCode.NotFound);
+        await GetAsync("/ui/weekly/garbage", cookie, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task The_releases_page_shows_watched_products_and_encodes_hostile_release_text()
+    {
+        var store = new ReleaseStore(pg.Db);
+        await store.AddAsync(new ReleaseRow
+        {
+            Repo = "juanfont/headscale", Tag = "v9.0.0", Version = "9.0.0", Title = "t", Url = "javascript:alert(1)", Newer = true, Urgent = true,
+            Summary = $"{Hostile} summary", Breaking = "yes", Evidence = $"{Hostile} evidence",
+        }, default);
+        var cookie = await LoginAsync();
+
+        var page = await GetAsync("/ui/releases", cookie);
+
+        Assert.Contains("juanfont/headscale", page, StringComparison.Ordinal);
+        Assert.Contains("update available", page, StringComparison.Ordinal);
+        Assert.Contains("breaking: yes", page, StringComparison.Ordinal);
+        Assert.Contains("waiting for the next digest", page, StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; evidence", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("javascript:", page, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task The_save_button_shows_saved_state_and_reports_karakeep_being_down_or_unconfigured()
+    {
+        var (item, _) = await SeedDigestAsync();
+        var cookie = await LoginAsync();
+        Assert.Contains("name=\"v\" value=\"save\"", await GetAsync("/ui", cookie), StringComparison.Ordinal);
+
+        var down = await PostAsync("/ui/vote", cookie, ("item", item.ToString()), ("v", "save"), ("back", "/ui#item-1"));
+        Assert.Equal("/ui?notice=save-down#item-1", down.Headers.Location!.OriginalString);
+        Assert.False(await new FeedbackStore(pg.Db).IsSavedAsync(item, default));
+        Assert.Contains("Karakeep is not reachable", await GetAsync("/ui?notice=save-down", cookie), StringComparison.Ordinal);
+
+        await new FeedbackStore(pg.Db).AddSavedAsync(item, "bm-9", default);
+        var after = await PostAsync("/ui/vote", cookie, ("item", item.ToString()), ("v", "save"), ("back", "/ui#item-1"));
+        Assert.Equal("/ui#item-1", after.Headers.Location!.OriginalString);   // already saved: nothing to report
+        foreach (var path in new[] { "/ui", $"/ui/item/{item}", "/ui/posts" })
+        {
+            var page = await GetAsync(path, cookie);
+            if (path != "/ui/posts" || page.Contains("Postgres 19 lands", StringComparison.Ordinal))
+            {
+                Assert.Contains("📌 Saved", page, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task The_sources_page_suggests_feeds_with_the_feed_url_as_copyable_text_and_encodes_everything()
+    {
+        var liked = await PostAsync(1, $"{Hostile} liked", 1, url: "https://good.example/post");
+        await new FeedbackStore(pg.Db).SetVoteAsync(liked, 1, default);
+        await new DiscoveryStore(pg.Db).SaveAsync("good.example", "https://good.example/feed?a=1&b=<x>", "found", DateTimeOffset.UtcNow, default);
+        var cookie = await LoginAsync();
+
+        var page = await GetAsync("/ui/sources", cookie);
+
+        Assert.Contains("Suggested feeds", page, StringComparison.Ordinal);
+        Assert.Contains("<code class=\"copy\">https://good.example/feed?a=1&amp;b=&lt;x&gt;</code>", page, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/item/", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task The_sources_page_says_when_there_is_nothing_to_suggest()
+    {
+        Assert.Contains("Nothing to suggest yet", await GetAsync("/ui/sources", await LoginAsync()), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Today_shows_quiet_mode_and_the_button_toggles_it()
+    {
+        var cookie = await LoginAsync();
+        var page = await GetAsync("/ui", cookie);
+        Assert.Contains("Quiet mode is off.", page, StringComparison.Ordinal);
+        Assert.Contains("Turn quiet mode on", page, StringComparison.Ordinal);
+
+        var on = await PostAsync("/ui/quiet", cookie, ("mode", "on"));
+        Assert.Equal("/ui?notice=quiet-on", on.Headers.Location!.OriginalString);
+        var quiet = await GetAsync("/ui", cookie);
+        Assert.Contains("Quiet mode is on until", quiet, StringComparison.Ordinal);
+        Assert.Contains("Turn quiet mode off", quiet, StringComparison.Ordinal);
+
+        await PostAsync("/ui/quiet", cookie, ("mode", "off"));
+        Assert.Contains("Turn quiet mode on", await GetAsync("/ui", cookie), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/ui/quiet", cookie, ("mode", "sideways"))).StatusCode);
     }
 }
