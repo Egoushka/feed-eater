@@ -1,10 +1,16 @@
 using FeedEater;
+using FeedEater.Eval;
 using FeedEater.Mcp;
 using FeedEater.Storage;
 using FeedEater.Ui;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Formatting.Compact;
+
+if (args.FirstOrDefault() == "eval")
+{
+    return await EvalCommand.RunAsync(args[1..]);
+}
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, logging) => logging
@@ -31,5 +37,6 @@ app.MapGet("/healthz", async (FeedDb db, CancellationToken ct) => await db.PingA
 app.MapFeedEaterMcp(token);
 app.MapFeedEaterUi();
 app.Run();
+return 0;
 
 public partial class Program;

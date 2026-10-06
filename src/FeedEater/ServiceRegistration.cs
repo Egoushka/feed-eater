@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using FeedEater.Digest;
+using FeedEater.Eval;
 using FeedEater.Fetch;
 using FeedEater.Ingest;
 using FeedEater.Llm;
@@ -97,6 +98,8 @@ public static class ServiceRegistration
         });
         services.AddSingleton<PageEnricher>();
         services.AddSingleton<DiscoveryStore>();
+        services.AddSingleton<EvalStore>();
+        services.AddSingleton<EvalRunner>();
         services.AddSingleton<FeedDiscoverer>();
         services.AddHttpClient<WatchSource>();
 
