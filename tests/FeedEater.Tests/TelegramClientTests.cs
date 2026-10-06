@@ -27,6 +27,37 @@ public sealed class TelegramClientTests
     }
 
     [Fact]
+    public async Task A_send_as_a_reply_carries_reply_parameters_and_one_without_does_not()
+    {
+        var (client, handler) = Build("""{"ok":true,"result":{"message_id":1}}""");
+
+        await client.SendAsync(42, new OutMessage("a"), default, replyToMessageId: 77);
+        await client.SendAsync(42, new OutMessage("b"), default);
+
+        Assert.Contains("\"reply_parameters\":{\"message_id\":77,\"allow_sending_without_reply\":true}", handler.Calls[0].Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("reply_parameters", handler.Calls[1].Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_reply_to_a_follows_root_message_names_the_follow_and_a_reply_to_an_item_names_the_item()
+    {
+        var (client, _) = Build(
+            """
+            {"ok":true,"result":[
+              {"update_id":1,"message":{"message_id":8,"from":{"id":42},"chat":{"id":42},"text":"hm","reply_to_message":{"message_id":3,"reply_markup":{"inline_keyboard":[[{"text":"Stop","callback_data":"u:5"}]]}}}},
+              {"update_id":2,"message":{"message_id":9,"from":{"id":42},"chat":{"id":42},"text":"hm","reply_to_message":{"message_id":4,"reply_markup":{"inline_keyboard":[[{"text":"x","callback_data":"v:6:u"}]]}}}},
+              {"update_id":3,"message":{"message_id":10,"from":{"id":42},"chat":{"id":42},"text":"hm","reply_to_message":{"message_id":5}}}
+            ]}
+            """);
+
+        var updates = await client.GetUpdatesAsync(1, 50, default);
+
+        Assert.Equal(new TgMessage(42, 42, "hm", null, 5), updates[0].Message);
+        Assert.Equal(new TgMessage(42, 42, "hm", 6, null), updates[1].Message);
+        Assert.Equal(new TgMessage(42, 42, "hm"), updates[2].Message);
+    }
+
+    [Fact]
     public async Task Send_without_buttons_has_no_markup_and_answer_without_text_has_no_text()
     {
         var (client, handler) = Build("""{"ok":true,"result":{"message_id":1}}""");
