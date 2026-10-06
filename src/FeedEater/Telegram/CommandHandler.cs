@@ -23,6 +23,12 @@ public sealed class CommandHandler(
 
     public async Task HandleAsync(TgMessage message, CancellationToken ct)
     {
+        if (options.Value.Telegram.AllowedUserId == 0)
+        {
+            await BootstrapAsync(message, ct);
+            return;
+        }
+
         if (message.FromId != options.Value.Telegram.AllowedUserId || message.Text?.Trim() is not { Length: > 0 } text)
         {
             return;
@@ -77,6 +83,23 @@ public sealed class CommandHandler(
                 await LearnAsync(message, words.Length == 2 ? words[1] : null, ct);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Nobody is allowed yet, so the bot answers only /start, with the sender's own id and the setting to put it in. The id is not a
+    /// secret and it only tells a sender about themselves; every other message is ignored.
+    /// </summary>
+    private async Task BootstrapAsync(TgMessage message, CancellationToken ct)
+    {
+        if (message.Text?.Trim().Split(' ', 2)[0].Split('@')[0] != "/start" || message.FromId == 0)
+        {
+            return;
+        }
+
+        var id = message.FromId.ToString(CultureInfo.InvariantCulture);
+        await ReplyAsync(message,
+            $"Your Telegram user id is <code>{id}</code>. To make this bot yours, set <code>FeedEater__Telegram__AllowedUserId={id}</code> " +
+            "(the setting FeedEater:Telegram:AllowedUserId) and restart feed-eater. Until then it answers nothing else.", ct);
     }
 
     private async Task DigestAsync(TgMessage message, string? argument, CancellationToken ct)
