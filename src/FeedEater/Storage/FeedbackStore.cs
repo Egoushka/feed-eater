@@ -5,8 +5,8 @@ namespace FeedEater.Storage;
 public sealed record FeedVotes
 {
     public long FeedId { get; init; }
-    public int Up { get; init; }
-    public int Down { get; init; }
+    public double Up { get; init; }
+    public double Down { get; init; }
 }
 
 public sealed record VoteCounts
@@ -43,14 +43,15 @@ public sealed record WeekReport
 
 public sealed class FeedbackStore(FeedDb db)
 {
-    public async Task SetVoteAsync(long itemId, short value, CancellationToken ct)
+    /// <summary>A later vote replaces the earlier one, weight included; the weight is 1 unless a signal says it matters more or less (above 0, up to 3).</summary>
+    public async Task SetVoteAsync(long itemId, short value, CancellationToken ct, double weight = 1)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into votes (item_id, value, at) values (@itemId, @value, now())
-            on conflict (item_id) do update set value = excluded.value, at = excluded.at
-            """, new { itemId, value }, cancellationToken: ct));
+            insert into votes (item_id, value, weight, at) values (@itemId, @value, @weight, now())
+            on conflict (item_id) do update set value = excluded.value, weight = excluded.weight, at = excluded.at
+            """, new { itemId, value, weight = (float)weight }, cancellationToken: ct));
     }
 
     public async Task<bool> IsSavedAsync(long itemId, CancellationToken ct)
@@ -85,23 +86,31 @@ public sealed class FeedbackStore(FeedDb db)
     }
 
     /// <summary>Newest first: 👍 items and items filed as ideas (an item that is both counts once), and positive signals (Karakeep saves, GitHub stars).</summary>
-    public Task<IReadOnlyList<float[]>> PositiveVectorsAsync(int limit, CancellationToken ct) => VectorsAsync(
+    public async Task<IReadOnlyList<float[]>> PositiveVectorsAsync(int limit, CancellationToken ct) =>
+        (await PositiveWeightedAsync(limit, ct)).Select(v => v.X).ToList();
+
+    public async Task<IReadOnlyList<float[]>> NegativeVectorsAsync(int limit, CancellationToken ct) =>
+        (await NegativeWeightedAsync(limit, ct)).Select(v => v.X).ToList();
+
+    /// <summary>As <see cref="PositiveVectorsAsync"/> with each vector's weight: the vote's weight when the item has a vote, else 1.</summary>
+    public Task<IReadOnlyList<FeedEater.Ranking.WeightedVector>> PositiveWeightedAsync(int limit, CancellationToken ct) => VectorsAsync(
         """
-        select embedding, at from (
-            select i.embedding::real[] as embedding, max(x.at) as at
-            from (select item_id, at from votes where value = 1 union select item_id, at from ideas) x
+        select embedding, weight, at from (
+            select i.embedding::real[] as embedding, coalesce(max(x.weight), 1) as weight, max(x.at) as at
+            from (select item_id, at, weight::double precision as weight from votes where value = 1
+                  union select item_id, at, null::double precision from ideas) x
             join items i on i.id = x.item_id
             where i.embedding is not null
             group by i.id
             union all
-            select embedding::real[], at from signals where polarity = 1 and embedding is not null
+            select embedding::real[], 1::double precision, at from signals where polarity = 1 and embedding is not null
         ) p
         order by at desc limit @limit
         """, limit, ct);
 
-    public Task<IReadOnlyList<float[]>> NegativeVectorsAsync(int limit, CancellationToken ct) => VectorsAsync(
+    public Task<IReadOnlyList<FeedEater.Ranking.WeightedVector>> NegativeWeightedAsync(int limit, CancellationToken ct) => VectorsAsync(
         """
-        select i.embedding::real[] as embedding from votes v join items i on i.id = v.item_id
+        select i.embedding::real[] as embedding, v.weight::double precision as weight from votes v join items i on i.id = v.item_id
         where v.value = -1 and i.embedding is not null
         order by v.at desc limit @limit
         """, limit, ct);
@@ -111,15 +120,16 @@ public sealed class FeedbackStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         var rows = await c.QueryAsync<LabeledRow>(new CommandDefinition(
-            "select i.embedding::real[] as embedding, v.value::int as value from votes v join items i on i.id = v.item_id where i.embedding is not null order by v.at desc",
+            "select i.embedding::real[] as embedding, v.value::int as value, v.weight::double precision as weight from votes v join items i on i.id = v.item_id where i.embedding is not null order by v.at desc",
             cancellationToken: ct));
-        return rows.Select(r => new FeedEater.Ranking.LabeledVector(r.Embedding, r.Value > 0)).ToList();
+        return rows.Select(r => new FeedEater.Ranking.LabeledVector(r.Embedding, r.Value > 0, r.Weight)).ToList();
     }
 
     private sealed record LabeledRow
     {
         public float[] Embedding { get; init; } = [];
         public int Value { get; init; }
+        public double Weight { get; init; } = 1;
     }
 
     public async Task<IReadOnlyList<FeedVotes>> FeedVotesAsync(CancellationToken ct)
@@ -127,7 +137,8 @@ public sealed class FeedbackStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<FeedVotes>(new CommandDefinition(
             """
-            select i.feed_id, (count(*) filter (where v.value = 1))::int as up, (count(*) filter (where v.value = -1))::int as down
+            select i.feed_id, coalesce(sum(v.weight::double precision) filter (where v.value = 1), 0) as up,
+                   coalesce(sum(v.weight::double precision) filter (where v.value = -1), 0) as down
             from votes v join items i on i.id = v.item_id
             where i.feed_id is not null
             group by i.feed_id
@@ -196,16 +207,17 @@ public sealed class FeedbackStore(FeedDb db)
             """, new { planeProject, limit }, cancellationToken: ct))).ToList();
     }
 
-    private async Task<IReadOnlyList<float[]>> VectorsAsync(string sql, int limit, CancellationToken ct)
+    private async Task<IReadOnlyList<FeedEater.Ranking.WeightedVector>> VectorsAsync(string sql, int limit, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         var rows = await c.QueryAsync<VectorRow>(new CommandDefinition(sql, new { limit }, cancellationToken: ct));
-        return rows.Select(r => r.Embedding).ToList();
+        return rows.Select(r => new FeedEater.Ranking.WeightedVector(r.Embedding, r.Weight)).ToList();
     }
 
     // Dapper maps arrays only as properties, not as a bare single-column result.
     private sealed record VectorRow
     {
         public float[] Embedding { get; init; } = [];
+        public double Weight { get; init; } = 1;
     }
 }
