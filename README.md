@@ -101,6 +101,15 @@ names the request's own host and carries a per-session anti-forgery value. Login
 keyset paging). `/ui/feedback` lists everything already rated, per 👍, 👎 and 💡, with the 7- and 30-day 👍 rate; a vote can be
 changed or cleared there. The top of Today has "the day in brief", built from the digest's stored reads with no extra model call.
 
+### Taste map
+
+`/ui/map` draws every voted item and a seeded sample of up to 1500 other embedded items from the last 90 days as points on a plane
+(PCA on the embeddings, computed on the server, cached 10 minutes), as one inline `<svg>` with no script. 👍 is a green circle, 👎 a red
+cross (shape and colour), no vote a small grey dot; a heavier vote is a bigger mark. Each profile key is written at the mean of its 10 nearest
+points; a dashed square marks a region with items where no digest ever showed one. The month links above the plot (`?month=YYYY-MM`) show the
+votes up to the end of that month while every item stays in place, so you can watch the taste form. A table below the plot gives the counts per
+vote kind and per profile for use without the picture. It needs at least 3 embedded items and no setting.
+
 ## v0.4 additions
 
 - **Story clustering.** An item whose embedding is within `FeedEater:Cluster:Threshold` (default 0.84, cosine) of an earlier

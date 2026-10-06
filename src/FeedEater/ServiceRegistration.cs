@@ -194,6 +194,9 @@ public static class ServiceRegistration
         services.AddSingleton(sp => new UiSession(configuration["Mcp:Token"], sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<LoginThrottle>();
         services.AddSingleton<UiHandlers>();
+        services.AddSingleton<MapStore>();
+        services.AddSingleton<TasteMap>();
+        services.AddSingleton<MapHandler>();
 
         services.AddSetupChecks();
         services.AddFeedEaterMcp();
