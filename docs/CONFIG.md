@@ -103,6 +103,7 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Llm:ApiKey` | (empty) | API key for the endpoint. |
 | `FeedEater:Llm:BaseUrl` | `https://api.openai.com/v1/` | OpenAI-compatible endpoint, including the version path (/v1/). Chat completions and embeddings are called under it. |
 | `FeedEater:Llm:EmbedBatch` | `64` | Texts embedded per request. |
+| `FeedEater:Llm:EmbedDimensions` | `0` | Sent as the dimensions parameter of embedding requests; 0 leaves it out. Models that can shorten their output (text-embedding-3-large) need 1536 here. |
 | `FeedEater:Llm:EmbedModel` | `text-embedding-3-small` | Embedding model. The database column is fixed at 1536 dimensions. |
 | `FeedEater:Llm:MonthlyBudget` | `0` | USD per month shown against the spend on /ui/usage; 0 shows no budget. |
 | `FeedEater:Llm:Prices:<name>:Input` | `0` | Price of one model (<name> is the model name sent to the API): USD per million input tokens. Used only when the gateway sends no x-litellm-response-cost header; with neither, a call's cost is unknown. 0 marks a free local model. |

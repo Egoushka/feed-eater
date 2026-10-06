@@ -193,6 +193,9 @@ public sealed class LlmOptions
     [Description("Embedding model. The database column is fixed at 1536 dimensions.")]
     public string EmbedModel { get; set; } = "text-embedding-3-small";
 
+    [Description("Sent as the dimensions parameter of embedding requests; 0 leaves it out. Models that can shorten their output (text-embedding-3-large) need 1536 here.")]
+    public int EmbedDimensions { get; set; }
+
     [Description("Small model: the one-line verdict on each candidate, and the intent of a reply.")]
     public string TriageModel { get; set; } = "gpt-4.1-nano";
 

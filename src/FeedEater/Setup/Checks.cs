@@ -110,7 +110,7 @@ internal sealed class LlmEmbeddingCheck(IServiceProvider services, IOptions<Feed
             return vectors[0].Length == Dimensions
                 ? CheckResult.Ok($"{llm.EmbedModel} returns {Dimensions} dimensions")
                 : CheckResult.Fail($"{llm.EmbedModel} returns {vectors[0].Length} dimensions, the database column is vector({Dimensions})",
-                    $"The column size is fixed. Set {Hints.Env("Llm:EmbedModel")} to a model that returns {Dimensions} dimensions, such as text-embedding-3-small.");
+                    $"The column size is fixed. Set {Hints.Env("Llm:EmbedModel")} to a model that returns {Dimensions} dimensions, such as text-embedding-3-small, or set {Hints.Env("Llm:EmbedDimensions")}={Dimensions} for a model that can shorten its output.");
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {

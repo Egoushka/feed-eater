@@ -28,7 +28,13 @@ public sealed class LiteLlmClient(HttpClient http, IUsageSink usage, IOptions<Fe
     public async Task<IReadOnlyList<float[]>> EmbedAsync(IReadOnlyList<string> inputs, string purpose, CancellationToken ct)
     {
         var model = options.Value.Llm.EmbedModel;
-        using var response = await PostAsync("embeddings", new { model, input = inputs }, ct);
+        var payload = new Dictionary<string, object> { ["model"] = model, ["input"] = inputs };
+        if (options.Value.Llm.EmbedDimensions > 0)
+        {
+            payload["dimensions"] = options.Value.Llm.EmbedDimensions;
+        }
+
+        using var response = await PostAsync("embeddings", payload, ct);
         var body = Json.Parse(await response.Content.ReadAsStringAsync(ct));
         var vectors = body.GetProperty("data").EnumerateArray()
             .OrderBy(d => d.GetProperty("index").GetInt32())

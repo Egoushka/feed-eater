@@ -115,14 +115,44 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Without_Miniflux_subscribed_feeds_are_counted()
+    public async Task Without_Miniflux_feeds_that_were_never_fetched_are_a_warning()
     {
         await Seed.ItemAsync(pg, 1, "A post", TestVectors.OneHot(0));
         await Seed.ItemAsync(pg, 2, "Another", TestVectors.OneHot(1));
 
         var result = await Probe().CheckAsync(default);
 
-        Assert.Equal(CheckResult.Ok("2 feeds"), result);
+        Assert.Equal(CheckStatus.Warn, result.Status);
+        Assert.Equal("2 feeds, none fetched yet", result.Detail);
+    }
+
+    [Fact]
+    public async Task Without_Miniflux_fetched_feeds_are_ok_and_a_failing_one_is_counted()
+    {
+        await Seed.ItemAsync(pg, 1, "A post", TestVectors.OneHot(0));
+        await Seed.ItemAsync(pg, 2, "Another", TestVectors.OneHot(1));
+        await SetFeedStateAsync("last_fetched_at = now()");
+        await SetFeedStateAsync("fail_count = 3, last_error = 'HTTP 404'", 2);
+
+        Assert.Equal(CheckResult.Ok("2 feeds, 2 fetched, 1 failing"), await Probe().CheckAsync(default));
+    }
+
+    [Fact]
+    public async Task Without_Miniflux_every_feed_failing_is_a_failure_with_the_last_error()
+    {
+        await Seed.ItemAsync(pg, 1, "A post", TestVectors.OneHot(0));
+        await SetFeedStateAsync("fail_count = 5, last_error = 'HTTP 404', last_fetched_at = now()");
+
+        var result = await Probe().CheckAsync(default);
+
+        Assert.Equal(CheckStatus.Fail, result.Status);
+        Assert.Equal("1 feed, every one failing: HTTP 404", result.Detail);
+    }
+
+    private async Task SetFeedStateAsync(string assignments, long? feedId = null)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await Dapper.SqlMapper.ExecuteAsync(c, $"update feeds set {assignments} where (@feedId::bigint is null or id = @feedId)", new { feedId });
     }
 
     [Fact]
@@ -200,6 +230,7 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Doctor_prints_one_line_per_integration_and_exits_0_when_the_required_ones_work()
     {
         await Seed.ItemAsync(pg, 1, "A post", TestVectors.OneHot(0));
+        await SetFeedStateAsync("last_fetched_at = now()");
 
         var (code, output) = await DoctorAsync(Config(), SetupStubs.Services());
 
@@ -215,7 +246,7 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         Assert.Contains("bot @my_feed_bot, owner id 42", output, StringComparison.Ordinal);
-        Assert.Contains("built-in reader: 1 feed", output, StringComparison.Ordinal);
+        Assert.Contains("built-in reader: 1 feed, 1 fetched", output, StringComparison.Ordinal);
         Assert.EndsWith("Everything required works." + Environment.NewLine, output, StringComparison.Ordinal);
     }
 

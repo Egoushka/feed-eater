@@ -43,10 +43,26 @@ public sealed class DefaultFeedSourceProbe(FeedDb db, IServiceProvider services,
         try
         {
             await using var connection = await db.DataSource.OpenConnectionAsync(ct);
-            var feeds = await connection.ExecuteScalarAsync<long>(new CommandDefinition("select count(*) from feeds", cancellationToken: ct));
-            return feeds > 0
-                ? CheckResult.Ok($"{feeds} {(feeds == 1 ? "feed" : "feeds")}")
-                : CheckResult.Fail("no feeds", "Import an OPML (docker compose run --rm feed-eater import-opml /config/feeds.opml) or add one at /ui/sources.");
+            var (feeds, fetched, failing, lastError) = await connection.QuerySingleAsync<(long Feeds, long Fetched, long Failing, string? LastError)>(new CommandDefinition(
+                """
+                select count(*), count(*) filter (where last_fetched_at is not null), count(*) filter (where fail_count >= 3),
+                       (select last_error from feeds where fail_count >= 3 order by last_fetched_at desc nulls last limit 1)
+                from feeds
+                """, cancellationToken: ct));
+            var noun = feeds == 1 ? "feed" : "feeds";
+            if (feeds == 0)
+            {
+                return CheckResult.Fail("no feeds", "Import an OPML (docker compose run --rm feed-eater import-opml /config/feeds.opml) or add one at /ui/sources.");
+            }
+
+            if (failing == feeds)
+            {
+                return CheckResult.Fail($"{feeds} {noun}, every one failing: {lastError}", "Open /ui/sources for each feed's error; a self-hosted feed host needs Source:AllowedHosts.");
+            }
+
+            return fetched == 0
+                ? CheckResult.Warn($"{feeds} {noun}, none fetched yet", "The first fetch runs within a few minutes of start; check again.")
+                : CheckResult.Ok($"{feeds} {noun}, {fetched} fetched{(failing > 0 ? $", {failing} failing" : "")}");
         }
         catch (PostgresException ex) when (ex.SqlState == NoTable)
         {

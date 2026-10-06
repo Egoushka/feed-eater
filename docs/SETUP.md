@@ -97,8 +97,8 @@ for a free local model.
 
 **Known limit: embeddings must have 1536 dimensions.** The database column is `vector(1536)` and cannot change without a migration
 and re-embedding every item. `text-embedding-3-small` (the default) and `text-embedding-ada-002` fit; a model that returns another
-size is reported by `doctor` as `FAIL llm embeddings`. The app does not send a `dimensions` parameter, so a model that returns more
-by default does not work even if it could be asked for 1536.
+size is reported by `doctor` as `FAIL llm embeddings`. A model that can shorten its output (`text-embedding-3-large`) works when you set
+`FeedEater__Llm__EmbedDimensions=1536`, which is sent as the `dimensions` parameter.
 
 ### Reaching it from elsewhere
 

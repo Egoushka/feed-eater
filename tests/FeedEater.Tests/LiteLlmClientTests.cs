@@ -23,6 +23,21 @@ public sealed class LiteLlmClientTests
     private static LiteLlmClient Client(StubHandler handler, Sink sink, LlmOptions? llm = null) =>
         new(handler.Client("http://llm/v1/"), sink, Options.Create(new FeedEaterOptions { Llm = llm ?? new LlmOptions() }));
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1536, true)]
+    public async Task Embed_sends_the_dimensions_parameter_only_when_configured(int configured, bool sent)
+    {
+        var json = JsonSerializer.Serialize(new { data = new[] { new { index = 0, embedding = TestVectors.OneHot(0) } }, usage = new { prompt_tokens = 1 } });
+        var handler = new StubHandler((_, _) => StubHandler.Json(json));
+
+        await Client(handler, new Sink(), new LlmOptions { EmbedDimensions = configured }).EmbedAsync(["a"], "embed", default);
+
+        var body = JsonSerializer.Deserialize<JsonElement>(handler.Calls.Single().Body);
+        Assert.Equal(sent, body.TryGetProperty("dimensions", out var d) && d.GetInt32() == 1536);
+        Assert.Equal(!sent, !body.TryGetProperty("dimensions", out _));
+    }
+
     [Fact]
     public async Task Embed_returns_unit_vectors_in_input_order_and_records_cost()
     {
