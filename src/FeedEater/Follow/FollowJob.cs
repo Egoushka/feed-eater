@@ -32,7 +32,17 @@ public sealed class FollowJob(
         {
             try
             {
-                var n = await follower.SendNewAsync(follow, ct);   // also at the end, for what arrived since the last run
+                var n = 0;
+                try
+                {
+                    // The follow row exists before its root message is sent; an update now would reply to nothing.
+                    n = follow.RootMessageId is null ? 0 : await follower.SendNewAsync(follow, ct);   // also at the end, for what arrived since the last run
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    Logger.LogWarning(ex, "Follow {Follow} could not send its updates; it can still close", follow.Id);
+                }
+
                 sent += n;
                 if (Time.GetUtcNow().UtcDateTime >= follow.EndsAt)
                 {
@@ -43,7 +53,7 @@ public sealed class FollowJob(
                     await follower.CloseAsync(follow.Id, $"Closed at the limit of {max} messages.", ct);
                 }
             }
-            catch (Exception ex) when (ex is TelegramException or HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 Logger.LogWarning(ex, "Follow {Follow} failed; the others go on", follow.Id);
             }

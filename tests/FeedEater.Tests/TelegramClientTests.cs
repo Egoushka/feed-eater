@@ -95,6 +95,42 @@ public sealed class TelegramClientTests
         Assert.Contains("message is not modified", error.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("""{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities"}""", true)]
+    [InlineData("""{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}""", true)]
+    [InlineData("""{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 5"}""", false)]
+    [InlineData("""{"ok":false,"error_code":502,"description":"Bad Gateway"}""", false)]
+    [InlineData("""{"ok":false,"description":"no code and a 200"}""", false)]
+    public async Task A_refusal_of_the_request_itself_is_permanent_and_a_rate_limit_or_server_error_is_not(string response, bool permanent)
+    {
+        var (client, _) = Build(response);
+
+        var error = await Assert.ThrowsAsync<TelegramException>(() => client.SendAsync(42, new OutMessage("x"), default));
+
+        Assert.Equal(permanent, error.Permanent);
+    }
+
+    [Fact]
+    public async Task Without_an_error_code_in_the_body_the_http_status_decides()
+    {
+        var handler = new StubHandler((_, _) => StubHandler.Json("""{"ok":false,"description":"Bad Request"}""", System.Net.HttpStatusCode.BadRequest));
+        var client = new TelegramClient(handler.Client("http://tg/botT/"));
+
+        var error = await Assert.ThrowsAsync<TelegramException>(() => client.SendAsync(42, new OutMessage("x"), default));
+
+        Assert.True(error.Permanent);
+    }
+
+    [Fact]
+    public async Task A_chat_id_of_zero_is_a_setup_error_and_not_permanent()
+    {
+        var (client, _) = Build("""{"ok":true,"result":{"message_id":1}}""");
+
+        var error = await Assert.ThrowsAsync<TelegramException>(() => client.SendAsync(0, new OutMessage("x"), default));
+
+        Assert.False(error.Permanent);
+    }
+
     [Fact]
     public async Task Get_updates_parses_callbacks_and_messages_and_skips_other_updates()
     {

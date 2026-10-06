@@ -68,7 +68,7 @@ public sealed class StoryFollower(
         return FollowOutcome.Started;
     }
 
-    /// <summary>Sends the items that matched since the last run, oldest first, one reply each; returns how many.</summary>
+    /// <summary>Sends the items that matched since the last run, oldest first, one reply each; returns how many. Any other failed send ends the run for this follow and the item is tried again.</summary>
     public async Task<int> SendNewAsync(ActiveFollow follow, CancellationToken ct)
     {
         var o = options.Value;
@@ -87,9 +87,17 @@ public sealed class StoryFollower(
                 continue;
             }
 
-            await telegram.SendAsync(o.Telegram.AllowedUserId, FollowFormatter.Update(item, style), ct, follow.RootMessageId);
+            try
+            {
+                await telegram.SendAsync(o.Telegram.AllowedUserId, FollowFormatter.Update(item, style), ct, follow.RootMessageId);
+                sent++;
+            }
+            catch (TelegramException ex) when (ex.Permanent)
+            {
+                logger.LogWarning(ex, "Telegram refused item {Item} of follow {Follow} for good; recorded as sent and skipped", id, follow.Id);   // else it blocks every later item
+            }
+
             await follows.AddSentAsync(follow.Id, id, ct);
-            sent++;
         }
 
         return sent;

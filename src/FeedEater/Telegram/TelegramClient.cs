@@ -13,7 +13,12 @@ public sealed record TgMessage(long FromId, long ChatId, string? Text, long? Rep
 
 public sealed record TgUpdate(long UpdateId, TgCallback? Callback, TgMessage? Message = null);
 
-public sealed class TelegramException(string message) : Exception(message);
+/// <summary><paramref name="code"/> is Telegram's <c>error_code</c>, else the HTTP status; 0 for a refusal made before any call.</summary>
+public sealed class TelegramException(string message, int code = 0) : Exception(message)
+{
+    /// <summary>The request itself is refused (400, 403): sending it again changes nothing, unlike a rate limit (429) or a server error.</summary>
+    public bool Permanent => code is 400 or 403;
+}
 
 /// <summary>The Bot API calls feed-eater needs. The token is in the base address, so URIs are never logged.</summary>
 public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? logger = null)
@@ -137,7 +142,8 @@ public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? log
         if (!body.TryGetProperty("ok", out var ok) || !ok.GetBoolean())
         {
             var description = Json.Str(body, "description") ?? response.StatusCode.ToString();
-            throw new TelegramException($"Telegram {method}: {description}");
+            var code = body.TryGetProperty("error_code", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : (int)response.StatusCode;
+            throw new TelegramException($"Telegram {method}: {description}", code);
         }
 
         return body.GetProperty("result");

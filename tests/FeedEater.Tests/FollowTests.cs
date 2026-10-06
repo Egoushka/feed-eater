@@ -26,6 +26,7 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
     private string _summary = "The story grew.";
     private bool _modelDown;
     private bool _sendFails;
+    private Func<string, HttpResponseMessage?>? _refuse;
     private long _messageId = 99;
 
     public Task InitializeAsync()
@@ -49,6 +50,7 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
             _telegram.Add((method, body));
             return method switch
             {
+                "sendMessage" when _refuse?.Invoke(body) is { } refused => refused,
                 "sendMessage" when _sendFails => StubHandler.Json("""{"ok":false,"description":"Bad Request: chat not found"}"""),
                 "sendMessage" => StubHandler.Json($$$"""{"ok":true,"result":{"message_id":{{{++_messageId}}}}}"""),
                 _ => StubHandler.Json("""{"ok":true,"result":true}"""),
@@ -341,6 +343,80 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(1, await rig.Job.RunAsync(default));
         Assert.Equal(1, await QueryAsync<int>("select count(*) from follow_items"));
+    }
+
+    private static HttpResponseMessage Refused(int code, string description) =>
+        StubHandler.Json($$"""{"ok":false,"error_code":{{code}},"description":"{{description}}"}""", (System.Net.HttpStatusCode)code);
+
+    [Fact]
+    public async Task An_item_Telegram_refuses_for_good_is_recorded_as_sent_and_does_not_block_the_later_ones()
+    {
+        var rig = Build();
+        var root = await RootAsync();
+        await PressAsync(rig, $"f:{root}");
+        await LaterAsync("Poison item", TestVectors.OneHot(5), root, minutes: 5);
+        await LaterAsync("Fine item", TestVectors.OneHot(6), root, minutes: 6);
+        _refuse = body => body.Contains("Poison item", StringComparison.Ordinal) ? Refused(400, "Bad Request: can't parse entities") : null;
+
+        Assert.Equal(1, await rig.Job.RunAsync(default));
+        Assert.Equal(0, await rig.Job.RunAsync(default));
+        Assert.Equal(0, await rig.Job.RunAsync(default));
+
+        Assert.Equal(2, await QueryAsync<int>("select count(*) from follow_items"));   // the refused one is not asked again
+        Assert.Equal(1, Sends().Count(m => Text(m).Contains("Poison item", StringComparison.Ordinal)));
+        Assert.Contains(Sends(), m => Text(m).Contains("Fine item", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_follow_whose_updates_keep_failing_still_closes_when_its_time_is_up()
+    {
+        var rig = Build();
+        var root = await RootAsync();
+        await PressAsync(rig, $"f:{root}");
+        await LaterAsync("Member", TestVectors.OneHot(5), root);
+        _time.Advance(TimeSpan.FromDays(15));
+        _refuse = body => body.Contains("Story closed", StringComparison.Ordinal) ? null : Refused(502, "Bad Gateway");
+
+        await rig.Job.RunAsync(default);
+
+        Assert.Equal("closed", await QueryAsync<string>("select status from follows where id = 1"));
+        Assert.Contains(Sends(), m => Text(m).Contains("Story closed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_answer_that_is_not_json_for_one_follow_does_not_stop_the_others()
+    {
+        var rig = Build();
+        var first = await RootAsync("Story A", TestVectors.OneHot(0));
+        var second = await RootAsync("Story B", TestVectors.OneHot(1));
+        await PressAsync(rig, $"f:{first}");
+        await PressAsync(rig, $"f:{second}");
+        await LaterAsync("Member A", TestVectors.OneHot(5), first);
+        await LaterAsync("Member B", TestVectors.OneHot(6), second);
+        _refuse = body => body.Contains("Member A", StringComparison.Ordinal)
+            ? new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway) { Content = new StringContent("<html>502 Bad Gateway</html>") }
+            : null;
+
+        Assert.Equal(1, await rig.Job.RunAsync(default));
+
+        Assert.Contains(Sends(), m => Text(m).Contains("Member B", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_follow_whose_root_message_is_not_sent_yet_gets_no_updates()
+    {
+        var rig = Build();
+        var root = await RootAsync();
+        var id = await rig.Store.StartAsync(root, Now, Now.AddDays(14), default);   // StartAsync is still sending the root
+        await LaterAsync("Member", TestVectors.OneHot(5), root);
+
+        Assert.Equal(0, await rig.Job.RunAsync(default));
+        Assert.Empty(Sends());
+
+        await rig.Store.SetRootMessageAsync(id, 77, default);
+        Assert.Equal(1, await rig.Job.RunAsync(default));
+
+        Assert.Equal(77, ReplyTo(Assert.Single(Sends())));
     }
 
     [Fact]
