@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using FeedEater.Digest;
 using FeedEater.Telegram;
 
 namespace FeedEater.Hype;
@@ -37,7 +38,7 @@ public static class AutopsyFormatter
         if (r.ByFeed.Count > 0)
         {
             h.Append("\n\n<b>Feeds, by items that lasted</b>\n").Append(string.Join(" · ", r.ByFeed.Take(MaxFeeds)
-                .Select(f => string.Create(CultureInfo.InvariantCulture, $"{E(Clip(f.Label, 40))} {f.Counts.Lasted}/{f.Counts.Total}"))));
+                .Select(f => string.Create(CultureInfo.InvariantCulture, $"{E(DigestFormatter.Clip(f.Label, 40))} {f.Counts.Lasted}/{f.Counts.Total}"))));
         }
 
         if (r.Items.Count > 0)
@@ -45,9 +46,9 @@ public static class AutopsyFormatter
             h.Append("\n\n<b>Items</b>");
             foreach (var i in r.Items.Take(MaxItems))
             {
-                var title = E(Clip(i.Title, 90));
+                var title = E(DigestFormatter.Clip(i.Title, 90));
                 var link = IsLinkable(i.Url) ? $"<a href=\"{E(i.Url)}\">{title}</a>" : title;
-                h.Append(CultureInfo.InvariantCulture, $"\n{i.Verdict.ToString().ToLowerInvariant()} · {link} <i>{E(Clip(i.Repo, 50))}</i>");
+                h.Append(CultureInfo.InvariantCulture, $"\n{i.Verdict.ToString().ToLowerInvariant()} · {link} <i>{E(DigestFormatter.Clip(i.Repo, 50))}</i>");
             }
 
             if (r.Items.Count > MaxItems)
@@ -82,6 +83,4 @@ public static class AutopsyFormatter
 
     private static bool IsLinkable(string url) =>
         url.Length <= 1000 && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
-
-    private static string Clip(string text, int max) => text.Length <= max ? text : text[..(max - 1)] + "…";
 }

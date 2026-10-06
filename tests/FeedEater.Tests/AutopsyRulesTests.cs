@@ -190,4 +190,19 @@ public sealed class AutopsyRulesTests
         Assert.Contains("+4 more", html, StringComparison.Ordinal);
         Assert.True(html.Length < 4096);
     }
+
+    [Theory]
+    [InlineData(88)]   // the 90-character title limit falls between the two halves of the emoji
+    [InlineData(89)]
+    public void An_emoji_at_the_cut_is_dropped_whole_so_the_message_stays_valid_text(int before)
+    {
+        var items = new[] { Item(1, "Blog", 3, RepoVerdict.Alive, new string('a', before) + "😀😀😀") };
+        var report = AutopsyScorer.Build(items, 0, 0, 0, At);
+
+        var html = AutopsyFormatter.Message("2026-11-01", report).Html;
+
+        Assert.Contains(new string('a', before) + "…", html, StringComparison.Ordinal);
+        var bytes = new System.Text.UTF8Encoding(false, throwOnInvalidBytes: true).GetBytes(html);   // throws on a lone surrogate
+        Assert.NotEmpty(bytes);
+    }
 }
