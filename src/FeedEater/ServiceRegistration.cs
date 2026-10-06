@@ -4,6 +4,7 @@ using Npgsql;
 using FeedEater.Digest;
 using FeedEater.Eval;
 using FeedEater.Fetch;
+using FeedEater.Follow;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -40,6 +41,7 @@ public static class ServiceRegistration
         services.AddSingleton<CursorStore>();
         services.AddSingleton<ItemStore>();
         services.AddSingleton<ClusterStore>();
+        services.AddSingleton<FollowStore>();
         services.AddSingleton<StoryClusterer>();
         services.AddSingleton<ProfileStore>();
         services.AddSingleton<FeedbackStore>();
@@ -125,6 +127,7 @@ public static class ServiceRegistration
         services.AddSingleton<CallbackHandler>();
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ArchiveAnswer>();
+        services.AddSingleton<StoryFollower>();
         services.AddSingleton<ReplyHandler>();
         services.AddSingleton<TasteSwitch>();
         services.AddSingleton<CommandHandler>();
@@ -161,6 +164,10 @@ public static class ServiceRegistration
             {
                 services.AddHostedService<WeeklyReview>();
                 services.AddHostedService<TelegramPoller>();
+                if (settings.Follow.Enabled)
+                {
+                    services.AddHostedService<FollowJob>();
+                }
             }
         }
 

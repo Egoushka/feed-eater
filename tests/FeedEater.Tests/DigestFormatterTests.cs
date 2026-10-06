@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using FeedEater.Digest;
+using FeedEater.Storage;
 using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
@@ -43,6 +44,22 @@ public sealed class DigestFormatterTests
         Assert.Equal("👍 ✓", voted[0][0].Text);
         Assert.Equal(("✓ Filed in SKAR", "n"), (filed[1].Single().Text, filed[1].Single().Data));
         Assert.Single(plain);
+    }
+
+    [Fact]
+    public void The_thread_button_is_added_only_when_asked_and_everything_else_stays_as_it_was()
+    {
+        var before = DigestFormatter.Buttons(42, true, null, null).Select(row => row.Select(b => (b.Text, b.Data)).ToList()).ToList();
+        var item = DigestFormatter.Item(Item(), null, null).Keyboard!.Select(row => row.Select(b => b.Data)).ToList();
+        var withThread = DigestFormatter.Buttons(42, true, null, null, follow: true);
+
+        Assert.Equal([[("👍", "v:42:u"), ("👎", "v:42:d"), ("📌 Save", "s:42")], [("💡 To Plane", "i:42")]], before);
+        Assert.Equal([["v:42:u", "v:42:d", "s:42"], ["i:42"]], item);
+        Assert.Equal(("🧵", "f:42"), (withThread[0][3].Text, withThread[0][3].Data));
+        Assert.Equal(before[1], withThread[1].Select(b => (b.Text, b.Data)).ToList());
+        Assert.Equal("f:42", DigestFormatter.Item(Item(), null, null, follow: true).Keyboard![0][3].Data);
+        Assert.Equal("f:42", DigestFormatter.Result(new SearchHit { Id = 42, Title = "T", Url = "https://u" }, "1 Oct", follow: true).Keyboard![0][3].Data);
+        Assert.DoesNotContain("f:42", DigestFormatter.Result(new SearchHit { Id = 42, Title = "T", Url = "https://u" }, "1 Oct").Keyboard![0].Select(b => b.Data));
     }
 
     [Fact]
