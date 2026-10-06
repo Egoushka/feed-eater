@@ -234,6 +234,9 @@ public sealed class UiHandlers(
             case "clear":
                 await callbacks.ClearVoteAsync(id, ct);
                 return SeeOther(ctx, back);
+            case "save":
+                var saved = await callbacks.SaveAsync(id, ct);
+                return SeeOther(ctx, saved is SaveOutcome.Saved or SaveOutcome.AlreadySaved ? back : WithNotice(back, saved == SaveOutcome.NotConfigured ? "save-off" : saved == SaveOutcome.Refused ? "save-refused" : "save-down"));
             case "idea":
                 var (project, _) = await callbacks.FileIdeaAsync(id, ct);
                 return SeeOther(ctx, WithNotice(back, project is null ? "file-failed" : "filed"));

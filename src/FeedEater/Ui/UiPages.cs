@@ -66,6 +66,10 @@ public static class UiPages
         ["file-failed"] = "Not filed: Plane did not accept it, or the item has no suggestion.",
         ["queued"] = "Digest queued; it starts within a minute.",
         ["queued-resend"] = "Queued: today's digest will be sent again within a minute.",
+        ["saved"] = "Saved to Karakeep.",
+        ["save-down"] = "Karakeep is not reachable; nothing was saved. Try again later.",
+        ["save-off"] = "Karakeep is not configured, so nothing was saved.",
+        ["save-refused"] = "This item has no web link to save.",
         ["digest-off"] = "The digest job is off: Telegram is not configured.",
     };
 
@@ -711,6 +715,9 @@ public static class UiPages
             h.Append("<button type=\"submit\" name=\"v\" value=\"idea\">💡 File to Plane</button>");
         }
 
+        h.Append(v.Saved
+            ? "<span class=\"badge good\">📌 Saved</span>"
+            : "<button type=\"submit\" name=\"v\" value=\"save\">📌 Save</button>");
         if (v.Vote is not null)
         {
             h.Append("<button type=\"submit\" name=\"v\" value=\"clear\" class=\"quiet\">Clear vote</button>");

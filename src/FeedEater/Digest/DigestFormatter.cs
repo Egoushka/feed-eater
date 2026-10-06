@@ -112,10 +112,10 @@ public static class DigestFormatter
             html.Append("\n\n").Append(E(Clip(h.Summary.Trim(), 240)));
         }
 
-        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn));
+        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn, h.Saved));
     }
 
-    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn)
+    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn, bool saved = false)
     {
         var rows = new List<IReadOnlyList<Button>>
         {
@@ -123,6 +123,7 @@ public static class DigestFormatter
             {
                 new Button(vote == 1 ? "👍 ✓" : "👍", CallbackData.Vote(id, 1)),
                 new Button(vote == -1 ? "👎 ✓" : "👎", CallbackData.Vote(id, -1)),
+                saved ? new Button("📌 Saved ✓", CallbackData.Noop) : new Button("📌 Save", CallbackData.Save(id)),
             },
         };
         if (filedIn is not null)

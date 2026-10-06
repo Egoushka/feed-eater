@@ -292,3 +292,29 @@ public sealed class LinkedPromptTests
         Assert.DoesNotContain("<untrusted_page>", none, StringComparison.Ordinal);
     }
 }
+
+public sealed class KarakeepCreateTests
+{
+    [Fact]
+    public async Task Creates_a_link_bookmark_and_returns_its_id()
+    {
+        var stub = new StubHandler((_, _) => StubHandler.Json("""{"id":"abc123","type":"link"}""", HttpStatusCode.Created));
+
+        var id = await new FeedEater.Signals.KarakeepClient(stub.Client("http://karakeep/")).CreateLinkAsync("https://e.example/a?b=1", new string('t', 900), default);
+
+        Assert.Equal("abc123", id);
+        var call = Assert.Single(stub.Calls);
+        Assert.Equal((HttpMethod.Post, "http://karakeep/api/v1/bookmarks"), (call.Method, call.Uri));
+        var body = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(call.Body);
+        Assert.Equal("link", body.GetProperty("type").GetString());
+        Assert.Equal("https://e.example/a?b=1", body.GetProperty("url").GetString());
+        Assert.Equal(500, body.GetProperty("title").GetString()!.Length);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    public async Task A_failing_karakeep_throws(HttpStatusCode status) =>
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}", status)).Client("http://karakeep/")).CreateLinkAsync("https://e.example", "t", default));
+}

@@ -53,6 +53,20 @@ public sealed class FeedbackStore(FeedDb db)
             """, new { itemId, value }, cancellationToken: ct));
     }
 
+    public async Task<bool> IsSavedAsync(long itemId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<bool>(new CommandDefinition("select exists (select 1 from saved where item_id = @itemId)", new { itemId }, cancellationToken: ct));
+    }
+
+    /// <summary>The first save wins; a second one for the same item is ignored.</summary>
+    public async Task AddSavedAsync(long itemId, string karakeepId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        await c.ExecuteAsync(new CommandDefinition(
+            "insert into saved (item_id, karakeep_id) values (@itemId, @karakeepId) on conflict (item_id) do nothing", new { itemId, karakeepId }, cancellationToken: ct));
+    }
+
     public async Task ClearVoteAsync(long itemId, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);

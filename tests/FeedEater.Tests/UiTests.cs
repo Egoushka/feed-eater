@@ -45,6 +45,8 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
             .UseSetting("FeedEater:Telegram:Token", telegram ? "123:test" : "")
             .UseSetting("FeedEater:Llm:BaseUrl", "http://127.0.0.1:9/")
             .UseSetting("FeedEater:Llm:MonthlyBudget", "5")
+            .UseSetting("FeedEater:Karakeep:BaseUrl", "http://127.0.0.1:9/")   // nothing listens: saving reports Karakeep as down
+            .UseSetting("FeedEater:Karakeep:Token", token.Length > 0 ? "k" : "")
             .ConfigureTestServices(s => s.RemoveAll<IHostedService>()));
 
     private static HttpClient Client(WebApplicationFactory<Program> app) =>
@@ -853,5 +855,30 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; evidence", page, StringComparison.Ordinal);
         Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("javascript:", page, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task The_save_button_shows_saved_state_and_reports_karakeep_being_down_or_unconfigured()
+    {
+        var (item, _) = await SeedDigestAsync();
+        var cookie = await LoginAsync();
+        Assert.Contains("name=\"v\" value=\"save\"", await GetAsync("/ui", cookie), StringComparison.Ordinal);
+
+        var down = await PostAsync("/ui/vote", cookie, ("item", item.ToString()), ("v", "save"), ("back", "/ui#item-1"));
+        Assert.Equal("/ui?notice=save-down#item-1", down.Headers.Location!.OriginalString);
+        Assert.False(await new FeedbackStore(pg.Db).IsSavedAsync(item, default));
+        Assert.Contains("Karakeep is not reachable", await GetAsync("/ui?notice=save-down", cookie), StringComparison.Ordinal);
+
+        await new FeedbackStore(pg.Db).AddSavedAsync(item, "bm-9", default);
+        var after = await PostAsync("/ui/vote", cookie, ("item", item.ToString()), ("v", "save"), ("back", "/ui#item-1"));
+        Assert.Equal("/ui#item-1", after.Headers.Location!.OriginalString);   // already saved: nothing to report
+        foreach (var path in new[] { "/ui", $"/ui/item/{item}", "/ui/posts" })
+        {
+            var page = await GetAsync(path, cookie);
+            if (path != "/ui/posts" || page.Contains("Postgres 19 lands", StringComparison.Ordinal))
+            {
+                Assert.Contains("📌 Saved", page, StringComparison.Ordinal);
+            }
+        }
     }
 }

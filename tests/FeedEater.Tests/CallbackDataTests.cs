@@ -11,6 +11,7 @@ public sealed class CallbackDataTests
         Assert.Equal(new VoteCallback(5, 1), CallbackData.Parse(CallbackData.Vote(5, 1)));
         Assert.Equal(new VoteCallback(5, -1), CallbackData.Parse(CallbackData.Vote(5, -1)));
         Assert.Equal(new IdeaCallback(9), CallbackData.Parse(CallbackData.Idea(9)));
+        Assert.Equal(new SaveCallback(7), CallbackData.Parse(CallbackData.Save(7)));
         Assert.IsType<NoopCallback>(CallbackData.Parse(CallbackData.Noop));
     }
 
