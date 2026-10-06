@@ -1,5 +1,7 @@
 namespace FeedEater.Ranking;
 
+public sealed record WeightedVector(float[] X, double Weight);
+
 public static class Vectors
 {
     public static double Dot(float[] a, float[] b)
@@ -24,19 +26,22 @@ public static class Vectors
         return norm == 0 ? v : v.Select(x => (float)(x / norm)).ToArray();
     }
 
-    public static float[]? Centroid(IReadOnlyList<float[]> vectors)
+    public static float[]? Centroid(IReadOnlyList<float[]> vectors) => WeightedCentroid(vectors.Select(v => new WeightedVector(v, 1)).ToList());
+
+    /// <summary>The normalised weighted mean; a weight of 1 for every vector gives the plain centroid.</summary>
+    public static float[]? WeightedCentroid(IReadOnlyList<WeightedVector> vectors)
     {
         if (vectors.Count == 0)
         {
             return null;
         }
 
-        var sum = new float[vectors[0].Length];
+        var sum = new float[vectors[0].X.Length];
         foreach (var v in vectors)
         {
             for (var i = 0; i < sum.Length; i++)
             {
-                sum[i] += v[i];
+                sum[i] += (float)(v.X[i] * v.Weight);
             }
         }
 

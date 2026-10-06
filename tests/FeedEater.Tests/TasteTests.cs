@@ -22,6 +22,38 @@ public sealed class LogisticModelTests
     }
 
     [Fact]
+    public void Explicit_weight_one_trains_exactly_what_unweighted_data_trained_before_weights_existed()
+    {
+        // Probabilities recorded from the pre-weight implementation on Data(30).
+        var model = LogisticModel.Train(Data(30).Select(d => d with { Weight = 1 }).ToList())!;
+
+        Assert.Equal(0.9387600201703267, model.Probability(Blend(0, 900)), 12);
+        Assert.Equal(0.061239979829673406, model.Probability(Blend(1, 901)), 12);
+        Assert.Equal(0.9467188338180208, model.Probability(TestVectors.OneHot(0)), 12);
+        Assert.Equal(0.053281166181979096, model.Probability(TestVectors.OneHot(1)), 12);
+        Assert.Equal(model.Probability(TestVectors.OneHot(0)), LogisticModel.Train(Data(30))!.Probability(TestVectors.OneHot(0)));
+    }
+
+    [Fact]
+    public void Heavier_examples_pull_the_model_toward_them_and_a_weight_is_a_repeat_count()
+    {
+        var a = TestVectors.Blend(0, 10, 0.1f);
+        var b = TestVectors.Blend(2, 11, 0.1f);
+        var down = Enumerable.Range(0, 10).Select(i => new LabeledVector(Blend(1, 300 + i), false)).ToList();
+        List<LabeledVector> Liked(double weightA) => Enumerable.Range(0, 5).Select(i => new LabeledVector(TestVectors.Blend(0, 20 + i, 0.1f), true, weightA))
+            .Concat(Enumerable.Range(0, 5).Select(i => new LabeledVector(TestVectors.Blend(2, 40 + i, 0.1f), true))).ToList();
+
+        var even = LogisticModel.Train(Liked(1).Concat(down).ToList())!;
+        var heavy = LogisticModel.Train(Liked(3).Concat(down).ToList())!;
+
+        Assert.True(heavy.Probability(a) > even.Probability(a));
+        Assert.True(heavy.Probability(b) < even.Probability(b));
+
+        var repeated = Liked(1).Take(5).SelectMany(d => new[] { d, d, d }).Concat(Liked(1).Skip(5)).Concat(down).ToList();
+        Assert.Equal(heavy.Probability(a), LogisticModel.Train(repeated)!.Probability(a), 9);
+    }
+
+    [Fact]
     public void Needs_both_classes_and_is_deterministic()
     {
         Assert.Null(LogisticModel.Train([new LabeledVector(TestVectors.OneHot(0), true)]));
@@ -47,6 +79,23 @@ public sealed class LogisticModelTests
         var (model, ok) = LearnedTaste.Prepare(Data(60), o);
         Assert.NotNull(model);
         Assert.Null(ok);
+    }
+
+    [Fact]
+    public void The_vote_floors_count_rows_so_a_heavy_vote_never_reaches_them_early()
+    {
+        var o = new TasteOptions { Learn = true, MinVotes = 100 };
+        var heavy = Data(30).Select(d => d with { Weight = 3 }).ToList();   // 60 rows, total weight 180
+
+        var (few, note) = LearnedTaste.Prepare(heavy, o);
+        Assert.Null(few);
+        Assert.Equal("Learned taste is switched on but needs 100 votes with at least 10 of each kind; there are 60 (30 up, 30 down). The default ranking is used.", note);
+
+        var thin = Enumerable.Range(0, 9).Select(i => new LabeledVector(Blend(0, 10 + i), true, 3))
+            .Concat(Enumerable.Range(0, 91).Select(i => new LabeledVector(Blend(1, 300 + i), false))).ToList();
+        Assert.Null(LearnedTaste.Prepare(thin, o).Model);
+
+        Assert.NotNull(LearnedTaste.Prepare(Data(60).Select(d => d with { Weight = 0.5 }).ToList(), o).Model);
     }
 
     [Fact]
