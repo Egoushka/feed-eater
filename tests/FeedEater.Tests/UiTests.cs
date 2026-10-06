@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using FeedEater.Digest;
+using FeedEater.Hype;
 using FeedEater.Storage;
 using FeedEater.Ui;
 
@@ -141,7 +142,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
     public static TheoryData<string> Pages =>
     [
-        "/ui", "/ui/posts", "/ui/feedback", "/ui/weekly", "/ui/weekly/2026-10-04", "/ui/releases", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
+        "/ui", "/ui/posts", "/ui/feedback", "/ui/weekly", "/ui/weekly/2026-10-04", "/ui/autopsy", "/ui/releases", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
         "/ui/item/1", "/ui/digest/2026-10-05", "/ui/digest/run",
     ];
 
@@ -849,6 +850,49 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
         await GetAsync("/ui/weekly/2001-01-01", cookie, HttpStatusCode.NotFound);
         await GetAsync("/ui/weekly/garbage", cookie, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task The_autopsy_page_says_why_it_is_empty_shows_the_latest_report_and_encodes_hostile_content()
+    {
+        var cookie = await LoginAsync();
+        var off = await GetAsync("/ui/autopsy", cookie);
+        Assert.Contains("The autopsy is off", off, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/autopsy\"", off, StringComparison.Ordinal);   // the nav entry
+        await using (var on = Factory(Token, telegram: true, ("FeedEater:GitHub:User", "octocat")))
+        {
+            using var http = Client(on);
+            var empty = await (await http.SendAsync(Req(HttpMethod.Get, "/ui/autopsy", await LoginAsync(http)))).Content.ReadAsStringAsync();
+            Assert.Contains("No autopsy yet", empty, StringComparison.Ordinal);
+        }
+
+        var item = (long id, RepoVerdict verdict) => new AutopsyItem(
+            id, $"{Hostile} title", "javascript:alert(1)", $"{Hostile} feed", $"acme/{Hostile}", 3, verdict, 10, 15, 50, true, true, IdeaOutcome.Filed, true, 2);
+        var hostile = AutopsyScorer.Build([item(7, RepoVerdict.Grew), item(8, RepoVerdict.Gone) with { StarsNow = null, StarsGrowthPercent = null }], 3, 1, 2, DateTimeOffset.UtcNow);
+        var store = new AutopsyStore(pg.Db);
+        await store.SaveAsync("2026-10-01", DateTimeOffset.UtcNow.AddDays(-31), hostile, "old", default);
+        await store.SaveAsync("2026-11-01", DateTimeOffset.UtcNow, hostile, "new", default);
+        await store.MarkSentAsync("2026-11-01", DateTimeOffset.UtcNow, default);
+
+        var latest = await GetAsync("/ui/autopsy", cookie);
+        var older = await GetAsync("/ui/autopsy/2026-10-01", cookie);
+
+        Assert.Contains("Month of November 2026", latest, StringComparison.Ordinal);
+        Assert.Contains("Month of October 2026", older, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/autopsy/2026-10-01\"", latest, StringComparison.Ordinal);
+        Assert.Contains("stars up 20% or more", latest, StringComparison.Ordinal);
+        Assert.Contains("By the model's relevance", latest, StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; feed", latest, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/item/7\"", latest, StringComparison.Ordinal);
+        Assert.Contains("grew", latest, StringComparison.Ordinal);
+        foreach (var page in new[] { latest, older })
+        {
+            Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("javascript:", page, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await GetAsync("/ui/autopsy/2001-01-01", cookie, HttpStatusCode.NotFound);
+        await GetAsync("/ui/autopsy/garbage", cookie, HttpStatusCode.NotFound);
     }
 
     [Fact]

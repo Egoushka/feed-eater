@@ -6,6 +6,7 @@ using FeedEater.Duels;
 using FeedEater.Eval;
 using FeedEater.Fetch;
 using FeedEater.Follow;
+using FeedEater.Hype;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -50,6 +51,7 @@ public static class ServiceRegistration
         services.AddSingleton<DigestStore>();
         services.AddSingleton<SignalStore>();
         services.AddSingleton<WeeklyStore>();
+        services.AddSingleton<AutopsyStore>();
         services.AddSingleton<ReleaseStore>();
         services.AddSingleton<DuelStore>();
         services.AddSingleton<QuietHours>();
@@ -92,6 +94,7 @@ public static class ServiceRegistration
         {
             http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.5.0");
+            Bearer(http, Settings(sp).GitHub.Token);
         });
 
         // Only the feed client trusts Source:AllowedHosts: article and linked-page URLs come from untrusted entries.
@@ -178,6 +181,13 @@ public static class ServiceRegistration
                 {
                     services.AddHostedService<FollowJob>();
                 }
+            }
+
+            // The autopsy reports on Telegram; the snapshots are only worth taking when it can.
+            if (telegram && settings.GitHub.Enabled)
+            {
+                services.AddHostedService<RepoSnapshotJob>();
+                services.AddHostedService<AutopsyJob>();
             }
         }
 

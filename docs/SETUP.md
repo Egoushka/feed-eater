@@ -131,8 +131,14 @@ on those projects. `FeedEater__Ideas__Sink=local` keeps ideas local even with Pl
 **Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). Items get a 📌 button that bookmarks the link,
 and your Karakeep bookmarks count as liked items in the ranking.
 
-**GitHub stars.** Set `FeedEater__GitHub__User`. The public stars of that user count as liked items. No token is used (60 requests
-an hour is enough).
+**GitHub stars.** Set `FeedEater__GitHub__User`. The public stars of that user count as liked items. A token is optional
+(`FeedEater__GitHub__Token`, no scopes needed): without it GitHub allows 60 requests an hour, which is enough for the stars.
+
+**Hype autopsy.** With `FeedEater__GitHub__User` and a Telegram token set, a daily job (05:00) records the GitHub repo of every 👍
+item, and on the 1st of each month (09:00) a report says what those repos did in the 87 or more days since: stars up 20% or more
+(grew), pushed within 30 days (alive), neither (quiet), 404 or archived (gone). It splits the result by the model's relevance and by
+feed, lands on `/ui/autopsy` and goes to Telegram. It calls no model. Without a token the snapshot job stops at 40 requests a run and
+carries on the next day; set `FeedEater__GitHub__Token` to lift that.
 
 **Hindsight (memory).** Set `FeedEater__Hindsight__BaseUrl` (and `__Token` if the server needs a key). On Sundays at 18:00 a plain
 summary of the week's reading goes to the bank named by `FeedEater__Hindsight__Bank` (default `feed-eater`).

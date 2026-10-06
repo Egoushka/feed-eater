@@ -27,4 +27,13 @@ public static class Schedule
 
         return Key(candidate);
     }
+
+    /// <summary>The most recent month in which day <paramref name="day"/> (1 to 28, so every month has it) at <paramref name="at"/> has passed; the key is that day.</summary>
+    public static string LatestMonthly(DateTime local, int day, TimeSpan at)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(day, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(day, 28);
+        var candidate = new DateTime(local.Year, local.Month, day);
+        return Key(local >= candidate + at ? candidate : candidate.AddMonths(-1));
+    }
 }

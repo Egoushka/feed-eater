@@ -362,6 +362,10 @@ public sealed class GitHubOptions
 
     [Description("GitHub user whose public stars count as liked items. Empty means no stars import.")]
     public string User { get; set; } = "";
+
+    [Secret]
+    [Description("GitHub token, sent on every GitHub call. Optional: it lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it). A token with no scopes is enough.")]
+    public string Token { get; set; } = "";
 }
 
 public sealed class HindsightOptions

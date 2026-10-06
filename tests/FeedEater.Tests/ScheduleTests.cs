@@ -39,4 +39,23 @@ public sealed class ScheduleTests
         Assert.Equal("2026-10-04", Schedule.LatestWeekly(new DateTime(2026, 10, 4, 18, 0, 0), DayOfWeek.Sunday, at));
         Assert.Equal("2026-10-04", Schedule.LatestWeekly(new DateTime(2026, 10, 5, 9, 0, 0), DayOfWeek.Sunday, at));
     }
+
+    [Theory]
+    [InlineData("2026-11-01T08:59:00", "2026-10-01")]
+    [InlineData("2026-11-01T09:00:00", "2026-11-01")]
+    [InlineData("2026-11-17T12:00:00", "2026-11-01")]
+    [InlineData("2026-12-31T23:59:00", "2026-12-01")]
+    [InlineData("2027-01-01T00:30:00", "2026-12-01")]   // the year turns back too
+    [InlineData("2027-03-01T08:00:00", "2027-02-01")]
+    public void Latest_monthly_points_at_the_last_first_of_the_month_that_has_passed(string local, string expected) =>
+        Assert.Equal(expected, Schedule.LatestMonthly(DateTime.Parse(local, System.Globalization.CultureInfo.InvariantCulture), 1, new TimeSpan(9, 0, 0)));
+
+    [Fact]
+    public void Latest_monthly_uses_the_given_day_and_refuses_days_a_month_may_lack()
+    {
+        Assert.Equal("2026-10-15", Schedule.LatestMonthly(new DateTime(2026, 11, 14, 23, 0, 0), 15, new TimeSpan(9, 0, 0)));
+        Assert.Equal("2026-11-15", Schedule.LatestMonthly(new DateTime(2026, 11, 15, 9, 0, 0), 15, new TimeSpan(9, 0, 0)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Schedule.LatestMonthly(new DateTime(2026, 11, 15), 0, TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Schedule.LatestMonthly(new DateTime(2026, 11, 15), 29, TimeSpan.Zero));
+    }
 }

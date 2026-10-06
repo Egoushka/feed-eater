@@ -416,7 +416,7 @@ public sealed class SetupChecksTests
         var ok = await RunAsync((s, opts) => new GitHubCheck(s, opts), o, s => s.AddSingleton(new GitHubStarsClient(up.Client("http://github/"), Options.Create(o))));
         var fail = await RunAsync((s, opts) => new GitHubCheck(s, opts), o, s => s.AddSingleton(new GitHubStarsClient(unknown.Client("http://github/"), Options.Create(o))));
 
-        Assert.Equal("user octocat found", ok.Result.Detail);
+        Assert.Equal("user octocat found, no token: 60 requests an hour, and repo snapshots stop at 40 requests a run", ok.Result.Detail);
         Assert.Equal(CheckStatus.Fail, fail.Result.Status);
         Assert.Contains("FeedEater__GitHub__User", fail.Result.Fix, StringComparison.Ordinal);
         Assert.EndsWith("/users/octocat", up.Calls.Single().Uri, StringComparison.Ordinal);

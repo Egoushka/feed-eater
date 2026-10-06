@@ -54,7 +54,8 @@ prints the effective values with secrets masked.
 | `FeedEater:Plane:BaseUrl`, `Token`, `Workspace` | no | without them 💡 saves ideas to the local list (`/ui/ideas`) |
 | `FeedEater:Karakeep:BaseUrl`, `Token` | no | without them there is no 📌 button and no bookmark import |
 | `FeedEater:Hindsight:BaseUrl` | no | weekly summary to the `feed-eater` bank; off without it |
-| `FeedEater:GitHub:User` | no | stars of this user count as liked items; off without it |
+| `FeedEater:GitHub:User` | no | stars of this user count as liked items; off without it. With a Telegram token it also turns on the hype autopsy (`/ui/autopsy`) |
+| `FeedEater:GitHub:Token` | no | sent on every GitHub call; lifts the 60 requests an hour limit (the autopsy snapshots stop at 40 requests a run without it) |
 | `FeedEater:ProfilePath` | no | default `/config/profile.json`; shape in `profile.example.json`; a missing file means the example interests and a notice |
 
 ## Built-in feed reader

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Digest;
+using FeedEater.Duels;
 using FeedEater.Follow;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -66,7 +67,7 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
         var follower = new StoryFollower(store, items, telegram, llm, options, _time, NullLogger<StoryFollower>.Instance);
         IIdeaSink sink = new PlaneIdeaSink(new PlaneClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://plane/"), options), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
-        var callbacks = new CallbackHandler(telegram, feedback, filer, items, new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://k/")),
+        var callbacks = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://k/")),
             options, NullLogger<CallbackHandler>.Instance, follower);
         var search = new FeedEater.Search.ArchiveSearch(items, llm);
         var replies = new ReplyHandler(telegram, callbacks, items, new ProfileStore(pg.Db), llm, sink, options, NullLogger<ReplyHandler>.Instance);

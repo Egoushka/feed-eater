@@ -3,6 +3,7 @@ using System.Net;
 using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using FeedEater.Hype;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Memory;
@@ -277,12 +278,18 @@ internal sealed class GitHubCheck(IServiceProvider services, IOptions<FeedEaterO
     protected override async Task<string> ProbeAsync(CancellationToken ct)
     {
         await Services.GetRequiredService<GitHubStarsClient>().PingAsync(ct);
-        return $"user {Settings.GitHub.User} found";
+        return Settings.GitHub.Token.Length > 0
+            ? $"user {Settings.GitHub.User} found, token set"
+            : $"user {Settings.GitHub.User} found, no token: 60 requests an hour, and repo snapshots stop at {RepoSnapshotJob.RequestsPerRun} requests a run";
     }
 
-    protected override string Fix(Exception ex) => ex is HttpRequestException { StatusCode: HttpStatusCode.NotFound }
-        ? $"GitHub has no user with that name: check {Hints.Env("GitHub:User")}."
-        : Hints.Http(ex, "GitHub:BaseUrl", null);
+    protected override string Fix(Exception ex) => ex switch
+    {
+        HttpRequestException { StatusCode: HttpStatusCode.NotFound } => $"GitHub has no user with that name: check {Hints.Env("GitHub:User")}.",
+        HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } when Settings.GitHub.Token.Length > 0 =>
+            $"GitHub refused the token: check {Hints.Env("GitHub:Token")}, or clear it to go without.",
+        _ => Hints.Http(ex, "GitHub:BaseUrl", "GitHub:Token"),
+    };
 }
 
 internal sealed class HindsightCheck(IServiceProvider services, IOptions<FeedEaterOptions> options) : ServiceCheck(services, options)
