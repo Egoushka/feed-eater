@@ -164,7 +164,7 @@ public static class DigestFormatter
     internal static bool IsLinkable(string url) =>
         url.Length <= MaxLinkedUrl && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 
-    private static string Clip(string text, int max)
+    internal static string Clip(string text, int max)
     {
         if (text.Length <= max)
         {

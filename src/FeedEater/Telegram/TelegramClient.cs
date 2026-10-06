@@ -46,6 +46,17 @@ public sealed class TelegramClient(HttpClient http, ILogger<TelegramClient>? log
             ["reply_markup"] = Markup(keyboard),
         }, ct);
 
+    /// <summary>Replaces the text and, with no <c>reply_markup</c>, the buttons.</summary>
+    public Task EditTextAsync(long chatId, long messageId, string html, CancellationToken ct) =>
+        CallAsync("editMessageText", new Dictionary<string, object?>
+        {
+            ["chat_id"] = chatId,
+            ["message_id"] = messageId,
+            ["text"] = html,
+            ["parse_mode"] = "HTML",
+            ["link_preview_options"] = new { is_disabled = true },
+        }, ct);
+
     public Task AnswerAsync(string callbackId, string? text, CancellationToken ct) =>
         CallAsync("answerCallbackQuery", new Dictionary<string, object?>
         {

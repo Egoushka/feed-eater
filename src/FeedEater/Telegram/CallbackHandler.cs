@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 using FeedEater.Digest;
+using FeedEater.Duels;
 using FeedEater.Plane;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -10,7 +11,7 @@ namespace FeedEater.Telegram;
 public enum SaveOutcome { Saved, AlreadySaved, NotConfigured, Down, Refused, NoItem }
 
 public sealed class CallbackHandler(
-    TelegramClient telegram, FeedbackStore feedback, IdeaFiler ideas, ItemStore items, KarakeepClient karakeep,
+    TelegramClient telegram, FeedbackStore feedback, IdeaFiler ideas, ItemStore items, DuelStore duels, KarakeepClient karakeep,
     IOptions<FeedEaterOptions> options, ILogger<CallbackHandler> logger)
 {
     public async Task HandleAsync(TgCallback callback, CancellationToken ct)
@@ -51,10 +52,36 @@ public sealed class CallbackHandler(
                 await telegram.AnswerAsync(callback.Id, SaveMessage(outcome), ct);
                 break;
 
+            case DuelCallback duel:
+                await DuelAsync(callback, duel, ct);
+                break;
+
             default:
                 await telegram.AnswerAsync(callback.Id, null, ct);
                 break;
         }
+    }
+
+    private async Task DuelAsync(TgCallback callback, DuelCallback duel, CancellationToken ct)
+    {
+        var answer = await duels.AnswerAsync(duel.DuelId, duel.Pick, ct);
+        if (answer.Outcome != DuelOutcome.Answered)
+        {
+            await telegram.AnswerAsync(callback.Id, answer.Outcome == DuelOutcome.AlreadyAnswered ? "Already answered" : "No such duel", ct);
+            return;
+        }
+
+        try
+        {
+            await telegram.EditTextAsync(callback.ChatId, callback.MessageId, DuelFormatter.Picked(answer.Title), ct);
+        }
+        catch (TelegramException ex)
+        {
+            // The votes are stored; a message too old to edit only keeps its buttons, and a second tap is ignored.
+            logger.LogWarning(ex, "Editing duel {Duel} failed", duel.DuelId);
+        }
+
+        await telegram.AnswerAsync(callback.Id, answer.Title is null ? "Skipped" : "👍 saved", ct);
     }
 
     /// <summary>Also used by the web UI, so a vote means the same on both surfaces.</summary>
