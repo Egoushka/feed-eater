@@ -671,6 +671,21 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_reply_to_a_duel_message_names_no_item_so_it_is_a_plain_search_and_votes_on_nothing()
+    {
+        var a = await Seed.ItemAsync(pg, 1, "Backup tool", TestVectors.OneHot(1));
+        await Seed.ItemAsync(pg, 1, "Other thing", TestVectors.OneHot(2));
+        var (poller, _) = Build();
+        _updates = """{"ok":true,"result":[{"update_id":10,"message":{"message_id":9,"from":{"id":42},"chat":{"id":42},"text":"zzz","reply_to_message":{"message_id":3,"chat":{"id":42},"reply_markup":{"inline_keyboard":[[{"text":"first","callback_data":"d:1:a"},{"text":"second","callback_data":"d:1:b"},{"text":"skip","callback_data":"d:1:s"}]]}}}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.StartsWith("Nothing found for zzz", Assert.Single(Replies()).Text, StringComparison.Ordinal);
+        Assert.Empty(_chatBodies);
+        Assert.Null((await new ItemStore(pg.Db).GetAsync(a, default))!.Vote);
+    }
+
+    [Fact]
     public async Task A_message_ending_in_a_question_mark_is_answered_from_the_archive_with_checked_citations()
     {
         LiteLlmClientRetry();

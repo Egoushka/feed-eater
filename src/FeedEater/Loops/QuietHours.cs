@@ -7,7 +7,7 @@ namespace FeedEater.Loops;
 public sealed record QuietStatus(bool Quiet, string Text);
 
 /// <summary>
-/// Holds scheduled sends (the digest, the weekly review, urgent release alerts) while he is asleep. Two inputs: a configured local
+/// Holds scheduled sends (the digest, duels, followed stories, the weekly review, the autopsy, urgent release alerts) while he is asleep. Two inputs: a configured local
 /// window (<c>FeedEater:Quiet:From</c> and <c>To</c>, none by default) and a manual toggle (<c>/quiet</c>, or the button on Today)
 /// that turns quiet on for <c>ManualHours</c>, or off until the current window ends. A digest asked for by hand is never held.
 /// A senses-driven version (asleep from the senses service) is a follow-up; that service needs a token this one does not have.

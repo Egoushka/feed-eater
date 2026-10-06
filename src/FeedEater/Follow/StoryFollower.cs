@@ -27,6 +27,9 @@ public sealed class StoryFollower(
 
     public Task<IReadOnlyList<ActiveFollow>> ActiveAsync(CancellationToken ct) => follows.ActiveAsync(ct);
 
+    /// <summary>True when 🧵 on this item would add nothing: its story is already followed.</summary>
+    public Task<bool> FollowsAsync(long itemId, CancellationToken ct) => follows.FollowsStoryAsync(itemId, ct);
+
     public async Task<FollowOutcome> StartAsync(long itemId, CancellationToken ct)
     {
         var o = options.Value.Follow;

@@ -40,7 +40,7 @@ public sealed class FollowStore(FeedDb db)
             $"select {Columns} from follows f join items r on r.id = f.root_item_id where f.id = @id and f.status = 'active'", new { id }, cancellationToken: ct));
     }
 
-    /// <summary>True when an active follow is on the same story as the item: the same cluster head.</summary>
+    /// <summary>True when an active follow is on the same story as the item (the same cluster head) or has already sent it as an update.</summary>
     public async Task<bool> FollowsStoryAsync(long itemId, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
@@ -51,6 +51,9 @@ public sealed class FollowStore(FeedDb db)
                 join items r on r.id = f.root_item_id
                 join items n on n.id = @itemId
                 where f.status = 'active' and coalesce(r.cluster_of, r.id) = coalesce(n.cluster_of, n.id))
+            or exists (
+                select 1 from follow_items x join follows f on f.id = x.follow_id
+                where f.status = 'active' and x.item_id = @itemId)
             """, new { itemId }, cancellationToken: ct));
     }
 

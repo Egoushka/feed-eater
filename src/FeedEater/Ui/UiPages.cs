@@ -675,7 +675,7 @@ public static partial class UiPages
 
     private static void QuietControls(StringBuilder h, PageContext p, QuietStatus quiet)
     {
-        h.Append($"<section class=\"panel\" aria-labelledby=\"quiet-h\"><h2 id=\"quiet-h\">Quiet mode</h2><p role=\"status\">{E(quiet.Text)} While it is on, the digest, the weekly review and release alerts wait.</p>")
+        h.Append($"<section class=\"panel\" aria-labelledby=\"quiet-h\"><h2 id=\"quiet-h\">Quiet mode</h2><p role=\"status\">{E(quiet.Text)} While it is on, the digest, duels, followed stories, the weekly review, the autopsy and release alerts wait.</p>")
             .Append($"<form method=\"post\" action=\"/ui/quiet\" class=\"inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{E(p.Csrf)}\"><input type=\"hidden\" name=\"mode\" value=\"{(quiet.Quiet ? "off" : "on")}\">")
             .Append($"<button type=\"submit\">{(quiet.Quiet ? "Turn quiet mode off" : "Turn quiet mode on")}</button></form></section>");
     }

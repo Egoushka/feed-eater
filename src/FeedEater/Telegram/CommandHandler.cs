@@ -145,7 +145,7 @@ public sealed class CommandHandler(
         };
         await ReplyAsync(message, status is null
             ? "Usage: /quiet toggles, or /quiet on, /quiet off, /quiet status."
-            : $"{WebUtility.HtmlEncode(status.Text)}{(status.Quiet ? " The digest, the weekly review and release alerts wait; /digest still works." : "")}", ct);
+            : $"{WebUtility.HtmlEncode(status.Text)}{(status.Quiet ? " The digest, duels, followed stories, the weekly review, the autopsy and release alerts wait; /digest still works." : "")}", ct);
     }
 
     private async Task AskAsync(TgMessage message, string question, CancellationToken ct)

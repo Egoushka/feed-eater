@@ -185,10 +185,12 @@ public sealed class CallbackHandler(
             return;
         }
 
+        // A followed story's updates carry no 🧵, and a vote must not add one.
+        var follow = options.Value.Follow.Enabled && !(follower is not null && await follower.FollowsAsync(itemId, ct));
         try
         {
             await telegram.EditButtonsAsync(callback.ChatId, callback.MessageId,
-                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved, ButtonStyle.From(options.Value), options.Value.Follow.Enabled), ct);
+                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved, ButtonStyle.From(options.Value), follow), ct);
         }
         catch (TelegramException ex) when (ex.Message.Contains("not modified", StringComparison.OrdinalIgnoreCase))
         {

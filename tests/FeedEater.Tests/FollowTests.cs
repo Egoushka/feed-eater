@@ -571,6 +571,38 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(1, (await new ItemStore(pg.Db).GetAsync(member, default))!.Vote);
     }
 
+    private List<string> EditedButtons() => _telegram.Where(t => t.Method == "editMessageReplyMarkup").Select(t => JsonSerializer.Deserialize<JsonElement>(t.Body))
+        .SelectMany(b => b.GetProperty("reply_markup").GetProperty("inline_keyboard").EnumerateArray().SelectMany(row => row.EnumerateArray()).Select(x => x.GetProperty("callback_data").GetString()!)).ToList();
+
+    [Fact]
+    public async Task A_vote_on_a_follow_update_does_not_add_the_thread_button_but_one_on_an_unfollowed_item_keeps_it()
+    {
+        var rig = Build();
+        var root = await RootAsync();
+        await PressAsync(rig, $"f:{root}");
+        var member = await LaterAsync("Member", TestVectors.OneHot(5), null);   // matched by similarity, not by cluster
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("insert into follow_items (follow_id, item_id) values (1, @member)", new { member });
+        }
+
+        var other = await Seed.ItemAsync(pg, 3, "Unrelated", TestVectors.OneHot(9));
+        _telegram.Clear();
+        await PressAsync(rig, $"v:{member}:u");
+        var onUpdate = EditedButtons();
+        _telegram.Clear();
+        await PressAsync(rig, $"v:{root}:u");
+        var onRoot = EditedButtons();
+        _telegram.Clear();
+        await PressAsync(rig, $"v:{other}:u");
+        var onOther = EditedButtons();
+
+        Assert.DoesNotContain($"f:{member}", onUpdate);
+        Assert.Contains($"v:{member}:d", onUpdate);
+        Assert.DoesNotContain($"f:{root}", onRoot);
+        Assert.Contains($"f:{other}", onOther);
+    }
+
     [Fact]
     public async Task A_muted_feed_is_not_followed_into()
     {

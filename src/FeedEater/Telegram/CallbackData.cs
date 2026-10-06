@@ -58,6 +58,7 @@ public sealed record IdeaCallback(long ItemId) : CallbackData;
 public sealed record SaveCallback(long ItemId) : CallbackData;
 
 public sealed record DuelCallback(long DuelId, char Pick) : CallbackData;
+
 public sealed record FollowCallback(long ItemId) : CallbackData;
 
 public sealed record UnfollowCallback(long FollowId) : CallbackData;
