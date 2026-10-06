@@ -4,6 +4,7 @@ using Npgsql;
 using FeedEater.Digest;
 using FeedEater.Eval;
 using FeedEater.Fetch;
+using FeedEater.Hype;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -47,6 +48,7 @@ public static class ServiceRegistration
         services.AddSingleton<DigestStore>();
         services.AddSingleton<SignalStore>();
         services.AddSingleton<WeeklyStore>();
+        services.AddSingleton<AutopsyStore>();
         services.AddSingleton<ReleaseStore>();
         services.AddSingleton<QuietHours>();
         services.AddSingleton<UsageStore>();
@@ -162,6 +164,13 @@ public static class ServiceRegistration
             {
                 services.AddHostedService<WeeklyReview>();
                 services.AddHostedService<TelegramPoller>();
+            }
+
+            // The autopsy reports on Telegram; the snapshots are only worth taking when it can.
+            if (telegram && settings.GitHub.Enabled)
+            {
+                services.AddHostedService<RepoSnapshotJob>();
+                services.AddHostedService<AutopsyJob>();
             }
         }
 
