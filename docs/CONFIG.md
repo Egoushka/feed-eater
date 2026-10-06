@@ -136,6 +136,17 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Quiet:ManualHours` | `12` | Hours a manual /quiet on lasts. |
 | `FeedEater:Quiet:To` | (empty) | Local time at which quiet hours end. |
 
+## Source
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Source:AllowedHosts` | (empty) | Exact host names a feed fetch may reach although they are private (self-hosted RSSHub, Nitter); any port. |
+| `FeedEater:Source:BackfillDays` | `14` | The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories. |
+| `FeedEater:Source:FeedInterval` | `00:30:00` | How often each feed is fetched; repeated failures double the wait up to MaxBackoff. |
+| `FeedEater:Source:Kind` | `builtin` | Where entries come from: builtin (feed-eater reads the feeds itself) or miniflux (copies entries from Miniflux). Switching on a populated database is unsupported. |
+| `FeedEater:Source:MaxBackoff` | `1.00:00:00` | The longest wait between fetches of a feed that keeps failing. |
+| `FeedEater:Source:PollInterval` | `00:05:00` | How often the ingest loop looks for feeds that are due. |
+
 ## Taste
 
 | Key | Default | Description |
