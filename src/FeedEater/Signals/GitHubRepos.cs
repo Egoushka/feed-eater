@@ -37,6 +37,18 @@ public static partial class GitHubRepos
     /// <summary>The first github.com/owner/repo in the item URL, else in its text. Paths below the repo (issues, pulls, blob) are ignored.</summary>
     public static (string Owner, string Repo)? Find(string url, string text)
     {
+        try
+        {
+            return FindCore(url, text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return null;
+        }
+    }
+
+    private static (string Owner, string Repo)? FindCore(string url, string text)
+    {
         foreach (var source in new[] { url, text })
         {
             foreach (Match m in Link().Matches(source))
@@ -58,6 +70,6 @@ public static partial class GitHubRepos
         return null;
     }
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9.-])(?:www\.)?github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<![A-Za-z0-9.-])(?:www\.)?github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]+)", RegexOptions.IgnoreCase, 250)]
     private static partial Regex Link();
 }

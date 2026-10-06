@@ -61,7 +61,7 @@ public sealed class Ingestor(
             var page = await miniflux.EntriesAfterAsync(await items.MaxEntryIdAsync(ct), pageSize, ct);
             foreach (var e in page)
             {
-                await items.UpsertFeedAsync(new Feed(e.FeedId, e.FeedTitle, e.Category, e.SiteUrl), ct);
+                await items.UpsertFeedAsync(new Feed(e.FeedId, e.FeedTitle, e.Category, e.SiteUrl, FeedUrl: e.FeedUrl), ct);
                 if (await items.InsertAsync(ToNewItem(e), ct) is not null)
                 {
                     added++;

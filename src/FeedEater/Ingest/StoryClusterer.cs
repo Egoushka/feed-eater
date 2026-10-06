@@ -43,13 +43,20 @@ public sealed partial class StoryClusterer(ClusterStore store, IOptions<FeedEate
     /// <summary>Two titles that each name a version, and not the same ones, are different releases of one product, not one story.</summary>
     internal static bool SameStory(string a, string b)
     {
-        var (x, y) = (Versions(a), Versions(b));
-        return x.Count == 0 || y.Count == 0 || x.SetEquals(y);
+        try
+        {
+            var (x, y) = (Versions(a), Versions(b));
+            return x.Count == 0 || y.Count == 0 || x.SetEquals(y);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;   // a title that stalls the matcher is not merged into anything
+        }
     }
 
     private static HashSet<string> Versions(string title) =>
         VersionPattern().Matches(title).Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
 
-    [GeneratedRegex(@"(?<![\w.])v?(\d+(?:\.\d+)+(?:-[0-9A-Za-z.]+)?)")]
+    [GeneratedRegex(@"(?<![\w.])v?(\d+(?:\.\d+)+(?:-[0-9A-Za-z.]+)?)", RegexOptions.None, 250)]
     private static partial Regex VersionPattern();
 }

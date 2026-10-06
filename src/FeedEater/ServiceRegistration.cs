@@ -102,7 +102,8 @@ public static class ServiceRegistration
         services.AddSingleton<EvalStore>();
         services.AddSingleton<EvalRunner>();
         services.AddSingleton<FeedDiscoverer>();
-        services.AddHttpClient<WatchSource>();
+        // The client carries the PINS bearer token, so it must never follow a redirect to another host.
+        services.AddHttpClient<WatchSource>().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
         services.AddHttpClient<HindsightClient>((sp, http) =>
         {

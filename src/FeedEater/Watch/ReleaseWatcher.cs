@@ -94,12 +94,14 @@ public sealed partial class ReleaseWatcher(
             return null;
         }
 
+        // A quote the notes do not contain is the model's invention (or an injected claim): drop it, and with it the verdict it backed.
+        var evidenced = note?.Evidence is { } quote && Contains(notes, quote);
         return row with
         {
             Summary = note?.Changes,
-            Breaking = note?.Breaking ?? "unknown",
-            Evidence = note?.Evidence,
-            Urgent = Urgent().IsMatch(item.Title + " " + item.Content),
+            Breaking = evidenced || note?.Breaking == "unknown" ? note?.Breaking ?? "unknown" : "unknown",
+            Evidence = evidenced ? note!.Evidence : null,
+            Urgent = IsUrgent(item.Title + " " + item.Content),
         };
     }
 
@@ -140,9 +142,28 @@ public sealed partial class ReleaseWatcher(
         return new OutMessage($"{text}\nMentions security or breaking changes · {link}");
     }
 
-    [GeneratedRegex(@"^https://github\.com/([^/]+/[^/]+)/releases/tag/([^/?#]+)")]
+    /// <summary>Verbatim, ignoring case and runs of whitespace.</summary>
+    internal static bool Contains(string notes, string quote)
+    {
+        static string Flat(string t) => string.Join(' ', t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return quote.Trim().Length > 0 && Flat(notes).Contains(Flat(quote), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUrgent(string text)
+    {
+        try
+        {
+            return Urgent().IsMatch(text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
+
+    [GeneratedRegex(@"^https://github\.com/([^/]+/[^/]+)/releases/tag/([^/?#]+)", RegexOptions.None, 250)]
     private static partial Regex ReleaseUrl();
 
-    [GeneratedRegex(@"security|\bCVE-\d|vulnerab|breaking", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"security|\bCVE-\d|vulnerab|breaking", RegexOptions.IgnoreCase, 250)]
     private static partial Regex Urgent();
 }

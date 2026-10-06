@@ -70,10 +70,14 @@ public sealed class WatchSource(HttpClient http, IOptions<FeedEaterOptions> opti
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
         {
-            logger.LogWarning(ex, "PINS source {Source} unavailable; using the static watch list", o.Source);
+            // Only the host: the URL can carry a path or query a token has no business in a log.
+            logger.LogWarning("PINS source {Host} unavailable ({Error}); using the static watch list", HostOf(o.Source), ex.GetType().Name);
             return null;
         }
     }
+
+    internal static string HostOf(string source) =>
+        Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.Host : "(file)";
 
     private IReadOnlyList<Pinned> FromFallback(WatchOptions o)
     {

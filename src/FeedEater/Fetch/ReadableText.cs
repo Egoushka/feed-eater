@@ -11,6 +11,18 @@ public static partial class ReadableText
 
     public static string Extract(string html, int maxChars)
     {
+        try
+        {
+            return ExtractCore(html.Length <= HtmlText.MaxChars ? html : html[..HtmlText.MaxChars], maxChars);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return "";   // hostile markup: no text rather than a stalled loop
+        }
+    }
+
+    private static string ExtractCore(string html, int maxChars)
+    {
         var s = Comment().Replace(html, " ");
         var title = Title().Match(s) is { Success: true } t ? Collapse(WebWideDecode(t.Groups[1].Value)) : "";
         s = Furniture().Replace(s, " ");
@@ -22,7 +34,7 @@ public static partial class ReadableText
 
     private static string? Region(string html, string tag)
     {
-        var m = Regex.Match(html, $@"<{tag}\b[^>]*>(.*)</{tag}>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        var m = Regex.Match(html, $@"<{tag}\b[^>]*>(.*)</{tag}>", RegexOptions.IgnoreCase | RegexOptions.Singleline, TimeSpan.FromMilliseconds(250));
         return m.Success && HtmlText.ToPlain(m.Groups[1].Value).Length >= MinRegion ? m.Groups[1].Value : tag == "body" && m.Success ? m.Groups[1].Value : null;
     }
 
@@ -30,15 +42,15 @@ public static partial class ReadableText
 
     private static string Collapse(string text) => Spaces().Replace(text, " ").Trim();
 
-    [GeneratedRegex(@"<!--.*?-->", RegexOptions.Singleline)]
+    [GeneratedRegex(@"<!--.*?-->", RegexOptions.Singleline, 250)]
     private static partial Regex Comment();
 
-    [GeneratedRegex(@"<title\b[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    [GeneratedRegex(@"<title\b[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline, 250)]
     private static partial Regex Title();
 
-    [GeneratedRegex(@"<(script|style|noscript|svg|iframe|nav|header|footer|aside|form|template|select|button|dialog)\b[^>]*>.*?</\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    [GeneratedRegex(@"<(script|style|noscript|svg|iframe|nav|header|footer|aside|form|template|select|button|dialog)\b[^>]*>.*?</\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline, 250)]
     private static partial Regex Furniture();
 
-    [GeneratedRegex(@"\s+")]
+    [GeneratedRegex(@"\s+", RegexOptions.None, 250)]
     private static partial Regex Spaces();
 }

@@ -13,6 +13,18 @@ public static partial class LinkExtractor
 
     public static (string? LinkUrl, long? HnId) Find(string itemUrl, string html)
     {
+        try
+        {
+            return FindCore(itemUrl, html.Length <= Text.HtmlText.MaxChars ? html : html[..Text.HtmlText.MaxChars]);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return (null, null);
+        }
+    }
+
+    private static (string? LinkUrl, long? HnId) FindCore(string itemUrl, string html)
+    {
         long? hn = HnItem().Match(itemUrl + " " + html) is { Success: true } m && long.TryParse(m.Groups[1].Value, out var id) ? id : null;
         var itemHost = HostOf(itemUrl);
         if (hn is null && !Is(itemHost, "reddit.com") && !Is(itemHost, "redd.it"))
@@ -43,9 +55,9 @@ public static partial class LinkExtractor
     private static bool Is(string? host, string domain) =>
         host is not null && (host.Equals(domain, StringComparison.OrdinalIgnoreCase) || host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase));
 
-    [GeneratedRegex(@"news\.ycombinator\.com/item\?id=(\d+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"news\.ycombinator\.com/item\?id=(\d+)", RegexOptions.IgnoreCase, 250)]
     private static partial Regex HnItem();
 
-    [GeneratedRegex(@"href\s*=\s*""(https?://[^""]+)""", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"href\s*=\s*""(https?://[^""]+)""", RegexOptions.IgnoreCase, 250)]
     private static partial Regex Href();
 }

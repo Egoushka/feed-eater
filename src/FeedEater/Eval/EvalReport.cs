@@ -77,9 +77,21 @@ public static partial class EvalReport
     }
 
     /// <summary>True when the item's own text carries a version, a year or a date that could back a claim of novelty.</summary>
-    public static bool HasEvidence(string text) => Evidence().IsMatch(text);
+    public static bool HasEvidence(string text) => Safe(() => Evidence().IsMatch(text));
 
-    public static bool ClaimsNovelty(string summary) => Novelty().IsMatch(summary);
+    public static bool ClaimsNovelty(string summary) => Safe(() => Novelty().IsMatch(summary));
+
+    private static bool Safe(Func<bool> match)
+    {
+        try
+        {
+            return match();
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
 
     internal static string Auc(IReadOnlyCollection<EvalRow> up, IReadOnlyCollection<EvalRow> down) =>
         Auc(up.Select(r => r.NewRelevance), down.Select(r => r.NewRelevance));
@@ -105,9 +117,9 @@ public static partial class EvalReport
 
     private static string Clean(string title) => title.Replace('\n', ' ').Replace('|', '/');
 
-    [GeneratedRegex(@"\bv?\d+\.\d+(\.\d+)?\b|\b20\d\d\b|\b(released|release notes|changelog|version)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\bv?\d+\.\d+(\.\d+)?\b|\b20\d\d\b|\b(released|release notes|changelog|version)\b", RegexOptions.IgnoreCase, 250)]
     private static partial Regex Evidence();
 
-    [GeneratedRegex(@"\b(new|newly|launch(ed|es)?|just (released|released)|recently|introduc(es|ed)|unveil(s|ed)|debut(s|ed)?)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(new|newly|launch(ed|es)?|just (released|released)|recently|introduc(es|ed)|unveil(s|ed)|debut(s|ed)?)\b", RegexOptions.IgnoreCase, 250)]
     private static partial Regex Novelty();
 }

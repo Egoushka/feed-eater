@@ -15,11 +15,12 @@ test; `Fetch/SafeFetcher.cs` is the only code that opens such a connection.
    If a name resolves to any refused address, the whole fetch is refused (no picking the public one).
 4. IP-literal hosts go through the same check. A proxy is never used.
 5. Redirects are followed by us, at most 3. Each hop is re-validated (scheme, port, blocked hosts) and gets a fresh connection
-   check, so a redirect to an internal address is refused.
+   check, so a redirect to an internal address is refused. A redirect from https to http is refused (no downgrade). A malformed
+   Location header ends the fetch as a failure, never an exception.
 
 ## Request and response
 
-6. Timeout 10 s for the whole fetch including redirects.
+6. Timeout 10 s per request (each redirect hop gets its own), started after the politeness wait so queueing never counts against a host.
 7. The body is read as a stream and cut at 1 MB (after decompression). Only `text/html`, `application/xhtml+xml` and
    `text/plain` are read; any other type is dropped without reading the body.
 8. No cookies, no credentials, no `Authorization` header, a fixed User-Agent naming feed-eater and its repository.
@@ -33,6 +34,12 @@ test; `Fetch/SafeFetcher.cs` is the only code that opens such a connection.
     database, so nothing is retried in a loop and a restart does not retry an item.
 12. `FeedEater:Fetch:BlockedHosts` lists hosts never fetched (login-walled or hostile: social networks, video sites); subdomains match.
 13. At most `FeedEater:Fetch:MaxPerPoll` pages per ingest poll (default 40), and only for items published in the last 3 days.
+
+## Parsing
+
+16. Every regular expression applied to fetched or feed text has a 250 ms match timeout, and extraction works on at most the first
+    256 KB. A timeout counts as "no text" or "no feed", never as an error, so hostile markup cannot stall the loop.
+17. A discovered feed URL longer than 2,000 characters is ignored. Housekeeping tables (host failures, politeness) are pruned.
 
 ## Using the text
 

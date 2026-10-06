@@ -45,9 +45,9 @@ public static partial class PinsParser
         return ImageName().IsMatch(image) && !image.EndsWith("_data", StringComparison.Ordinal) ? image : null;
     }
 
-    [GeneratedRegex(@"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*`([^`]+)`")]
+    [GeneratedRegex(@"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*`([^`]+)`", RegexOptions.None, 250)]
     private static partial Regex Row();
 
-    [GeneratedRegex(@"^[a-z0-9][a-z0-9._-]*(/[A-Za-z0-9._-]+)*$")]
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9._-]*(/[A-Za-z0-9._-]+)*$", RegexOptions.None, 250)]
     private static partial Regex ImageName();
 }

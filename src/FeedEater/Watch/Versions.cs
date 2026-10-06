@@ -30,9 +30,9 @@ public static partial class Versions
 
     public static string Text(int[] v) => string.Join('.', v);
 
-    [GeneratedRegex(@"\d+(?:\.\d+)+")]
+    [GeneratedRegex(@"\d+(?:\.\d+)+", RegexOptions.None, 250)]
     private static partial Regex Dotted();
 
-    [GeneratedRegex(@"(?:^|[-_.+])(rc|alpha|beta|pre|preview|dev|snapshot|nightly|canary|next)\d*(?:$|[-_.+\d])", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?:^|[-_.+])(rc|alpha|beta|pre|preview|dev|snapshot|nightly|canary|next)\d*(?:$|[-_.+\d])", RegexOptions.IgnoreCase, 250)]
     private static partial Regex Pre();
 }

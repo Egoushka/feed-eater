@@ -6,7 +6,7 @@ namespace FeedEater.Storage;
 
 public sealed record ClusterMember(long Id, string Title, string Url, string Feed);
 
-public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl, bool Muted = false);
+public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl, bool Muted = false, string? FeedUrl = null);
 
 public sealed record NewItem(
     long EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
@@ -130,8 +130,9 @@ public sealed class ItemStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into feeds (id, title, category, site_url) values (@Id, @Title, @Category, @SiteUrl)
-            on conflict (id) do update set title = excluded.title, category = excluded.category, site_url = excluded.site_url
+            insert into feeds (id, title, category, site_url, feed_url) values (@Id, @Title, @Category, @SiteUrl, @FeedUrl)
+            on conflict (id) do update set title = excluded.title, category = excluded.category, site_url = excluded.site_url,
+                                           feed_url = coalesce(excluded.feed_url, feeds.feed_url)
             """, feed, cancellationToken: ct));
     }
 
@@ -248,15 +249,20 @@ public sealed class ItemStore(FeedDb db)
         }
     }
 
-    /// <summary>Items published since the date whose link is a GitHub release page, oldest first: what the release watch reads.</summary>
+    /// <summary>
+    /// Items published since the date whose link is a GitHub release page and whose feed is that same repository's releases.atom, oldest
+    /// first: what the release watch reads. An item from any other feed is never trusted as a release, however its URL looks.
+    /// </summary>
     public async Task<IReadOnlyList<ReleaseItem>> ReleaseItemsAsync(DateTimeOffset since, int limit, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<ReleaseItem>(new CommandDefinition(
             """
-            select id, title, url, left(content, 6000) as content from items
-            where published_at > @since and url like 'https://github.com/%/releases/tag/%'
-            order by published_at, id
+            select i.id, i.title, i.url, left(i.content, 6000) as content from items i
+            join feeds f on f.id = i.feed_id
+            where i.published_at > @since and i.url like 'https://github.com/%/releases/tag/%'
+              and lower(f.feed_url) = lower(regexp_replace(i.url, '^(https://github\.com/[^/]+/[^/]+)/releases/tag/.*$', '\1/releases.atom'))
+            order by i.published_at, i.id
             limit @limit
             """, new { since = since.UtcDateTime, limit }, cancellationToken: ct))).ToList();
     }
@@ -421,7 +427,7 @@ public sealed class ItemStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<Feed>(new CommandDefinition(
-            "select id, title, category, site_url, muted from feeds order by title", cancellationToken: ct))).ToList();
+            "select id, title, category, site_url, muted, feed_url from feeds order by title", cancellationToken: ct))).ToList();
     }
 
     /// <summary>The digest's items in its order; items without a read result are skipped.</summary>

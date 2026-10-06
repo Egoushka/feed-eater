@@ -21,12 +21,15 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
     public const string UserAgent = "feed-eater/0.5.0 (+https://github.com/Egoushka/feed-eater)";
     private const int MaxRedirects = 3;
     private const int MaxBytes = 1024 * 1024;
+    internal static int PruneAbove { get; set; } = 256;
     internal static TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FailureMemory = TimeSpan.FromHours(24);
     private static readonly TimeSpan HostGap = TimeSpan.FromSeconds(1);
 
     private readonly ConcurrentDictionary<string, DateTimeOffset> _failedUntil = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _nextAt = new(StringComparer.OrdinalIgnoreCase);
+    internal int TrackedHosts => _failedUntil.Count + _nextAt.Count;
+
     private readonly SemaphoreSlim _counter = new(1, 1);
 
     /// <summary>The handler for the typed client: pinned connect, no redirects, no cookies, no proxy.</summary>
@@ -48,6 +51,7 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
             return refused;
         }
 
+        Prune();
         if (_failedUntil.TryGetValue(uri.Host, out var until) && until > time.GetUtcNow())
         {
             return new FetchResult(FetchOutcome.Cached, Detail: "failed recently");
@@ -59,16 +63,15 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(Timeout);
         try
         {
-            return await FollowAsync(uri, cfg, timeout.Token);
+            return await FollowAsync(uri, cfg, ct, timeout);
         }
         catch (HttpRequestException ex) when (ex.InnerException is UnsafeAddressException || ex.GetBaseException() is UnsafeAddressException)
         {
             return new FetchResult(FetchOutcome.Refused, Detail: ex.GetBaseException().Message);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
+        catch (Exception ex) when (ex is HttpRequestException or IOException or UriFormatException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
         {
             logger.LogDebug(ex, "Fetching {Host} failed", uri.Host);
             _failedUntil[uri.Host] = time.GetUtcNow() + FailureMemory;
@@ -76,12 +79,15 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
         }
     }
 
-    private async Task<FetchResult> FollowAsync(Uri start, FetchOptions cfg, CancellationToken ct)
+    /// <summary>The 10 s limit runs per request and starts after the politeness wait, so queueing behind another fetch never fails a host.</summary>
+    private async Task<FetchResult> FollowAsync(Uri start, FetchOptions cfg, CancellationToken caller, CancellationTokenSource limit)
     {
         var current = start;
         for (var hop = 0; ; hop++)
         {
-            await GateAsync(current.Host, ct);
+            await GateAsync(current.Host, caller);
+            limit.CancelAfter(Timeout);
+            var ct = limit.Token;
             using var request = new HttpRequestMessage(HttpMethod.Get, current);
             request.Headers.UserAgent.ParseAdd(UserAgent);
             request.Headers.Accept.ParseAdd("text/html,text/plain;q=0.9");
@@ -94,7 +100,13 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
                     return new FetchResult(FetchOutcome.TooManyRedirects);
                 }
 
-                current = new Uri(current, location);
+                var next = new Uri(current, location);
+                if (current.Scheme == "https" && next.Scheme == "http")
+                {
+                    return new FetchResult(FetchOutcome.Refused, Detail: "redirect from https to http");
+                }
+
+                current = next;
                 if (Check(current, cfg) is { } refused)
                 {
                     return refused;
@@ -163,6 +175,33 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
         }
 
         return encoding.GetString(buffer, 0, read);
+    }
+
+    /// <summary>Drops expired failure and politeness entries once the tables grow, so a long run over many hosts does not accumulate them.</summary>
+    private void Prune()
+    {
+        var now = time.GetUtcNow();
+        if (_failedUntil.Count > PruneAbove)
+        {
+            foreach (var (host, until) in _failedUntil)
+            {
+                if (until <= now)
+                {
+                    _failedUntil.TryRemove(host, out _);
+                }
+            }
+        }
+
+        lock (_nextAt)
+        {
+            if (_nextAt.Count > PruneAbove)
+            {
+                foreach (var host in _nextAt.Where(e => e.Value <= now).Select(e => e.Key).ToList())
+                {
+                    _nextAt.Remove(host);
+                }
+            }
+        }
     }
 
     /// <summary>One request a second per host: the next slot is reserved up front, so concurrent callers queue.</summary>

@@ -183,7 +183,7 @@ public sealed class WatchSourceTests(PostgresFixture pg) : IAsyncLifetime
 public sealed class ReleaseWatcherTests(PostgresFixture pg) : IAsyncLifetime
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 6, 12, 0, 0, TimeSpan.Zero);
-    private string _llmReply = """{"changes":"Fixes a TLS bug.","breaking":"no","evidence":"No breaking changes."}""";
+    private string _llmReply = """{"changes":"Fixes a TLS bug.","breaking":"no","evidence":"Security fix for CVE-2026-1234"}""";
     private bool _llmDown;
     private bool _telegramDown;
     private int _llmCalls;
@@ -236,11 +236,16 @@ public sealed class ReleaseWatcherTests(PostgresFixture pg) : IAsyncLifetime
             new TelegramClient(tg.Client("http://tg/botT/")), new QuietHours(new CursorStore(pg.Db), options, time), options, new LoopHealth(time), time, NullLogger<ReleaseWatcher>.Instance);
     }
 
-    private async Task<long> ReleaseItemAsync(string repo, string tag, string notes = "Bug fixes.", double hoursAgo = 2)
+    private readonly Dictionary<string, long> _feeds = [];
+
+    /// <summary>Each repo gets its own feed, whose URL is that repo's releases.atom; <paramref name="feedUrl"/> overrides it to test spoofing.</summary>
+    private async Task<long> ReleaseItemAsync(string repo, string tag, string notes = "Bug fixes.", double hoursAgo = 2, string? feedUrl = null, bool noFeedUrl = false)
     {
-        var id = await Seed.ItemAsync(pg, 1, $"{tag}", TestVectors.OneHot(1), Now.UtcDateTime.AddHours(-hoursAgo), content: notes);
+        var feed = _feeds.TryGetValue(repo + feedUrl, out var known) ? known : _feeds[repo + feedUrl] = 100 + _feeds.Count;
+        var id = await Seed.ItemAsync(pg, feed, $"{tag}", TestVectors.OneHot(1), Now.UtcDateTime.AddHours(-hoursAgo), content: notes);
         await using var c = await pg.Db.DataSource.OpenConnectionAsync();
         await c.ExecuteAsync("update items set url = @url where id = @id", new { id, url = $"https://github.com/{repo}/releases/tag/{tag}" });
+        await c.ExecuteAsync("update feeds set feed_url = @url where id = @feed", new { feed, url = noFeedUrl ? null : feedUrl ?? $"https://github.com/{repo}/releases.atom" });
         return id;
     }
 

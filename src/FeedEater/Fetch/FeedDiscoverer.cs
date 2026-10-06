@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using FeedEater.Storage;
+using FeedEater.Text;
 
 namespace FeedEater.Fetch;
 
@@ -96,6 +97,20 @@ public sealed partial class FeedDiscoverer(
     /// <summary>The first RSS, Atom or JSON feed link in the page head, as an absolute http(s) URL.</summary>
     internal static string? FindFeed(string html, Uri page)
     {
+        try
+        {
+            return FindFeedCore(html.Length <= HtmlText.MaxChars ? html : html[..HtmlText.MaxChars], page);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return null;
+        }
+    }
+
+    private const int MaxFeedUrl = 2000;
+
+    private static string? FindFeedCore(string html, Uri page)
+    {
         foreach (Match tag in LinkTag().Matches(html))
         {
             var attrs = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -107,7 +122,7 @@ public sealed partial class FeedDiscoverer(
             if (attrs.GetValueOrDefault("rel")?.Split(' ').Contains("alternate", StringComparer.OrdinalIgnoreCase) == true
                 && attrs.GetValueOrDefault("type")?.Trim().ToLowerInvariant() is "application/rss+xml" or "application/atom+xml" or "application/feed+json"
                 && attrs.GetValueOrDefault("href") is { Length: > 0 } href
-                && Uri.TryCreate(page, href, out var absolute) && absolute.Scheme is "http" or "https")
+                && Uri.TryCreate(page, href, out var absolute) && absolute.Scheme is "http" or "https" && absolute.AbsoluteUri.Length <= MaxFeedUrl)
             {
                 return absolute.AbsoluteUri;
             }
@@ -127,9 +142,9 @@ public sealed partial class FeedDiscoverer(
     /// <summary>The same site: equal hosts, or one a subdomain of the other (blog.example.com and example.com).</summary>
     private static bool Same(string a, string b) => a == b || a.EndsWith("." + b, StringComparison.Ordinal) || b.EndsWith("." + a, StringComparison.Ordinal);
 
-    [GeneratedRegex(@"<link\b[^>]*>", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"<link\b[^>]*>", RegexOptions.IgnoreCase, 250)]
     private static partial Regex LinkTag();
 
-    [GeneratedRegex(@"([a-zA-Z-]+)\s*=\s*(?:""([^""]*)""|'([^']*)')")]
+    [GeneratedRegex(@"([a-zA-Z-]+)\s*=\s*(?:""([^""]*)""|'([^']*)')", RegexOptions.None, 250)]
     private static partial Regex Attribute();
 }
