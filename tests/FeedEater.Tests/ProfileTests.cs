@@ -47,6 +47,22 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public void A_directory_at_the_profile_path_is_an_error_not_the_example()
+    {
+        var directory = Directory.CreateTempSubdirectory("profile-dir-").FullName;
+        try
+        {
+            var error = Assert.Throws<InvalidDataException>(() => ProfileFile.LoadOrExample(directory));
+
+            Assert.Contains("is a directory, not a file", error.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(directory);
+        }
+    }
+
+    [Fact]
     public async Task The_builder_builds_from_the_example_when_the_profile_file_is_missing()
     {
         LiteLlmClient.RetryDelay = TimeSpan.Zero;

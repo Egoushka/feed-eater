@@ -186,7 +186,9 @@ internal sealed class ProfileCheck(IOptions<FeedEaterOptions> options) : IIntegr
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
-            return Task.FromResult(CheckResult.Fail($"{path}: {ex.Message}", "Fix the file; the shape is in profile.example.json."));
+            return Task.FromResult(CheckResult.Fail($"{path}: {ex.Message}", Directory.Exists(path)
+                ? "Create the file on the host (copy profile.example.json), remove the empty directory it replaced, then recreate the container."
+                : "Fix the file; the shape is in profile.example.json."));
         }
     }
 }

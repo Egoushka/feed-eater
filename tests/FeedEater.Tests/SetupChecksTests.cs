@@ -244,6 +244,25 @@ public sealed class SetupChecksTests
         Assert.Contains("profile.example.json", row.Result.Fix, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_directory_at_the_profile_path_fails_and_says_how_it_got_there()
+    {
+        var directory = Directory.CreateTempSubdirectory("profile-dir-").FullName;
+        try
+        {
+            var row = await RunAsync(new ProfileCheck(Options.Create(Opts(x => x.ProfilePath = directory))));
+
+            Assert.Equal(CheckStatus.Fail, row.Result.Status);
+            Assert.Contains("is a directory, not a file", row.Result.Detail, StringComparison.Ordinal);
+            Assert.Contains("bind-mounted", row.Result.Detail, StringComparison.Ordinal);
+            Assert.Contains("remove the empty directory", row.Result.Fix, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(directory);
+        }
+    }
+
     // masking
 
     private sealed class SaysCheck(string detail) : IIntegrationCheck

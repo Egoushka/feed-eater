@@ -19,9 +19,18 @@ public sealed record ProfileFile(string About, IReadOnlyList<ProfileEntry> Proje
 
     /// <summary>
     /// The file at <paramref name="path"/>, or the neutral example built into the app when there is no such file, so a first start
-    /// works. A file that exists but is invalid still throws: that is a mistake to fix, not a reason to guess.
+    /// works. A file that exists but is invalid still throws: that is a mistake to fix, not a reason to guess. So does a directory at the path,
+    /// which is what Docker creates when a bind-mounted file is missing on the host.
     /// </summary>
-    public static (ProfileFile File, bool IsExample) LoadOrExample(string path) => File.Exists(path) ? (Load(path), false) : (Example(), true);
+    public static (ProfileFile File, bool IsExample) LoadOrExample(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            throw new InvalidDataException("the profile path is a directory, not a file (Docker makes one when a bind-mounted file is missing on the host)");
+        }
+
+        return File.Exists(path) ? (Load(path), false) : (Example(), true);
+    }
 
     public static string ExampleNote(string path) => $"Using the example interests; edit {path}";
 
