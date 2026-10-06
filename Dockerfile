@@ -4,12 +4,12 @@ ARG TARGETARCH
 ARG VERSION=0.0.0-dev
 WORKDIR /src
 
-COPY Directory.Build.props ./
+COPY Directory.Build.props profile.example.json ./
 COPY src/FeedEater/*.csproj src/FeedEater/
 RUN dotnet restore src/FeedEater/FeedEater.csproj -a "${TARGETARCH}"
 
 COPY src/ src/
-# watch.json and watch-map.json ship beside the app (see FeedEater.csproj).
+# watch.example.json and watch-map.json ship beside the app (see FeedEater.csproj).
 COPY config/ config/
 # Migrations are embedded into FeedEater from here.
 COPY db/ db/
@@ -17,7 +17,7 @@ RUN dotnet publish src/FeedEater/FeedEater.csproj -c Release -a "${TARGETARCH}" 
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS final
 WORKDIR /app
-# curl for the compose healthcheck; tzdata for Europe/Kyiv.
+# curl for the compose healthcheck; tzdata for FeedEater__TimeZone names other than UTC.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl tzdata \
     && rm -rf /var/lib/apt/lists/*

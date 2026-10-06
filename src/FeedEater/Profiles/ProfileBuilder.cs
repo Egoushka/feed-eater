@@ -20,7 +20,7 @@ public sealed class ProfileBuilder(
 
     protected override async Task RunAsync(string key, CancellationToken ct)
     {
-        var file = ProfileFile.Load(Settings.ProfilePath);
+        var file = ProfileFile.LoadOrExample(Settings.ProfilePath).File;
         var entries = new List<(ProfileEntry Entry, string Kind, string Text)>();
         foreach (var p in file.Projects)
         {
@@ -43,7 +43,7 @@ public sealed class ProfileBuilder(
 
     private async Task<string> ProjectTextAsync(ProfileEntry project, CancellationToken ct)
     {
-        if (project.Plane is null)
+        if (project.Plane is null || !Settings.Plane.Enabled)
         {
             return project.Description;
         }
