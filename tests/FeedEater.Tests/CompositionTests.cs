@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using FeedEater.Digest;
+using FeedEater.Duels;
 using FeedEater.Ingest;
 using FeedEater.Memory;
 using FeedEater.Plane;
@@ -50,7 +51,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true, extra: AllIntegrations);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(TelegramPoller) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller) }, Jobs(host));
     }
 
     [Fact]
@@ -74,7 +75,15 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(DigestJob), typeof(WeeklyReview), typeof(TelegramPoller) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller) }, Jobs(host));
+    }
+
+    [Fact]
+    public void The_duel_is_off_with_its_switch()
+    {
+        using var host = Build(runJobs: true, extra: new Dictionary<string, string?> { ["FeedEater:Duel:Enabled"] = "false" });
+
+        Assert.DoesNotContain(typeof(DuelJob), Jobs(host));
     }
 
     [Theory]
