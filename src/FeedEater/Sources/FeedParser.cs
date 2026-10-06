@@ -19,6 +19,14 @@ public static partial class FeedParser
     /// <summary>Newest entries kept per fetch; a feed that lists thousands is read for its latest ones.</summary>
     public const int MaxEntries = 200;
 
+    /// <summary>
+    /// Longer links are skipped: canonical_url sits in a btree index whose rows are capped near 2.7 KB, and a feed that sends one is
+    /// not worth a failed insert. Titles are clipped, not skipped.
+    /// </summary>
+    public const int MaxLinkChars = 2000;
+
+    public const int MaxTitleChars = 500;
+
     private static readonly Dictionary<string, string> ZoneOffsets = new(StringComparer.OrdinalIgnoreCase)
     {
         ["EST"] = "-0500", ["EDT"] = "-0400", ["CST"] = "-0600", ["CDT"] = "-0500", ["MST"] = "-0700", ["MDT"] = "-0600", ["PST"] = "-0800", ["PDT"] = "-0700",
@@ -47,9 +55,7 @@ public static partial class FeedParser
 
     private static ParsedFeed? FromXml(string text, Uri feedUrl)
     {
-        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null, CheckCharacters = false };
-        using var reader = XmlReader.Create(new StringReader(ControlChars().Replace(text, "")), settings);
-        var root = XDocument.Load(reader).Root;
+        var root = SafeXml.Root(ControlChars().Replace(text, ""));
         return root?.Name.LocalName switch
         {
             "rss" when root.Element("channel") is { } channel => Rss(channel, feedUrl),
@@ -104,15 +110,16 @@ public static partial class FeedParser
         return new ParsedFeed(Plain(Json.Str(root, "title") ?? ""), Absolute(feedUrl, Json.Str(root, "home_page_url") ?? ""), Newest(entries));
     }
 
-    /// <summary>Null when the entry has no http(s) link: it cannot be opened, deduplicated by URL or shown.</summary>
+    /// <summary>Null when the entry has no http(s) link, or one over <see cref="MaxLinkChars"/>: it cannot be opened, deduplicated by URL or shown.</summary>
     private static ParsedEntry? Entry(Uri feedUrl, string guid, string url, string title, string html, string date)
     {
-        if (Absolute(feedUrl, url) is not { } absolute)
+        if (Absolute(feedUrl, url) is not { Length: <= MaxLinkChars } absolute)
         {
             return null;
         }
 
-        return new ParsedEntry(guid.Trim().Length > 0 ? guid.Trim() : absolute, absolute, Plain(title), html, Date(date));
+        guid = Clean(guid).Trim();
+        return new ParsedEntry(guid.Length > 0 ? guid : absolute, absolute, Plain(title), Clean(html), Date(date));
     }
 
     private static List<ParsedEntry> Newest(IEnumerable<ParsedEntry?> entries) => entries
@@ -139,7 +146,13 @@ public static partial class FeedParser
     private static string? Absolute(Uri baseUri, string link) =>
         link.Length > 0 && Uri.TryCreate(baseUri, link, out var uri) && uri.Scheme is "http" or "https" ? uri.AbsoluteUri : null;
 
-    private static string Plain(string title) => HtmlText.ToPlain(title);
+    private static string Plain(string title) => Clip(Clean(HtmlText.ToPlain(title)));
+
+    /// <summary>Text from a feed goes into Postgres, which rejects NUL, and Npgsql cannot encode an unpaired surrogate; a feed with either would fail every insert.</summary>
+    private static string Clean(string text) => Unstorable().Replace(text, "");
+
+    private static string Clip(string title) =>
+        title.Length <= MaxTitleChars ? title : char.IsHighSurrogate(title[MaxTitleChars - 1]) ? title[..(MaxTitleChars - 1)] : title[..MaxTitleChars];
 
     /// <summary>RFC 822 and ISO 8601; null when unreadable. A date without a zone is taken as UTC.</summary>
     internal static DateTime? Date(string text)
@@ -160,6 +173,9 @@ public static partial class FeedParser
     /// <summary>Control characters XML 1.0 forbids; feeds with one are common and the text around it is fine.</summary>
     [GeneratedRegex(@"[\x00-\x08\x0B\x0C\x0E-\x1F]", RegexOptions.None, 250)]
     private static partial Regex ControlChars();
+
+    [GeneratedRegex(@"[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]", RegexOptions.None, 250)]
+    private static partial Regex Unstorable();
 
     [GeneratedRegex(@"^[A-Za-z]{3,9},\s*", RegexOptions.None, 250)]
     private static partial Regex WeekdayPrefix();

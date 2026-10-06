@@ -149,19 +149,121 @@ public sealed class FeedParserTests
     [InlineData("[1, 2, 3]")]
     public void Anything_else_and_malformed_input_is_not_a_feed(string body) => Assert.False(FeedParser.TryParse(body, Url, out _));
 
+    /// <summary>
+    /// A DOCTYPE that declares entities (one internal, one pointing at a file with a marker) and uses them in a title. Either the feed is
+    /// rejected or the references stay unexpanded; the marker must never come out, which is what a resolving parser would produce.
+    /// </summary>
     [Fact]
-    public void A_doctype_is_ignored_and_never_expanded_or_fetched()
+    public void A_doctype_entity_is_never_expanded_and_no_file_is_read()
     {
-        const string Hostile =
-            """
-            <?xml version="1.0"?>
-            <!DOCTYPE rss [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
-            <rss version="2.0"><channel><title>Safe</title><item><title>Item</title><link>https://x.example/1</link></item></channel></rss>
+        var secret = Path.Combine(Path.GetTempPath(), $"feed-eater-xxe-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(secret, "FILE-MARKER-9f3a");
+        try
+        {
+            var body =
+                $"""
+                <?xml version="1.0"?>
+                <!DOCTYPE rss [<!ENTITY inner "INTERNAL-MARKER-7c1d"><!ENTITY xxe SYSTEM "{new Uri(secret).AbsoluteUri}">]>
+                <rss version="2.0"><channel><title>Safe &inner;</title>
+                <item><title>Item &xxe; &inner;</title><link>https://x.example/1</link><description>&xxe;</description></item></channel></rss>
+                """;
+
+            var parsed = FeedParser.TryParse(body, Url, out var feed);
+
+            Assert.True(!parsed || !Strings(feed).Any(t => t.Contains("MARKER", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            File.Delete(secret);
+        }
+    }
+
+    [Fact]
+    public void A_billion_laughs_payload_is_rejected_or_left_unexpanded_within_a_second()
+    {
+        var entities = string.Concat(Enumerable.Range(1, 9).Select(i => $"<!ENTITY l{i} \"{string.Concat(Enumerable.Repeat($"&l{i - 1};", 10))}\">"));
+        var body = $"<?xml version=\"1.0\"?><!DOCTYPE rss [<!ENTITY l0 \"lol\">{entities}]>"
+            + "<rss version=\"2.0\"><channel><title>&l9;</title><item><title>&l9;</title><link>https://x.example/1</link><description>&l9;</description></item></channel></rss>";
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var parsed = FeedParser.TryParse(body, Url, out var feed);
+        clock.Stop();
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"took {clock.Elapsed}");
+        Assert.True(!parsed || Strings(feed).All(t => t.Length < 1000));
+    }
+
+    private static IEnumerable<string> Strings(ParsedFeed feed) =>
+        new[] { feed.Title, feed.SiteUrl ?? "" }.Concat(feed.Entries.SelectMany(e => new[] { e.Guid, e.Url, e.Title, e.Html }));
+
+    [Fact]
+    public void Nesting_beyond_64_levels_is_not_a_feed_and_does_not_crash_the_host()
+    {
+        var deep = string.Concat(Enumerable.Repeat("<a>", 5000)) + "text" + string.Concat(Enumerable.Repeat("</a>", 5000));
+        var inItem = $"<rss version=\"2.0\"><channel><title>t</title><item><title>x</title><link>https://x.example/1</link><description>{deep}</description></item></channel></rss>";
+        var inAtom = $"<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>t</title><entry><title>x</title><link href=\"https://x.example/1\"/><content type=\"xhtml\">{deep}</content></entry></feed>";
+
+        Assert.False(FeedParser.TryParse(inItem, Url, out _));
+        Assert.False(FeedParser.TryParse(inAtom, Url, out _));
+    }
+
+    [Fact]
+    public void A_feed_nested_within_the_limit_still_reads()
+    {
+        var nested = string.Concat(Enumerable.Repeat("<a>", 50)) + "text" + string.Concat(Enumerable.Repeat("</a>", 50));
+        var body = $"<rss version=\"2.0\"><channel><title>t</title><item><title>x</title><link>https://x.example/1</link><description>{nested}</description></item></channel></rss>";
+
+        Assert.True(FeedParser.TryParse(body, Url, out var feed));
+        Assert.Single(feed.Entries);
+    }
+
+    [Fact]
+    public void A_NUL_in_a_JSON_feed_is_stripped_from_every_string()
+    {
+        const string Body = """
+            {"version":"https://jsonfeed.org/version/1.1","title":"Feed\u0000Title","items":[{"id":"i\u0000d","url":"https://x.example/1","title":"A\u0000B","content_html":"<p>x\u0000y</p>"}]}
             """;
 
-        Assert.True(FeedParser.TryParse(Hostile, Url, out var feed));
-        Assert.Equal("Safe", feed.Title);
-        Assert.Single(feed.Entries);
+        Assert.True(FeedParser.TryParse(Body, Url, out var feed));
+
+        Assert.Equal("FeedTitle", feed.Title);
+        var entry = Assert.Single(feed.Entries);
+        Assert.Equal(("id", "AB", "<p>xy</p>"), (entry.Guid, entry.Title, entry.Html));
+    }
+
+    [Fact]
+    public void Characters_XML_forbids_are_stripped_from_an_Atom_title_even_as_character_references()
+    {
+        const string Body = "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>T&#0;1</title><entry><title>A&#0;B&#1;C</title><id>i&#0;d</id><link href=\"https://x.example/1\"/><summary>s&#0;s</summary></entry></feed>";
+
+        Assert.True(FeedParser.TryParse(Body, Url, out var feed));
+
+        Assert.All(Strings(feed), t => Assert.DoesNotContain('\0', t));
+        Assert.Equal("ABC", Assert.Single(feed.Entries).Title);
+    }
+
+    [Fact]
+    public void An_unpaired_surrogate_is_stripped_because_the_database_driver_cannot_encode_it()
+    {
+        const string Body = "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>t</title><entry><title>A&#xD800;B</title><id>1</id><link href=\"https://x.example/1\"/></entry></feed>";
+
+        Assert.True(FeedParser.TryParse(Body, Url, out var feed));
+
+        Assert.Equal("AB", Assert.Single(feed.Entries).Title);
+    }
+
+    [Fact]
+    public void An_entry_whose_link_is_over_2000_characters_is_skipped_and_a_long_title_is_clipped()
+    {
+        var link = "https://x.example/" + new string('a', 3000);
+        var body = $"<rss version=\"2.0\"><channel><title>t</title><item><title>Long link</title><link>{link}</link></item>"
+            + $"<item><title>{new string('T', 5000)}</title><link>https://x.example/ok</link></item></channel></rss>";
+
+        Assert.True(FeedParser.TryParse(body, Url, out var feed));
+
+        var entry = Assert.Single(feed.Entries);
+        Assert.Equal("https://x.example/ok", entry.Url);
+        Assert.True(entry.Title.Length is > 0 and <= 500);
     }
 
     [Fact]

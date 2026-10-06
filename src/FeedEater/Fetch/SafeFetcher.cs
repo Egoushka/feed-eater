@@ -87,7 +87,7 @@ public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> opti
         {
             return new FetchResult(FetchOutcome.Refused, Detail: ex.GetBaseException().Message);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or UriFormatException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
+        catch (Exception ex) when (ex is HttpRequestException or IOException or UriFormatException or InvalidDataException || (ex is OperationCanceledException && !ct.IsCancellationRequested))
         {
             logger.LogDebug(ex, "Fetching {Host} failed", uri.Host);
             if (feed is null)

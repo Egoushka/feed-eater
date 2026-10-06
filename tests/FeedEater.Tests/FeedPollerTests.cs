@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using Dapper;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -271,6 +272,122 @@ public sealed class FeedPollerTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(1, (await StateAsync(bad.Id)).FailCount);
         Assert.Equal(0, (await StateAsync(good.Id)).FailCount);
     }
+
+    private static string JsonFeed(string title, string itemTitle, string html) =>
+        $$"""{"version":"https://jsonfeed.org/version/1.1","title":"{{title}}","items":[{"id":"1","url":"https://site.example/1","title":"{{itemTitle}}","content_html":"{{html}}","date_published":"{{Now.AddHours(-1):O}}"}]}""";
+
+    private static string GoodFeed => SourceKit.Rss(("g1", "Post", Now.AddHours(-1), "x"));
+
+    [Fact]
+    public async Task An_unexpected_exception_is_recorded_on_the_feed_and_the_feeds_behind_it_are_still_polled()
+    {
+        var kit = new SourceKit(pg, r => r.RequestUri!.Host == "bad.example" ? throw new InvalidOperationException("boom") : SourceKit.Xml(GoodFeed));
+        var bad = await kit.AddFeedAsync("https://bad.example/feed", "Bad");
+        var good = await kit.AddFeedAsync("https://good.example/feed", "Good");
+
+        Assert.Equal(1, await kit.Poller.RunAsync(default));
+
+        var state = await StateAsync(bad.Id);
+        Assert.Equal(1, state.FailCount);
+        Assert.Equal("could not process the feed (InvalidOperationException)", state.LastError);
+        Assert.True(state.NextFetchAt > kit.Time.GetUtcNow().UtcDateTime);   // backed off, no longer first in line
+        Assert.Equal(0, (await StateAsync(good.Id)).FailCount);
+    }
+
+    [Fact]
+    public async Task A_cancelled_poll_is_not_recorded_as_a_feed_failure()
+    {
+        using var cts = new CancellationTokenSource();
+        var kit = new SourceKit(pg, _ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        });
+        var feed = await kit.AddFeedAsync("https://a.example/feed");
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => kit.Poller.RunAsync(cts.Token));
+
+        Assert.Equal(0, (await StateAsync(feed.Id)).FailCount);
+    }
+
+    [Fact]
+    public async Task A_NUL_in_a_JSON_feed_does_not_stall_the_poller_and_is_stripped_from_what_is_stored()
+    {
+        var kit = new SourceKit(pg, r => r.RequestUri!.Host == "nul.example"
+            ? SourceKit.Xml(JsonFeed("Feed\\u0000Title", "A\\u0000B", "<p>x\\u0000y</p>"), "application/feed+json")
+            : SourceKit.Xml(GoodFeed));
+        var nul = await kit.AddFeedAsync("https://nul.example/feed.json", "Nul");
+        var good = await kit.AddFeedAsync("https://good.example/feed", "Good");
+
+        Assert.Equal(2, await kit.Poller.RunAsync(default));
+
+        var rows = await RowsAsync();
+        Assert.Contains("AB", rows.Select(r => r.Title));
+        Assert.Contains("xy", rows.Select(r => r.Content));
+        Assert.Equal(0, (await StateAsync(nul.Id)).FailCount);
+        Assert.Equal(0, (await StateAsync(good.Id)).FailCount);
+    }
+
+    [Fact]
+    public async Task An_entry_with_a_3_KB_link_is_skipped_and_the_rest_of_the_feed_is_stored()
+    {
+        var body = "<rss version=\"2.0\"><channel><title>t</title>"
+            + $"<item><title>Long</title><link>https://site.example/{new string('a', 3000)}</link><pubDate>{Now.AddHours(-2):R}</pubDate></item>"
+            + $"<item><title>Fine</title><link>https://site.example/fine</link><pubDate>{Now.AddHours(-1):R}</pubDate></item></channel></rss>";
+        var kit = new SourceKit(pg, _ => SourceKit.Xml(body));
+        var feed = await kit.AddFeedAsync("https://a.example/feed");
+
+        Assert.Equal(1, await kit.Poller.RunAsync(default));
+
+        Assert.Equal(["Fine"], (await RowsAsync()).Select(r => r.Title));
+        Assert.Equal(0, (await StateAsync(feed.Id)).FailCount);
+    }
+
+    [Fact]
+    public async Task A_corrupt_gzip_body_fails_that_feed_only()
+    {
+        var kit = new SourceKit(pg, r => r.RequestUri!.Host == "bad.example"
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(new GZipStream(new MemoryStream(System.Text.Encoding.ASCII.GetBytes("this is not gzip data")), CompressionMode.Decompress)),
+            }
+            : SourceKit.Xml(GoodFeed));
+        var bad = await kit.AddFeedAsync("https://bad.example/feed", "Bad");
+        await kit.AddFeedAsync("https://good.example/feed", "Good");
+
+        Assert.Equal(1, await kit.Poller.RunAsync(default));
+
+        var state = await StateAsync(bad.Id);
+        Assert.Equal(1, state.FailCount);
+        Assert.Equal("the answer could not be decompressed", state.LastError);
+    }
+
+    [Fact]
+    public async Task A_feed_removed_while_its_items_are_stored_does_not_stall_the_poller()
+    {
+        SourceKit? kit = null;
+        long removing = 0;
+        kit = new SourceKit(pg, r =>
+        {
+            if (r.RequestUri!.Host == "gone.example")
+            {
+                RemoveFeed(kit!, removing);   // the owner unsubscribes while the fetch is in flight
+            }
+
+            return SourceKit.Xml(GoodFeed);
+        });
+        var gone = await kit.AddFeedAsync("https://gone.example/feed", "Gone");
+        removing = gone.Id;
+        var good = await kit.AddFeedAsync("https://good.example/feed", "Good");
+
+        await kit.Poller.RunAsync(default);
+
+        Assert.Equal([good.Id], (await RowsAsync()).Select(r => r.FeedId!.Value));
+        Assert.Equal([good.Id], (await kit.Feeds.ListAsync(default)).Select(f => f.Id));
+        Assert.Equal(0, (await StateAsync(good.Id)).FailCount);
+    }
+
+    private static void RemoveFeed(SourceKit kit, long id) => kit.Feeds.RemoveAsync(id, default).GetAwaiter().GetResult();
 
     [Fact]
     public async Task The_same_guid_in_two_feeds_is_two_entries_and_the_same_article_is_marked_a_duplicate()

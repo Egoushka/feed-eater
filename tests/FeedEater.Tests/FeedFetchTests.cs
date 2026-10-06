@@ -222,6 +222,20 @@ public sealed class FeedFetchTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_corrupt_compressed_body_is_a_failed_fetch_not_an_exception()
+    {
+        var (fetcher, _, _) = Build(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new System.IO.Compression.GZipStream(new MemoryStream("not gzip"u8.ToArray()), System.IO.Compression.CompressionMode.Decompress)),
+        });
+
+        var result = await fetcher.FetchFeedAsync(new Uri("https://example.com/feed"), new FeedConditions(), default);
+
+        Assert.Equal(FetchOutcome.Failed, result.Outcome);
+        Assert.Equal(nameof(InvalidDataException), result.Detail);
+    }
+
+    [Fact]
     public async Task A_feed_of_any_content_type_is_returned()
     {
         var (fetcher, _, _) = Build(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Xml, System.Text.Encoding.UTF8, "application/octet-stream") });

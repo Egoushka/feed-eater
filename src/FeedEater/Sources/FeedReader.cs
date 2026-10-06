@@ -34,6 +34,7 @@ public sealed class FeedReader(SafeFetcher fetcher)
         FetchOutcome.TooManyRedirects => "too many redirects",
         FetchOutcome.TooLarge => "answer over 5 MB",
         FetchOutcome.Failed when int.TryParse(r.Detail, out var status) => $"HTTP {status}",
+        FetchOutcome.Failed when r.Detail == nameof(InvalidDataException) => "the answer could not be decompressed",
         _ => "not reachable",
     };
 }

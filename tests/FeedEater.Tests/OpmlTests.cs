@@ -56,11 +56,66 @@ public sealed class OpmlParseTests
     public void A_file_without_a_body_has_no_feeds() => Assert.Empty(Opml.Parse("<opml version=\"2.0\"><head/></opml>"));
 
     [Fact]
-    public void A_doctype_is_ignored()
+    public void A_doctype_entity_is_not_expanded_and_no_file_is_read()
     {
-        const string Hostile = "<?xml version=\"1.0\"?><!DOCTYPE opml [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><opml><body><outline text=\"A\" xmlUrl=\"https://a.example/f\"/></body></opml>";
+        var secret = Path.Combine(Path.GetTempPath(), $"feed-eater-xxe-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(secret, "FILE-MARKER-9f3a");
+        try
+        {
+            var opml = $"<?xml version=\"1.0\"?><!DOCTYPE opml [<!ENTITY inner \"INTERNAL-MARKER-7c1d\"><!ENTITY x SYSTEM \"{new Uri(secret).AbsoluteUri}\">]>"
+                + "<opml><body><outline text=\"A &inner;\" xmlUrl=\"https://a.example/f\"/><outline title=\"&inner;\" xmlUrl=\"https://b.example/f\">&x;</outline></body></opml>";
 
-        Assert.Single(Opml.Parse(Hostile));
+            IReadOnlyList<OpmlFeed> feeds;
+            try
+            {
+                feeds = Opml.Parse(opml);
+            }
+            catch (XmlException)
+            {
+                return;   // rejected is as good as unexpanded
+            }
+
+            Assert.All(feeds, f => Assert.DoesNotContain("MARKER", f.Title + f.SiteUrl + f.Category, StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(secret);
+        }
+    }
+
+    [Fact]
+    public void A_billion_laughs_payload_is_rejected_or_left_unexpanded_within_a_second()
+    {
+        var entities = string.Concat(Enumerable.Range(1, 9).Select(i => $"<!ENTITY l{i} \"{string.Concat(Enumerable.Repeat($"&l{i - 1};", 10))}\">"));
+        var opml = $"<?xml version=\"1.0\"?><!DOCTYPE opml [<!ENTITY l0 \"lol\">{entities}]><opml><body><outline text=\"&l9;\" xmlUrl=\"https://a.example/f\"/></body></opml>";
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            Assert.All(Opml.Parse(opml), f => Assert.True(f.Title.Length < 1000));
+        }
+        catch (XmlException)
+        {
+            // rejected
+        }
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1), $"took {clock.Elapsed}");
+    }
+
+    [Fact]
+    public void Nesting_beyond_64_levels_is_rejected_and_does_not_crash_the_host()
+    {
+        var deep = string.Concat(Enumerable.Repeat("<outline text=\"f\">", 5000)) + "<outline text=\"A\" xmlUrl=\"https://a.example/f\"/>" + string.Concat(Enumerable.Repeat("</outline>", 5000));
+
+        Assert.ThrowsAny<XmlException>(() => Opml.Parse($"<opml><body>{deep}</body></opml>"));
+    }
+
+    [Fact]
+    public void Folders_nested_within_the_limit_still_read()
+    {
+        var nested = string.Concat(Enumerable.Repeat("<outline text=\"f\">", 40)) + "<outline text=\"A\" xmlUrl=\"https://a.example/f\"/>" + string.Concat(Enumerable.Repeat("</outline>", 40));
+
+        Assert.Single(Opml.Parse($"<opml><body>{nested}</body></opml>"));
     }
 
     [Fact]

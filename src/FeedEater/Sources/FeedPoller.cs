@@ -25,13 +25,24 @@ public sealed class FeedPoller(
     private const int MaxNamed = 3;
     private const int MaxError = 300;
 
-    /// <summary>Fetches every due feed; returns how many entries were new.</summary>
+    /// <summary>
+    /// Fetches every due feed; returns how many entries were new. Whatever goes wrong with one feed is recorded on it and backs it off, so it
+    /// never keeps the feeds behind it, or the embedding step after the poll, from running.
+    /// </summary>
     public async Task<int> RunAsync(CancellationToken ct)
     {
         var added = 0;
         foreach (var feed in await feeds.DueAsync(time.GetUtcNow(), MaxPerPoll, ct))
         {
-            added += await PollAsync(feed, ct);
+            try
+            {
+                added += await PollAsync(feed, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "Feed {Feed} failed unexpectedly ({Failures} in a row)", feed.FeedUrl, feed.FailCount + 1);
+                await FailAsync(feed, $"could not process the feed ({ex.GetType().Name})", ct);
+            }
         }
 
         return added;
@@ -64,10 +75,13 @@ public sealed class FeedPoller(
             default:
                 var error = read.Error ?? "not an RSS, Atom or JSON feed";
                 logger.LogInformation("Feed {Feed} failed ({Failures} in a row): {Error}", feed.FeedUrl, feed.FailCount + 1, error);
-                await feeds.FailedAsync(feed.Id, error.Length <= MaxError ? error : error[..MaxError], now + Delay(o, feed.FailCount + 1), ct);
+                await FailAsync(feed, error, ct);
                 return 0;
         }
     }
+
+    private Task FailAsync(FeedState feed, string error, CancellationToken ct) =>
+        feeds.FailedAsync(feed.Id, error.Length <= MaxError ? error : error[..MaxError], time.GetUtcNow() + Delay(options.Value.Source, feed.FailCount + 1), ct);
 
     /// <summary>The interval doubles with every failure in a row, up to <see cref="SourceOptions.MaxBackoff"/>.</summary>
     internal static TimeSpan Delay(SourceOptions o, int failures) =>

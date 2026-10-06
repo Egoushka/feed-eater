@@ -12,12 +12,10 @@ public static class Opml
 {
     public const int MaxFeeds = 2000;
 
-    /// <summary>Feeds with an http(s) URL, in document order, at most <see cref="MaxFeeds"/>. Throws <see cref="XmlException"/> for malformed XML.</summary>
+    /// <summary>Feeds with an http(s) URL, in document order, at most <see cref="MaxFeeds"/>. Throws <see cref="XmlException"/> for malformed XML or folders nested past <see cref="SafeXml.MaxDepth"/>, which is what bounds the recursion in <see cref="Walk"/>.</summary>
     public static IReadOnlyList<OpmlFeed> Parse(string xml)
     {
-        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null, CheckCharacters = false };
-        using var reader = XmlReader.Create(new StringReader(xml.TrimStart('﻿', ' ', '\t', '\r', '\n')), settings);
-        var body = XDocument.Load(reader).Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "body");
+        var body = SafeXml.Root(xml.TrimStart('﻿', ' ', '\t', '\r', '\n'))?.Elements().FirstOrDefault(e => e.Name.LocalName == "body");
         var feeds = new List<OpmlFeed>();
         if (body is not null)
         {
