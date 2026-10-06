@@ -475,9 +475,10 @@ public sealed class FeedPollerTests(PostgresFixture pg) : IAsyncLifetime
             await RunAsync(conn, scripts.Single(s => s.Contains("0010_", StringComparison.Ordinal)));
 
             var keys = (await conn.QueryAsync<string?>("select source_key from items order by id")).ToList();
-            Assert.Equal(["mf:5", "mf:6", null], keys);
+            Assert.Equal<string?>([null, null, null], keys);   // existing rows are not rewritten at startup
             Assert.True(await conn.ExecuteScalarAsync<long>("select nextval('feed_id_seq')") > 1_000_000_000);
             Assert.Equal(3, await conn.ExecuteScalarAsync<long>("select id from feeds"));
+            await conn.ExecuteAsync("update items set source_key = 'mf:5' where miniflux_entry_id = 5");
             await Assert.ThrowsAsync<PostgresException>(async () => await conn.ExecuteAsync("update items set source_key = 'mf:5' where miniflux_entry_id = 6"));
         }
         finally

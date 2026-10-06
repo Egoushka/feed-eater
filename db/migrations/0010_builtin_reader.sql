@@ -12,6 +12,6 @@ create sequence feed_id_seq start with 1000000001;
 alter table feeds alter column id set default nextval('feed_id_seq');
 
 -- One key per entry across both source kinds: 'mf:<entry id>' from Miniflux, '<feed id>:<sha256 of guid or url>' from the built-in reader.
+-- Existing rows keep a null key and keep deduping on miniflux_entry_id: rewriting them would rewrite every vector index entry at startup.
 alter table items add column source_key text;
-update items set source_key = 'mf:' || miniflux_entry_id where miniflux_entry_id is not null;
 create unique index items_source_key_idx on items (source_key);
