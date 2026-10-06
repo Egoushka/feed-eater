@@ -50,6 +50,11 @@ if (feedEater.RunJobs && feedEater.Telegram.Token.Length == 0)
     app.Logger.LogWarning("FeedEater:Telegram:Token is not set; the digest and the Telegram poller are off");
 }
 
+if (feedEater.Telegram.Token.Length > 0 && feedEater.Telegram.AllowedUserId == 0)
+{
+    app.Logger.LogWarning("FeedEater:Telegram:AllowedUserId is 0: the bot only answers /start, with your Telegram id; set it and restart");
+}
+
 app.MapGet("/healthz", async (FeedDb db, CancellationToken ct) => await db.PingAsync(ct) ? Results.Ok() : Results.StatusCode(503));
 app.MapFeedEaterMcp(token);
 app.MapFeedEaterUi();

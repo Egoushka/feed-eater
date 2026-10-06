@@ -19,6 +19,10 @@ public sealed class PlaneClient(HttpClient http, IOptions<FeedEaterOptions> opti
         return _projectIds.TryGetValue(identifier, out var id) ? id : throw new InvalidOperationException($"Plane project {identifier} does not exist");
     }
 
+    /// <summary>One read of the workspace's projects; fails on a bad key, URL or workspace slug.</summary>
+    public async Task<int> ProjectCountAsync(CancellationToken ct) =>
+        (await GetAsync($"{Workspace}/projects/", ct)).GetProperty("results").GetArrayLength();
+
     public async Task<IReadOnlyList<string>> OpenItemTitlesAsync(string identifier, CancellationToken ct)
     {
         var project = await ProjectIdAsync(identifier, ct);

@@ -32,6 +32,12 @@ public sealed class DigestRun(
 
     public async Task RunAsync(string date, CancellationToken ct)
     {
+        if (options.Value.Telegram.AllowedUserId == 0)
+        {
+            // Before any model call: a digest that cannot be sent is not worth paying for.
+            throw new InvalidOperationException("FeedEater:Telegram:AllowedUserId is 0; send /start to the bot to get your id");
+        }
+
         await digests.CloseStaleAsync(date, ct);
         var digest = await digests.GetAsync(date, ct);
         if (digest?.Status == "sent" || (digest?.Status == "failed" && digest.ItemIds.Length == 0))

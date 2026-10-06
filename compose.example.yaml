@@ -1,0 +1,40 @@
+# feed-eater with its own Postgres. Copy this file to compose.yaml and .env.example to .env, fill .env, then:
+#   docker compose up -d
+# Setup guide: docs/SETUP.md
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: feed
+      POSTGRES_DB: feed
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      # Postgres 18 keeps its data in a versioned folder under this path.
+      - db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U feed -d feed"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  feed-eater:
+    # The tag is the release; change it to upgrade (see "Upgrading" in docs/SETUP.md).
+    image: ghcr.io/egoushka/feed-eater:0.7.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # Every FeedEater__* and Mcp__Token key in .env reaches the app through this file.
+    env_file: .env
+    environment:
+      ConnectionStrings__FeedEater: Host=db;Database=feed;Username=feed;Password=${POSTGRES_PASSWORD}
+    volumes:
+      # Put profile.json (your interests) and, if you like, an OPML file here. See docs/SETUP.md.
+      - ./config:/config
+    # Only this machine can reach the UI. To use it from elsewhere, put a reverse proxy with HTTPS in front.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  db:

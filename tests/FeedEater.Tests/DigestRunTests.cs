@@ -35,6 +35,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private bool _learn;
     private string _profilePath = "Fixtures/profile.json";
     private bool _miniflux = true;
+    private long _allowedUser = 42;
     private System.Net.HttpStatusCode _githubStatus = HttpStatusCode.NotFound;
     private readonly List<string> _readPrompts = [];
     private readonly List<string> _githubCalls = [];
@@ -100,7 +101,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private (DigestRun Run, DigestStore Digests, StubHandler Miniflux) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Telegram = new TelegramOptions { AllowedUserId = 42 }, Taste = new TasteOptions { Learn = _learn } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Telegram = new TelegramOptions { AllowedUserId = _allowedUser }, Taste = new TasteOptions { Learn = _learn } });
         var time = new FakeTimeProvider(Now);
         var miniflux = new StubHandler((_, _) => StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{LongText}</p>" })));
         var llm = new StubHandler((_, body) => body.Contains("\"input\"", StringComparison.Ordinal)
@@ -174,6 +175,21 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(chatCalls, _chatCalls);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
         Assert.Single(miniflux.Calls, c => c.Uri.Contains("/v1/entries/202/fetch-content", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Without_an_owner_id_the_digest_stops_before_any_model_call_and_sends_nothing()
+    {
+        _allowedUser = 0;
+        await SeedAsync();
+        var (run, digests, _) = Build();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => run.RunAsync(Today, default));
+
+        Assert.Contains("AllowedUserId is 0", error.Message, StringComparison.Ordinal);
+        Assert.Equal(0, _chatCalls);
+        Assert.Equal(0, _telegramCalls);
+        Assert.Null(await digests.GetAsync(Today, default));
     }
 
     [Fact]

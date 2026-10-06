@@ -15,6 +15,7 @@ using FeedEater.Ranking;
 using FeedEater.Review;
 using FeedEater.Watch;
 using FeedEater.Search;
+using FeedEater.Setup;
 using FeedEater.Signals;
 using FeedEater.Sources;
 using FeedEater.Storage;
@@ -167,6 +168,7 @@ public static class ServiceRegistration
         services.AddSingleton<LoginThrottle>();
         services.AddSingleton<UiHandlers>();
 
+        services.AddSetupChecks();
         services.AddFeedEaterMcp();
         return services;
     }
