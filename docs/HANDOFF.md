@@ -1,8 +1,8 @@
-# Handoff — feed-eater, current state (2026-10-06 evening, v0.6.0 live)
+# Handoff — feed-eater, current state (2026-10-07, v0.6.0 live, v0.8.0 released)
 
 "continue" means: read this section; the older v0.1 handoff below is history.
 
-- `main` = 73edb31 (v0.6, PR #5 merged; tags v0.2.0, v0.3.0, v0.5.0, v0.6.0; #3 closed unmerged).
+- `main` = 2118fc8 (v0.8; tags v0.2.0, v0.3.0, v0.5.0, v0.6.0, v0.7.0, v0.8.0; #3 closed unmerged).
 - Next scheduled digest: 2026-10-07 07:30 Kyiv. Check it landed and read the 7-day 👍 rate in its header.
 - Validation table (`docs/specs/2026-10-05-validation.md`): first row due Monday 2026-10-12, still empty.
 - The parked v1 review findings (M1 to M3 in the old section below) were fixed in v0.2.
@@ -13,24 +13,28 @@
   search, add a sent-message to item table instead.
 - Votes so far: 10 up, 1 down; the learned ranking needs 100 with 10 of each.
 
-## v0.7 shipped, not yet deployed; v0.8 wave 1 built (2026-10-06 night)
+## v0.7 and v0.8 released, not deployed (2026-10-07)
 Specs: `docs/specs/2026-10-06-v0.7-portable.md`, `docs/specs/2026-10-06-v0.8-learns-faster.md` (each ends with what was built differently).
 Decided with the owner: build all 14 buildable ideas across v0.7 (portable), v0.8 (learns faster), v0.9 (hooks to the owner's setup); no social
 network or public publishing; one PR per version; every integration optional.
-- **v0.7:** feed-eater#6 merged (03b70b9), tag v0.7.0, image `ghcr.io/egoushka/feed-eater:0.7.0` published for amd64 and arm64 (first multi-platform
-  build worked). A risk review found 8 defects (poller stall on a NUL or long link or corrupt gzip, XML nesting stack overflow, AllowedHosts reaching
-  article fetches, and others), all fixed with tests. Real-network smoke test passed. NOT deployed: the owner's stack still runs 0.6.0.
-- **Deploy order for the owner (do not skip):** 1) merge homelab-gitops#682 (states every value that used to be a code default; no behaviour change on
-  0.6.0; recreates the container for seconds); 2) `scripts/pin-image.sh --pr feed-eater 0.7.0` (or the then-current tag) in homelab-gitops; 3) after
-  deploy, `doctor` in the container must show no FAIL, and the feed source must read Miniflux. The v0.7 migrations (0010, 0011) are cheap.
-- **v0.8 wave 1 (branch `feat/v0.8`, PR open):** vote weight, Duel, Follow this story, Hype autopsy, Taste map; 1093 tests green. Migrations 0012, 0014, 0015,
-  0016. Not built: Shipped-it (0013) and Backlog bloodhound (0017): they need Spike S1 (read-only: does the Plane intake id resolve as a work item and
-  change state?) and Spike S2 (comment endpoint; writes a throwaway issue in the owner's Plane, needs the owner's yes).
+- **Released:** v0.7.0 (feed-eater#6, 03b70b9) and v0.8.0 (feed-eater#7, 2118fc8); images `ghcr.io/egoushka/feed-eater:0.7.0` and `:0.8.0`
+  for amd64 and arm64. Each had a read-only risk review by a second agent; v0.7's found 8 defects, v0.8's found 3 medium (job stalls) and 6 low; all
+  fixed with tests that failed first. 1122 tests green.
+- **NOT deployed:** the owner's stack still runs 0.6.0 (live, healthy). Deploy order (do not skip): 1) merge homelab-gitops#682 (states every value that used
+  to be a code default; no behaviour change on 0.6.0; recreates the container for seconds); 2) `scripts/pin-image.sh --pr feed-eater 0.8.0` in homelab-gitops
+  (migrations 0010 to 0012 and 0014 to 0019 are all cheap: new tables and columns); 3) after deploy, `doctor` in the container must show no FAIL and the
+  feed source must read Miniflux; 4) optionally `FeedEater__GitHub__Token` for Hype autopsy (secret via `secret.sh`).
+- **v0.8 contents:** vote weight, Duel, Follow this story, Hype autopsy, Taste map. Not built: Shipped-it (0013) and Backlog bloodhound (0017).
+  Spike S1 (does the stored Plane intake id resolve as a work item with a state group?) is answered by Plane's tool contract (`issue` field of an
+  intake record is the work item id) but not confirmed live: the `ideas` table and the FEED intake queue are empty, so press 💡 once, then check.
+  Spike S2 (comment endpoint) writes a throwaway issue and comment in the owner's Plane and needs the owner's yes. Shipped-it must treat a failed lookup
+  as "unknown", never as an error.
 - **Still to verify live:** the first real digest and `/start` with a real key and bot; reply-to-item in Telegram (Bot API docs do not say whether
   `reply_to_message` carries the buttons); the Hindsight ping path `GET v1/default/banks`; Duel's first pairs; the first autopsy needs 87 days.
-- **v0.9:** not started; outline and integration facts at the end of the v0.7 spec.
-- **Follow-ups:** `config/watch.example.json` is still the owner's list (replace with a neutral 5-row example); doctor shows Miniflux twice in Miniflux mode;
-  a single poison entry mid-feed can still block newer entries of that feed (no per-entry catch).
+- **v0.9:** not started; outline and integration facts at the end of the v0.7 spec. Write its own spec first, as for v0.7 and v0.8.
+- **Follow-ups:** `config/watch.example.json` is still the owner's list (replace with a neutral 5-row example); doctor shows Miniflux twice in Miniflux
+  mode; a single poison entry mid-feed can still block newer entries of that feed (no per-entry catch); a 403 with `Retry-After` but no
+  `X-RateLimit-Remaining: 0` is treated as an ordinary GitHub failure; a Telegram outage burns Duel pairs from a small pool.
 
 ---
 
