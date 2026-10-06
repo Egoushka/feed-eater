@@ -20,6 +20,8 @@ public sealed record ReadResult
     public string? Suggestion { get; init; }
 }
 
+public sealed record ReleaseNote(string Changes, string Breaking, string? Evidence);
+
 /// <summary>Lenient parsing of model replies: the first {...} in the text, unknown keys and kinds dropped.</summary>
 public static class LlmJson
 {
@@ -57,6 +59,17 @@ public static class LlmJson
             Project = Key(e, keys),
             Suggestion = kind == "fyi" ? null : Text(e, "suggestion"),
         };
+    }
+
+    public static ReleaseNote? Release(string text)
+    {
+        if (ExtractObject(text) is not { } e || Text(e, "changes") is not { } changes)
+        {
+            return null;
+        }
+
+        var breaking = Text(e, "breaking")?.ToLowerInvariant();
+        return new ReleaseNote(changes, breaking is "yes" or "no" ? breaking : "unknown", Text(e, "evidence"));
     }
 
     private static JsonElement? ExtractObject(string text)

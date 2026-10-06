@@ -9,6 +9,8 @@ COPY src/FeedEater/*.csproj src/FeedEater/
 RUN dotnet restore src/FeedEater/FeedEater.csproj -a "${TARGETARCH}"
 
 COPY src/ src/
+# watch.json and watch-map.json ship beside the app (see FeedEater.csproj).
+COPY config/ config/
 # Migrations are embedded into FeedEater from here.
 COPY db/ db/
 RUN dotnet publish src/FeedEater/FeedEater.csproj -c Release -a "${TARGETARCH}" -p:Version="${VERSION}" -o /app --no-restore

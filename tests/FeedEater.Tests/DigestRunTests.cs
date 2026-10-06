@@ -106,7 +106,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var telegram = new StubHandler((_, body) => Telegram(body));
         var digests = new DigestStore(pg.Db);
         var run = new DigestRun(
-            new ItemStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), digests, new UsageStore(pg.Db),
+            new ItemStore(pg.Db), new ReleaseStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), digests, new UsageStore(pg.Db),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new MinifluxClient(miniflux.Client("http://miniflux/")),
             new GitHubStarsClient(new StubHandler((request, _) => GitHub(request)).Client("http://github/"), options),
@@ -547,5 +547,25 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("untrusted_page", prompt, StringComparison.Ordinal);   // the body is JSON, so the angle brackets are escaped
         Assert.Contains("First released in 2024.", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain(_readPrompts, p => p.Contains("Title: Keep B", StringComparison.Ordinal) && p.Contains("First released", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_header_lists_releases_of_things_he_runs_and_a_resume_keeps_the_same_list()
+    {
+        await SeedAsync();
+        var releases = new ReleaseStore(pg.Db);
+        await releases.AddAsync(new ReleaseRow { Repo = "juanfont/headscale", Tag = "v0.30.0", Version = "0.30.0", Title = "t", Url = "https://x", Newer = true, Summary = "<b>Fixes.</b>", Breaking = "no" }, default);
+        var (run, _, _) = Build();
+        _failTelegramAt = 2;
+
+        await Assert.ThrowsAsync<TelegramException>(() => run.RunAsync(Today, default));
+        await releases.AddAsync(new ReleaseRow { Repo = "late/arrival", Tag = "v1.0.0", Version = "1.0.0", Title = "t", Url = "https://x", Newer = true }, default);
+        await run.RunAsync(Today, default);
+
+        var header = JsonSerializer.Deserialize<JsonElement>(_sent[0]).GetProperty("text").GetString()!;
+        Assert.Contains("Updates for what you run", header, StringComparison.Ordinal);
+        Assert.Contains("juanfont/headscale 0.30.0 is out (breaking: no): &lt;b&gt;Fixes.&lt;/b&gt;", header, StringComparison.Ordinal);
+        Assert.DoesNotContain("late/arrival", string.Concat(_sent), StringComparison.Ordinal);
+        Assert.Equal(["late/arrival"], (await releases.TakeForDigestAsync("2026-10-06", default)).Select(r => r.Repo));
     }
 }

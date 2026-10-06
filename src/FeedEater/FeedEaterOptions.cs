@@ -24,6 +24,7 @@ public sealed class FeedEaterOptions
     public HindsightOptions Hindsight { get; set; } = new();
     public ClusterOptions Cluster { get; set; } = new();
     public FetchOptions Fetch { get; set; } = new();
+    public WatchOptions Watch { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 }
@@ -65,6 +66,21 @@ public sealed class FetchOptions
         "facebook.com", "instagram.com", "x.com", "twitter.com", "linkedin.com", "tiktok.com", "youtube.com", "youtu.be",
         "t.me", "discord.com", "medium.com", "nytimes.com", "wsj.com", "bloomberg.com", "ft.com",
     ];
+}
+
+public sealed class WatchOptions
+{
+    /// <summary>PINS.md as a file path or an https URL (for a private GitHub repo: the contents API URL plus <see cref="Token"/>). Empty uses the static list.</summary>
+    public string Source { get; set; } = "";
+
+    /// <summary>Bearer token for <see cref="Source"/>; leave empty for a public URL.</summary>
+    public string Token { get; set; } = "";
+
+    /// <summary>Static list used when Source is empty or fails; empty means config/watch.json beside the app.</summary>
+    public string FallbackPath { get; set; } = "";
+
+    /// <summary>Image to upstream GitHub repo map; empty means config/watch-map.json beside the app.</summary>
+    public string MapPath { get; set; } = "";
 }
 
 public sealed class MinifluxOptions

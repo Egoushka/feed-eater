@@ -6,12 +6,13 @@ using FeedEater.Digest;
 using FeedEater.Search;
 using FeedEater.Storage;
 using FeedEater.Telegram;
+using FeedEater.Watch;
 
 namespace FeedEater.Ui;
 
 public sealed class UiHandlers(
     ItemStore items, DigestStore digests, FeedbackStore feedback, ProfileStore profiles, UsageStore usage, ArchiveSearch search,
-    CallbackHandler callbacks, WeeklyStore weekly, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
+    CallbackHandler callbacks, WeeklyStore weekly, WatchSource watch, ReleaseStore releases, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
     IOptions<FeedEaterOptions> options, TimeProvider time)
 {
     private const int SearchLimit = 30;
@@ -192,6 +193,9 @@ public sealed class UiHandlers(
 
         return Html(UiPages.Weekly(p, row, await weekly.ListAsync(52, ct)));
     }
+
+    public async Task<IResult> ReleasesAsync(HttpContext ctx, CancellationToken ct) =>
+        Html(UiPages.Releases(Context(ctx), await watch.LoadAsync(ct), await releases.ListAsync(500, ct)));
 
     public async Task<IResult> IdeasAsync(HttpContext ctx, CancellationToken ct) =>
         Html(UiPages.Ideas(Context(ctx), await feedback.IdeasAsync(null, 100, ct)));

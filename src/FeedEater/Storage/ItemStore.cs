@@ -246,6 +246,19 @@ public sealed class ItemStore(FeedDb db)
         }
     }
 
+    /// <summary>Items published since the date whose link is a GitHub release page, oldest first: what the release watch reads.</summary>
+    public async Task<IReadOnlyList<ReleaseItem>> ReleaseItemsAsync(DateTimeOffset since, int limit, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<ReleaseItem>(new CommandDefinition(
+            """
+            select id, title, url, left(content, 6000) as content from items
+            where published_at > @since and url like 'https://github.com/%/releases/tag/%'
+            order by published_at, id
+            limit @limit
+            """, new { since = since.UtcDateTime, limit }, cancellationToken: ct))).ToList();
+    }
+
     /// <summary>Recent link posts with a short teaser that have not been tried yet, newest first.</summary>
     public async Task<IReadOnlyList<PendingLink>> PendingLinksAsync(DateTimeOffset since, int maxContentChars, int limit, CancellationToken ct)
     {

@@ -22,7 +22,7 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 /// Every step is stored, so a rerun resumes: results per item in triage/reads, delivered messages in sent_count.
 /// </summary>
 public sealed class DigestRun(
-    ItemStore items, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
+    ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
     LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, LoopHealth health,
     IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger)
 {
@@ -260,6 +260,9 @@ public sealed class DigestRun(
         return line;
     }
 
+    private static string ReleaseLine(ReleaseRow r) =>
+        $"{r.Repo} {r.Version} is out (breaking: {r.Breaking ?? "unknown"}){(r.Summary is null ? "" : ": " + r.Summary)}";
+
     private static string? Clip(string? text, int max) => text is null || text.Length <= max ? text : text[..max];
 
     private async Task<string> FullTextAsync(Candidate c, CancellationToken ct)
@@ -315,7 +318,8 @@ public sealed class DigestRun(
             .ToList();
         var header = DigestFormatter.Header(new DigestHeader(
             DateOnly.ParseExact(d.LocalDate, "yyyy-MM-dd", CultureInfo.InvariantCulture), shown.Count, d.Candidates, byProject,
-            votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n')));
+            votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n'),
+            (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList()));
         return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null))];
     }
 }

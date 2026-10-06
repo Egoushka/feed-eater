@@ -23,7 +23,7 @@ public sealed record DigestItem
 /// <summary><c>MonthSpend</c> is spend since the 1st of the current month; <c>WeekUpRate</c> is the 👍 share of the last 7 days' votes, null when there were none.</summary>
 public sealed record DigestHeader(
     DateOnly Date, int Shown, int Candidates, IReadOnlyList<(string Key, int Count)> ByProject,
-    int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes);
+    int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes, IReadOnlyList<string>? Releases = null);
 
 /// <summary>
 /// Telegram HTML. Every field is escaped and clipped so the visible text stays under 4,096 characters
@@ -53,6 +53,20 @@ public static class DigestFormatter
         foreach (var note in h.Notes)
         {
             sb.Append("\n⚠️ ").Append(E(Clip(note, 300)));
+        }
+
+        if (h.Releases is { Count: > 0 })
+        {
+            sb.Append("\n\n<b>Updates for what you run</b>");
+            foreach (var line in h.Releases.Take(8))
+            {
+                sb.Append("\n• ").Append(E(Clip(line, 160)));
+            }
+
+            if (h.Releases.Count > 8)
+            {
+                sb.Append(CultureInfo.InvariantCulture, $"\n+{h.Releases.Count - 8} more");
+            }
         }
 
         return new OutMessage(sb.ToString());

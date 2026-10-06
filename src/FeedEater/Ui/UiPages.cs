@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using FeedEater.Digest;
 using FeedEater.Storage;
+using FeedEater.Watch;
 using static FeedEater.Ui.Html;
 
 namespace FeedEater.Ui;
@@ -56,7 +57,7 @@ public static class UiPages
     private static readonly (string Path, string Label)[] Nav =
     [
         ("/ui", "Today"), ("/ui/posts", "Posts"), ("/ui/feedback", "Feedback"), ("/ui/search", "Search"), ("/ui/digests", "Digests"), ("/ui/weekly", "Weekly"),
-        ("/ui/sources", "Sources"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
+        ("/ui/sources", "Sources"), ("/ui/releases", "Releases"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
     ];
 
     private static readonly Dictionary<string, string> Notices = new()
@@ -485,6 +486,64 @@ public static class UiPages
         }
 
         return Layout(p, "Weekly review", "/ui/weekly", h.ToString());
+    }
+
+    public static string Releases(PageContext p, IReadOnlyList<WatchedProduct> watched, IReadOnlyList<ReleaseRow> releases)
+    {
+        var h = new StringBuilder("<h1>Releases</h1><p class=\"meta\">Products you run (from PINS.md), matched to release feeds. Nothing is applied for you.</p>");
+        if (watched.Count == 0)
+        {
+            h.Append("<p class=\"empty\">Nothing is watched. Set FeedEater:Watch:Source or ship config/watch.json.</p>");
+        }
+        else
+        {
+            h.Append("<div class=\"scroll\"><table><thead><tr><th>Product</th><th>Services</th><th>Running</th><th>Latest seen</th><th>Status</th></tr></thead><tbody>");
+            foreach (var w in watched)
+            {
+                var latest = releases.Where(r => r.Repo == w.Repo).Select(r => (Row: r, V: Versions.Parse(r.Version))).Where(x => x.V is not null)
+                    .OrderByDescending(x => x.V!, Comparer<int[]>.Create(Versions.Compare)).Select(x => x.Row).FirstOrDefault();
+                var status = w.Running is null ? ("unknown", "warn")
+                    : latest is not null && Versions.Parse(latest.Version) is { } lv && Versions.Compare(lv, w.Running) > 0 ? ("update available", "bad")
+                    : ("up to date", "good");
+                h.Append($"<tr><td>{E(w.Repo)}</td><td>{E(string.Join(", ", w.Services))}</td><td>{E(w.RunningText ?? "unknown")}</td>")
+                    .Append($"<td>{(latest is null ? "–" : External(latest.Url, latest.Version))}</td><td><span class=\"badge {status.Item2}\">{E(status.Item1)}</span></td></tr>");
+            }
+
+            h.Append("</tbody></table></div>");
+        }
+
+        h.Append("<h2>Recent releases</h2>");
+        var news = releases.Where(r => r.Newer).Take(30).ToList();
+        if (news.Count == 0)
+        {
+            h.Append("<p class=\"empty\">No newer releases seen yet.</p>");
+        }
+        else
+        {
+            h.Append("<ul class=\"releases\">");
+            foreach (var r in news)
+            {
+                var how = r.AnnouncedAt is not null ? "sent on Telegram" : r.DigestDate is not null ? "in the digest of " + r.DigestDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "waiting for the next digest";
+                h.Append($"<li><strong>{External(r.Url, r.Repo + " " + r.Version)}</strong> <span class=\"badge {(r.Breaking == "yes" ? "bad" : r.Breaking == "no" ? "good" : "warn")}\">breaking: {E(r.Breaking ?? "unknown")}</span>")
+                    .Append(r.Urgent ? " <span class=\"badge bad\">security or breaking</span>" : "")
+                    .Append($"<p class=\"meta\">{E(Local(p, r.DetectedAt))} · {E(how)}</p>");
+                if (r.Summary is not null)
+                {
+                    h.Append($"<p>{E(r.Summary)}</p>");
+                }
+
+                if (r.Evidence is not null)
+                {
+                    h.Append($"<p class=\"why\">&ldquo;{E(r.Evidence)}&rdquo;</p>");
+                }
+
+                h.Append("</li>");
+            }
+
+            h.Append("</ul>");
+        }
+
+        return Layout(p, "Releases", "/ui/releases", h.ToString());
     }
 
     public static string Ideas(PageContext p, IReadOnlyList<Idea> ideas)

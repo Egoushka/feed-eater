@@ -11,6 +11,7 @@ using FeedEater.Mcp;
 using FeedEater.Plane;
 using FeedEater.Profiles;
 using FeedEater.Review;
+using FeedEater.Watch;
 using FeedEater.Search;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -42,6 +43,7 @@ public static class ServiceRegistration
         services.AddSingleton<DigestStore>();
         services.AddSingleton<SignalStore>();
         services.AddSingleton<WeeklyStore>();
+        services.AddSingleton<ReleaseStore>();
         services.AddSingleton<UsageStore>();
         services.AddSingleton<IUsageSink>(sp => sp.GetRequiredService<UsageStore>());
         services.AddSingleton<LoopHealth>();
@@ -94,6 +96,7 @@ public static class ServiceRegistration
             http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
         });
         services.AddSingleton<PageEnricher>();
+        services.AddHttpClient<WatchSource>();
 
         services.AddHttpClient<HindsightClient>((sp, http) =>
         {
@@ -123,6 +126,7 @@ public static class ServiceRegistration
             }
 
             services.AddHostedService<WeeklyRetain>();
+            services.AddHostedService<ReleaseWatcher>();
             if (telegram)
             {
                 services.AddHostedService<WeeklyReview>();

@@ -123,7 +123,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
     public static TheoryData<string> Pages =>
     [
-        "/ui", "/ui/posts", "/ui/feedback", "/ui/weekly", "/ui/weekly/2026-10-04", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
+        "/ui", "/ui/posts", "/ui/feedback", "/ui/weekly", "/ui/weekly/2026-10-04", "/ui/releases", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
         "/ui/item/1", "/ui/digest/2026-10-05", "/ui/digest/run",
     ];
 
@@ -831,5 +831,27 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
         await GetAsync("/ui/weekly/2001-01-01", cookie, HttpStatusCode.NotFound);
         await GetAsync("/ui/weekly/garbage", cookie, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task The_releases_page_shows_watched_products_and_encodes_hostile_release_text()
+    {
+        var store = new ReleaseStore(pg.Db);
+        await store.AddAsync(new ReleaseRow
+        {
+            Repo = "juanfont/headscale", Tag = "v9.0.0", Version = "9.0.0", Title = "t", Url = "javascript:alert(1)", Newer = true, Urgent = true,
+            Summary = $"{Hostile} summary", Breaking = "yes", Evidence = $"{Hostile} evidence",
+        }, default);
+        var cookie = await LoginAsync();
+
+        var page = await GetAsync("/ui/releases", cookie);
+
+        Assert.Contains("juanfont/headscale", page, StringComparison.Ordinal);
+        Assert.Contains("update available", page, StringComparison.Ordinal);
+        Assert.Contains("breaking: yes", page, StringComparison.Ordinal);
+        Assert.Contains("waiting for the next digest", page, StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; evidence", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("javascript:", page, StringComparison.OrdinalIgnoreCase);
     }
 }

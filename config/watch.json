@@ -1,0 +1,317 @@
+[
+  {
+    "service": "adguardhome",
+    "version": "0.107.78",
+    "image": "adguard/adguardhome"
+  },
+  {
+    "service": "ntfy",
+    "version": "2.28.0",
+    "image": "binwiederhier/ntfy"
+  },
+  {
+    "service": "minio",
+    "version": null,
+    "image": "cgr.dev/chainguard/minio"
+  },
+  {
+    "service": "clickhouse-server",
+    "version": "26.6",
+    "image": "clickhouse/clickhouse-server"
+  },
+  {
+    "service": "cloudflared",
+    "version": "2026.10.0",
+    "image": "cloudflare/cloudflared"
+  },
+  {
+    "service": "agentgateway",
+    "version": "1.6.0",
+    "image": "cr.agentgateway.dev/agentgateway"
+  },
+  {
+    "service": "diun",
+    "version": "4.33.0",
+    "image": "crazymax/diun"
+  },
+  {
+    "service": "immich-valkey",
+    "version": null,
+    "image": "docker.io/valkey/valkey"
+  },
+  {
+    "service": "firefly",
+    "version": "6.7.6",
+    "image": "fireflyiii/core"
+  },
+  {
+    "service": "mktxp",
+    "version": "2.0.3",
+    "image": "ghcr.io/akpw/mktxp"
+  },
+  {
+    "service": "headroom",
+    "version": null,
+    "image": "ghcr.io/chopratejas/headroom"
+  },
+  {
+    "service": "changedetection",
+    "version": "0.60.8",
+    "image": "ghcr.io/dgtlmoon/changedetection.io"
+  },
+  {
+    "service": "refs",
+    "version": null,
+    "image": "ghcr.io/egoushka/agent-skills-refs"
+  },
+  {
+    "service": "chargehand-session",
+    "version": "0.8.4",
+    "image": "ghcr.io/egoushka/chargehand-session"
+  },
+  {
+    "service": "chargehand",
+    "version": "0.8.4",
+    "image": "ghcr.io/egoushka/chargehand"
+  },
+  {
+    "service": "devbox-mcp",
+    "version": "0.7.0",
+    "image": "ghcr.io/egoushka/devbox-mcp"
+  },
+  {
+    "service": "feed-eater",
+    "version": "0.3.0",
+    "image": "ghcr.io/egoushka/feed-eater"
+  },
+  {
+    "service": "jarvis",
+    "version": "0.1.0",
+    "image": "ghcr.io/egoushka/jarvis"
+  },
+  {
+    "service": "jarvis-harness",
+    "version": "0.8.0",
+    "image": "ghcr.io/egoushka/jarvis"
+  },
+  {
+    "service": "oura-api",
+    "version": "0.3.0",
+    "image": "ghcr.io/egoushka/oura-api"
+  },
+  {
+    "service": "oura-app",
+    "version": "0.1.0",
+    "image": "ghcr.io/egoushka/oura-app"
+  },
+  {
+    "service": "oura-ingest",
+    "version": "0.3.0",
+    "image": "ghcr.io/egoushka/oura-ingest"
+  },
+  {
+    "service": "oura-mcp",
+    "version": "0.3.0",
+    "image": "ghcr.io/egoushka/oura-mcp"
+  },
+  {
+    "service": "plainsight",
+    "version": null,
+    "image": "ghcr.io/egoushka/plainsight"
+  },
+  {
+    "service": "router-actions",
+    "version": "0.1.5",
+    "image": "ghcr.io/egoushka/router-actions"
+  },
+  {
+    "service": "senses",
+    "version": "0.1.2",
+    "image": "ghcr.io/egoushka/senses"
+  },
+  {
+    "service": "switchboard",
+    "version": "0.1.0",
+    "image": "ghcr.io/egoushka/switchboard"
+  },
+  {
+    "service": "synapse",
+    "version": "0.2.5",
+    "image": "ghcr.io/egoushka/synapse"
+  },
+  {
+    "service": "github-mcp",
+    "version": "1.14.0",
+    "image": "ghcr.io/github/github-mcp-server"
+  },
+  {
+    "service": "immich-postgres",
+    "version": "1.1.1",
+    "image": "ghcr.io/immich-app/postgres"
+  },
+  {
+    "service": "wakapi",
+    "version": "2.18.1",
+    "image": "ghcr.io/muety/wakapi"
+  },
+  {
+    "service": "paperless",
+    "version": "3.2.1",
+    "image": "ghcr.io/paperless-ngx/paperless-ngx"
+  },
+  {
+    "service": "pocket-id",
+    "version": "2.18.0",
+    "image": "ghcr.io/pocket-id/pocket-id"
+  },
+  {
+    "service": "pasteguard",
+    "version": "0.9.2",
+    "image": "ghcr.io/sgasser/pasteguard"
+  },
+  {
+    "service": "pasteguard",
+    "version": "0.9.3",
+    "image": "ghcr.io/sgasser/pasteguard"
+  },
+  {
+    "service": "headplane",
+    "version": "0.7.1",
+    "image": "ghcr.io/tale/headplane"
+  },
+  {
+    "service": "umami",
+    "version": "3.4.0",
+    "image": "ghcr.io/umami-software/umami"
+  },
+  {
+    "service": "langfuse-worker",
+    "version": "4.51.0",
+    "image": "langfuse/langfuse-worker"
+  },
+  {
+    "service": "langfuse",
+    "version": "4.50.0",
+    "image": "langfuse/langfuse"
+  },
+  {
+    "service": "listmonk",
+    "version": "6.2.0",
+    "image": "listmonk/listmonk"
+  },
+  {
+    "service": "plane-admin",
+    "version": "1.4.2",
+    "image": "makeplane/plane-admin"
+  },
+  {
+    "service": "plane-backend",
+    "version": "1.4.2",
+    "image": "makeplane/plane-backend"
+  },
+  {
+    "service": "plane-frontend",
+    "version": "1.4.2",
+    "image": "makeplane/plane-frontend"
+  },
+  {
+    "service": "plane-live",
+    "version": "1.4.2",
+    "image": "makeplane/plane-live"
+  },
+  {
+    "service": "plane-proxy",
+    "version": "1.4.2",
+    "image": "makeplane/plane-proxy"
+  },
+  {
+    "service": "plane-space",
+    "version": "1.4.2",
+    "image": "makeplane/plane-space"
+  },
+  {
+    "service": "n8n",
+    "version": "2.42.3",
+    "image": "n8nio/n8n"
+  },
+  {
+    "service": "goflow2",
+    "version": null,
+    "image": "netsampler/goflow2"
+  },
+  {
+    "service": "owntracks",
+    "version": "1.0.4",
+    "image": "owntracks/recorder"
+  },
+  {
+    "service": "pgvector",
+    "version": "0.8.7",
+    "image": "pgvector/pgvector"
+  },
+  {
+    "service": "postgis",
+    "version": "3.6",
+    "image": "postgis/postgis"
+  },
+  {
+    "service": "omi-postgres",
+    "version": null,
+    "image": "postgres"
+  },
+  {
+    "service": "qdrant",
+    "version": "1.19.1",
+    "image": "qdrant/qdrant"
+  },
+  {
+    "service": "rabbitmq",
+    "version": "3.13.7",
+    "image": "rabbitmq"
+  },
+  {
+    "service": "searxng",
+    "version": "2026.9.25",
+    "image": "searxng/searxng"
+  },
+  {
+    "service": "skysend",
+    "version": "2.12.2",
+    "image": "skyfay/skysend"
+  },
+  {
+    "service": "devbox-mcp-docker-proxy, gh-runners-docker-proxy",
+    "version": "0.5.0",
+    "image": "tecnativa/docker-socket-proxy"
+  },
+  {
+    "service": "oura-timescaledb",
+    "version": "2.30.2",
+    "image": "timescale/timescaledb"
+  },
+  {
+    "service": "gatus",
+    "version": "5.37.0",
+    "image": "twinproduction/gatus"
+  },
+  {
+    "service": "remark42",
+    "version": "1.17.1",
+    "image": "umputun/remark42"
+  },
+  {
+    "service": "valkey",
+    "version": null,
+    "image": "valkey/valkey"
+  },
+  {
+    "service": "autoheal",
+    "version": null,
+    "image": "willfarrell/autoheal"
+  },
+  {
+    "service": "headscale",
+    "version": "0.29.4",
+    "image": "headscale/headscale"
+  }
+]
