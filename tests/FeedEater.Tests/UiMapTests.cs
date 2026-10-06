@@ -179,9 +179,20 @@ public sealed partial class UiTests
     public async Task The_map_of_2500_items_with_1536_dimensions_is_built_in_a_few_seconds()
     {
         // One small map for last month first, so the timed request does not pay for JIT and query-mapper setup that every later request skips.
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var app = _app.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.RemoveAll<TimeProvider>();
+            s.AddSingleton<TimeProvider>(time);
+        }));
+        using var http = Client(app);
         await MapItemsAsync(3);
-        var cookie = await LoginAsync();
-        await GetAsync($"/ui/map?month={DateTime.UtcNow.AddMonths(-1):yyyy-MM}", cookie);
+        var cookie = await LoginAsync(http);
+
+        async Task<string> MapAsync() => await (await http.SendAsync(Req(HttpMethod.Get, "/ui/map", cookie))).Content.ReadAsStringAsync();
+
+        await MapAsync();
+        time.Advance(TimeSpan.FromMinutes(11));   // the small map is built and cached for ten minutes: let it expire
 
         // The vector index makes seeding thousands of rows slow and the map does not use it: drop it for the seed, restore it empty afterwards.
         await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
@@ -199,7 +210,7 @@ public sealed partial class UiTests
         }
 
         var watch = Stopwatch.StartNew();
-        var page = await GetAsync("/ui/map", cookie);
+        var page = await MapAsync();
         watch.Stop();
         await pg.ResetAsync();
         await using (var c = await pg.Db.DataSource.OpenConnectionAsync())

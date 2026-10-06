@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using Microsoft.Extensions.Options;
 using FeedEater.Ranking;
@@ -27,7 +26,8 @@ public sealed record MapView(
 
 /// <summary>
 /// The data behind <c>/ui/map</c>: every voted item and a seeded sample of recent ones, projected to a plane. The layout never depends on
-/// the month, only the votes shown do, so stepping through months keeps every item where it was. A built map is kept for ten minutes.
+/// the month, only the votes shown do, so stepping through months keeps every item where it was. The items and their projection are built
+/// once for all months and kept for ten minutes; requests that find the cache cold wait for the one build.
 /// </summary>
 public sealed class TasteMap(MapStore store, ProfileStore profiles, IOptions<FeedEaterOptions> options, TimeProvider time)
 {
@@ -36,10 +36,15 @@ public sealed class TasteMap(MapStore store, ProfileStore profiles, IOptions<Fee
     private const int RecentDays = 90;
     private const int LabelNearest = 10;
     private const int StripMonths = 24;
-    private const int MaxCached = 48;
     private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(10);
 
-    private readonly ConcurrentDictionary<DateOnly, (DateTimeOffset At, MapView View)> _cache = new();
+    /// <summary><paramref name="Spots"/> is empty when there are too few items to project.</summary>
+    private sealed record Layout(IReadOnlyList<MapItem> Rows, IReadOnlyList<float[]> Vectors, IReadOnlyList<Point2> Spots, IReadOnlyList<Profile> Profiles);
+
+    private sealed record Cached(DateTimeOffset At, Layout Layout);
+
+    private readonly SemaphoreSlim _building = new(1, 1);
+    private volatile Cached? _cached;
 
     /// <summary>The month as <c>yyyy-MM</c> exactly (no sign, spaces or single-digit months); anything else, a year before 2000 or a month after the current one gives the current month.</summary>
     public static DateOnly ParseMonth(string? text, DateOnly current) =>
@@ -55,51 +60,63 @@ public sealed class TasteMap(MapStore store, ProfileStore profiles, IOptions<Fee
     {
         var now = time.GetUtcNow();
         var current = MonthOf(TimeZoneInfo.ConvertTime(now, options.Value.Zone));
-        var chosen = ParseMonth(month, current);
-        if (_cache.TryGetValue(chosen, out var hit) && now - hit.At < Ttl)
-        {
-            return hit.View;
-        }
-
-        var view = await BuildAsync(chosen, current, now, ct);
-        foreach (var stale in _cache.Where(e => now - e.Value.At >= Ttl).Select(e => e.Key).ToList())
-        {
-            _cache.TryRemove(stale, out _);
-        }
-
-        if (_cache.Count >= MaxCached)
-        {
-            _cache.Clear();
-        }
-
-        _cache[chosen] = (now, view);
-        return view;
+        return Overlay(await LayoutAsync(now, ct), ParseMonth(month, current), current, options.Value.Zone);
     }
 
-    private async Task<MapView> BuildAsync(DateOnly month, DateOnly current, DateTimeOffset now, CancellationToken ct)
+    private async Task<Layout> LayoutAsync(DateTimeOffset now, CancellationToken ct)
     {
-        var zone = options.Value.Zone;
+        if (_cached is { } hit && now - hit.At < Ttl)
+        {
+            return hit.Layout;
+        }
+
+        await _building.WaitAsync(ct);
+        try
+        {
+            if (_cached is { } built && now - built.At < Ttl)
+            {
+                return built.Layout;   // another request built it while this one waited
+            }
+
+            var layout = await BuildLayoutAsync(now, ct);
+            _cached = new Cached(now, layout);
+            return layout;
+        }
+        finally
+        {
+            _building.Release();
+        }
+    }
+
+    private async Task<Layout> BuildLayoutAsync(DateTimeOffset now, CancellationToken ct)
+    {
         var rows = await store.ItemsAsync(now.AddDays(-RecentDays), Sample, ct);
-        var months = Strip(rows, current, zone);
         var vectors = rows.Select(r => Vectors.Normalize(r.Embedding)).ToList();
         var coords = Projection.Project(vectors);
-        if (coords.Count == 0)
+        return coords.Count == 0 ? new Layout(rows, vectors, [], []) : new Layout(rows, vectors, Fit(coords), await profiles.AllAsync(ct));
+    }
+
+    /// <summary>The votes of one month on the fixed layout.</summary>
+    private static MapView Overlay(Layout layout, DateOnly month, DateOnly current, TimeZoneInfo zone)
+    {
+        var rows = layout.Rows;
+        var months = Strip(rows, current, zone);
+        if (layout.Spots.Count == 0)
         {
             return new MapView(month, current, months, [], [], [], []);
         }
 
         var next = month.AddMonths(1).ToDateTime(TimeOnly.MinValue);
         var end = new DateTimeOffset(next, zone.GetUtcOffset(next)).UtcDateTime;
-        var spots = Fit(coords);
         var dots = new List<MapDot>(rows.Count);
         for (var i = 0; i < rows.Count; i++)
         {
             var r = rows[i];
             var voted = r.Vote is not null && r.VotedAt is { } at && DateTime.SpecifyKind(at, DateTimeKind.Utc) < end;
-            dots.Add(new MapDot(r.Id, r.Title, spots[i].X, spots[i].Y, voted ? r.Vote!.Value : 0, voted ? r.Weight : 1));
+            dots.Add(new MapDot(r.Id, r.Title, layout.Spots[i].X, layout.Spots[i].Y, voted ? r.Vote!.Value : 0, voted ? r.Weight : 1));
         }
 
-        var (labels, tallies) = Profiles(await profiles.AllAsync(ct), vectors, dots);
+        var (labels, tallies) = Profiles(layout.Profiles, layout.Vectors, dots);
         return new MapView(month, current, months, dots, labels, UnseenCells(dots, rows), tallies);
     }
 
