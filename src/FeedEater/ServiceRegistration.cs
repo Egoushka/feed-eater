@@ -16,6 +16,7 @@ using FeedEater.Review;
 using FeedEater.Watch;
 using FeedEater.Search;
 using FeedEater.Signals;
+using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Telegram;
 using FeedEater.Ui;
@@ -88,7 +89,7 @@ public static class ServiceRegistration
             http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.5.0");
         });
 
-        services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(SafeFetcher.CreateHandler);
+        services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(sp => SafeFetcher.CreateHandler(Settings(sp).Source.AllowedHosts));
         services.AddSingleton(sp => new SafeFetcher(
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(SafeFetcher.ClientName), sp.GetRequiredService<IOptions<FeedEaterOptions>>(),
             sp.GetRequiredService<CursorStore>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SafeFetcher>>()));
@@ -127,6 +128,7 @@ public static class ServiceRegistration
         services.AddSingleton<TasteSwitch>();
         services.AddSingleton<CommandHandler>();
         services.AddSingleton<DigestTrigger>();
+        services.AddFeedSource(settings.Source);
 
         if (settings.RunJobs)
         {

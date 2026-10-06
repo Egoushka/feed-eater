@@ -25,7 +25,7 @@ Every key is under `FeedEater:` (environment: `FeedEater__Section__Key`). Every 
 |---|---|---|
 | `ConnectionStrings:FeedEater` | yes | Postgres 18 with pgvector |
 | `Mcp:Token` | yes | empty: `/mcp` refuses every request |
-| `FeedEater:Miniflux:BaseUrl`, `Token` | yes | Miniflux and its API key; read-only use |
+| `FeedEater:Miniflux:BaseUrl`, `Token` | with `Source:Kind=miniflux` | Miniflux and its API key; read-only use |
 | `FeedEater:Llm:BaseUrl`, `ApiKey` | yes | an OpenAI-compatible endpoint with its version path (default `https://api.openai.com/v1/`) and key |
 | `FeedEater:Telegram:Token`, `AllowedUserId` | yes | its own bot; the poller only starts with a token |
 | `FeedEater:TimeZone` | no | default `UTC`; set an IANA name such as `Europe/Berlin` for the digest time, quiet hours and shown dates |
@@ -34,6 +34,32 @@ Every key is under `FeedEater:` (environment: `FeedEater__Section__Key`). Every 
 | `FeedEater:Hindsight:BaseUrl` | no | weekly summary to the `feed-eater` bank; off without it |
 | `FeedEater:GitHub:User` | no | stars of this user count as liked items; off without it |
 | `FeedEater:ProfilePath` | no | default `/config/profile.json`; shape in `profile.example.json`; a missing file means the example interests and a notice |
+
+## Built-in feed reader
+
+By default feed-eater fetches the feeds itself (RSS 2.0, Atom, JSON Feed); no Miniflux is needed. Add feeds on `/ui/sources` (a feed
+or a site address; the feed link is looked up on the page), import or export OPML there (folders become categories), send
+`/feeds` or `/feeds add <url>` to the bot, or run `dotnet FeedEater.dll import-opml feeds.opml` (adds the feeds; the running service
+fetches them at its next poll). Removing a feed keeps its items in the archive, now without a feed.
+
+Each feed is fetched with a conditional GET (ETag, Last-Modified) every `FeedInterval`; every failure doubles the wait up to
+`MaxBackoff`, and a good fetch resets it. The error shows on `/ui/sources`, and a feed that failed 3 times in a row is named in the digest
+header. All fetches go through the same guarded fetcher as page fetch: public addresses only, ports 80 and 443, at most 3 redirects, 10 s,
+one request a second per host, answers up to 5 MB. A feed's first fetch keeps only entries from the last `BackfillDays`, so a new
+instance embeds days, not whole histories. Items without a date count as published when first seen. An item is stored once per
+feed and entry (`items.source_key`); the same article from another feed is marked a duplicate by URL or title as before. Short items
+get their article text from the page itself when the digest reads them.
+
+`FeedEater:Source:*`:
+
+| Key | Default | Notes |
+|---|---|---|
+| `Kind` | `builtin` | `builtin` or `miniflux` (copy entries from Miniflux, as before; full text through Miniflux). Switching on a populated database is unsupported |
+| `AllowedHosts` | none | Private hosts a fetch may reach, e.g. a self-hosted RSSHub: exact names, any port (`FeedEater__Source__AllowedHosts__0=rsshub`) |
+| `BackfillDays` | 14 | Age limit for the first fetch of a feed |
+| `FeedInterval` | 30 min | Per feed |
+| `MaxBackoff` | 24 h | Longest wait after repeated failures |
+| `PollInterval` | 5 min | How often the ingest loop looks for feeds that are due |
 
 ## Web UI
 

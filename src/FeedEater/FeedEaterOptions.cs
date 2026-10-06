@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using FeedEater.Setup;
+using FeedEater.Sources;
 
 namespace FeedEater;
 
@@ -27,6 +28,7 @@ public sealed class FeedEaterOptions
     [Description("Local time of day after which a digest that has not gone out is given up for the day.")]
     public TimeSpan DigestGiveUpAt { get; set; } = new(12, 0, 0);
 
+    public SourceOptions Source { get; set; } = new();
     public MinifluxOptions Miniflux { get; set; } = new();
     public LlmOptions Llm { get; set; } = new();
     public CapsOptions Caps { get; set; } = new();

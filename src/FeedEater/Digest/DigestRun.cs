@@ -7,6 +7,7 @@ using FeedEater.Loops;
 using FeedEater.Profiles;
 using FeedEater.Ranking;
 using FeedEater.Signals;
+using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Telegram;
 using FeedEater.Text;
@@ -24,7 +25,7 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 public sealed class DigestRun(
     ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
     LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, LoopHealth health, TasteSwitch tasteSwitch,
-    IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger)
+    IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null, ArticleText? articles = null)
 {
     private const int TriageMaxTokens = 200;
     private const int ReadMaxTokens = 600;
@@ -93,6 +94,11 @@ public sealed class DigestRun(
         if (health.IsDown(Ingestor.LoopName))
         {
             notes.Add("Miniflux was unreachable at the last poll; some items may be missing");
+        }
+
+        if (feeds is not null)
+        {
+            notes.AddRange(await feeds.NotesAsync(ct));
         }
 
         if (health.IsDown(Ingestor.EmbedName))
@@ -283,6 +289,11 @@ public sealed class DigestRun(
 
     private async Task<string> FullTextAsync(Candidate c, CancellationToken ct)
     {
+        if (articles is not null)
+        {
+            return c.Content.Length >= options.Value.Caps.ShortContentChars ? c.Content : await articles.FullTextAsync(c, ct);
+        }
+
         if (c.Content.Length >= options.Value.Caps.ShortContentChars || !options.Value.Miniflux.Enabled || c.MinifluxEntryId is not { } entryId)
         {
             return c.Content;
