@@ -120,19 +120,24 @@ public sealed partial class CheckRunner(
 }
 
 /// <summary>Plain-words reasons and fixes shared by the checks. Settings are named the way they are set in the environment.</summary>
-internal static class Hints
+internal static partial class Hints
 {
     public static string Env(string key) => "FeedEater__" + key.Replace(":", "__", StringComparison.Ordinal);
 
     public static string Host(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : "(not a valid URL)";
 
+    /// <summary>What went wrong, short: an API's own <c>"message"</c> instead of its whole error body.</summary>
     public static string Describe(Exception ex) => ex switch
     {
         BudgetExceededException => "the gateway budget for this key is spent",
         TaskCanceledException { InnerException: TimeoutException } => "the request timed out",
         JsonException or KeyNotFoundException => "the answer is not what this API sends",
+        HttpRequestException { StatusCode: { } code } when ProviderMessage().Match(ex.Message) is { Success: true } m => $"HTTP {(int)code}: {m.Groups[1].Value}",
         _ => ex.Message,
     };
+
+    [GeneratedRegex("\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"", RegexOptions.None, 250)]
+    private static partial Regex ProviderMessage();
 
     /// <summary>The fix for a failed call to a service set by <paramref name="urlKey"/> and, when it has one, <paramref name="tokenKey"/>.</summary>
     public static string Http(Exception ex, string urlKey, string? tokenKey)

@@ -80,7 +80,7 @@ public sealed class SetupChecksTests
         var row = await RunAsync((s, opts) => new LlmChatCheck(s, opts), o, s => s.AddSingleton(Llm(stub, o)));
 
         Assert.Equal(CheckStatus.Fail, row.Result.Status);
-        Assert.Contains("401", row.Result.Detail, StringComparison.Ordinal);
+        Assert.Equal("gpt-4.1-nano and gpt-4.1-mini: HTTP 401: Incorrect API key provided", row.Result.Detail);
         Assert.Contains("FeedEater__Llm__ApiKey", row.Result.Fix, StringComparison.Ordinal);
     }
 

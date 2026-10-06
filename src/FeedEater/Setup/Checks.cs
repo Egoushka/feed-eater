@@ -75,7 +75,8 @@ internal sealed class LlmChatCheck(IServiceProvider services, IOptions<FeedEater
 
         var (model, error) = failures[0];
         var key = model == llm.TriageModel ? "Llm:TriageModel" : "Llm:ReadModel";
-        return CheckResult.Fail(string.Join("; ", failures.Select(f => $"{f.Model}: {Hints.Describe(f.Error)}")), LlmFix.For(error, llm.BaseUrl, key));
+        var said = failures.GroupBy(f => Hints.Describe(f.Error)).Select(g => $"{string.Join(" and ", g.Select(f => f.Model))}: {g.Key}");
+        return CheckResult.Fail(string.Join("; ", said), LlmFix.For(error, llm.BaseUrl, key));
     }
 
     private async Task<(string Model, Exception Error)?> TryAsync(string model, CancellationToken ct)

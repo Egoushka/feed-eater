@@ -1,15 +1,35 @@
 # feed-eater
 
-Reads every entry Miniflux collects, keeps them all in a searchable archive, and each morning sends the few that
+Reads your feeds, keeps every entry in a searchable archive, and each morning sends the few that
 matter to Telegram with a concrete suggestion where one exists. Button presses teach the ranking; 💡 saves the
 suggestion as an idea (into Plane Intake when Plane is configured, else into a local list). Any MCP client can search the archive.
+One user, one instance: you run it yourself.
+
+## Quick start
+
+You need Docker, an OpenAI-compatible API key (OpenAI by default), a Telegram account and an OPML file of your feeds (or one feed URL).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Egoushka/feed-eater/main/compose.example.yaml -o compose.yaml
+curl -fsSL https://raw.githubusercontent.com/Egoushka/feed-eater/main/.env.example -o .env
+mkdir config                                  # fill .env, create a bot with @BotFather, put feeds.opml here
+docker compose up -d
+# send /start to your bot, put the id it answers with in .env (FeedEater__Telegram__AllowedUserId), then:
+docker compose up -d
+docker compose run --rm feed-eater import-opml /config/feeds.opml
+docker compose run --rm feed-eater doctor     # one line per integration: ok, off or FAIL with the fix
+```
+
+Then send `/digest` to the bot. The full walk-through, every optional integration (Plane, Karakeep, GitHub, Hindsight, release
+watch, Miniflux) and upgrade notes are in [docs/SETUP.md](docs/SETUP.md). The embedding column is fixed at 1536 dimensions, so the
+embedding model must return that size (the default does).
 
 Design: [docs/specs/2026-10-05-feed-eater-design.md](docs/specs/2026-10-05-feed-eater-design.md).
 
 ## How an item travels
 
-1. Miniflux fetches the feed. feed-eater copies the entry (every 30 min), strips HTML, marks duplicates by
-   canonical URL or title, and embeds it.
+1. Your feeds are fetched (by the built-in reader, or by Miniflux when it is configured). feed-eater copies each new entry
+   (every 30 min), strips HTML, marks duplicates by canonical URL or title, and embeds it.
 2. At 07:30 (`FeedEater:TimeZone`, default UTC) the new items are ranked by vector math: fit to the projects and topics in
    `profile.json`, similarity to what was liked or disliked, and the feed's 👍 rate.
 3. The top 60 get a one-line verdict from a small model; the top 12 of those that matter are read in full by a
@@ -19,15 +39,16 @@ Design: [docs/specs/2026-10-05-feed-eater-design.md](docs/specs/2026-10-05-feed-
 ## Configuration
 
 Every key is under `FeedEater:` (environment: `FeedEater__Section__Key`). Every setting, its default and what it does is in
-[docs/CONFIG.md](docs/CONFIG.md); `dotnet FeedEater.dll doctor --print-config` prints the effective values with secrets masked.
+[docs/CONFIG.md](docs/CONFIG.md); `dotnet FeedEater.dll doctor` checks them against the real services, and `doctor --print-config`
+prints the effective values with secrets masked.
 
 | Key | Required | Notes |
 |---|---|---|
 | `ConnectionStrings:FeedEater` | yes | Postgres 18 with pgvector |
 | `Mcp:Token` | yes | empty: `/mcp` refuses every request |
-| `FeedEater:Miniflux:BaseUrl`, `Token` | yes | Miniflux and its API key; read-only use |
 | `FeedEater:Llm:BaseUrl`, `ApiKey` | yes | an OpenAI-compatible endpoint with its version path (default `https://api.openai.com/v1/`) and key |
-| `FeedEater:Telegram:Token`, `AllowedUserId` | yes | its own bot; the poller only starts with a token |
+| `FeedEater:Telegram:Token`, `AllowedUserId` | yes | its own bot; the poller only starts with a token. While `AllowedUserId` is 0 the bot answers only `/start`, with your id |
+| `FeedEater:Miniflux:BaseUrl`, `Token` | no | use Miniflux as the feed source instead of the built-in reader; read-only use |
 | `FeedEater:TimeZone` | no | default `UTC`; set an IANA name such as `Europe/Berlin` for the digest time, quiet hours and shown dates |
 | `FeedEater:Plane:BaseUrl`, `Token`, `Workspace` | no | without them 💡 saves ideas to the local list (`/ui/ideas`) |
 | `FeedEater:Karakeep:BaseUrl`, `Token` | no | without them there is no 📌 button and no bookmark import |
@@ -42,7 +63,7 @@ history, per-feed stats for the last 30 days (to decide which Miniflux feeds to 
 whose cost is in neither the gateway's `x-litellm-response-cost` header nor `FeedEater:Llm:Prices` shows as "cost unknown", not as free).
 It needs no JavaScript and loads nothing from other hosts (CSP `default-src 'none'`).
 
-Sign in at `/ui/login` with the same value as `Mcp:Token`. The session is an HttpOnly, SameSite=Strict cookie signed with a key
+`/ui/setup` shows the same checks as `doctor`. Sign in at `/ui/login` with the same value as `Mcp:Token`. The session is an HttpOnly, SameSite=Strict cookie signed with a key
 derived from that token (30 days; changing the token signs everyone out). Every POST also checks that Origin or Referer
 names the request's own host and carries a per-session anti-forgery value. Logins are limited to 5 a minute. With no
 `Mcp:Token` every `/ui` route answers 503. `FeedEater:Llm:MonthlyBudget` (USD, default 0 = none) adds a budget line to `/ui/usage`.
