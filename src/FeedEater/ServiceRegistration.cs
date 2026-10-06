@@ -84,7 +84,7 @@ public static class ServiceRegistration
         services.AddHttpClient<GitHubStarsClient>((sp, http) =>
         {
             http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.4.0");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.5.0");
         });
 
         services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(SafeFetcher.CreateHandler);

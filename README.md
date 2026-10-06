@@ -64,6 +64,31 @@ changed or cleared there. The top of Today has "the day in brief", built from th
 - **Weekly review.** Sundays 18:30 Kyiv (only with a Telegram token): counts, top 5 👍, ratings per project, ideas filed, the 3
   feeds that earned most 👍 and 3 mute candidates. Stored in `weekly` and shown at `/ui/weekly`. No model call.
 
+## v0.5 additions
+
+- **Linked pages.** Reddit and Hacker News link posts are teasers, so for recent ones with a short text feed-eater fetches the page they
+  link to (and the top 5 HN comments) and gives it to triage and read, fenced as untrusted data. The fetcher refuses private, loopback,
+  link-local, tailnet and metadata addresses, pins the connection to the address it checked, follows at most 3 redirects, reads at most
+  1 MB of html or text in 10 s, and keeps to 1 request a second per host and `FeedEater:Fetch:MaxPerDay` (400). Every rule is in
+  [docs/specs/2026-10-06-page-fetch.md](docs/specs/2026-10-06-page-fetch.md). Tune with `FeedEater:Fetch:*` (`MaxPerPoll`, `BlockedHosts`).
+- **Release watch.** What you run comes from `FeedEater:Watch:Source`: a PINS.md file path or an https URL (for the private repo, the
+  GitHub contents API URL plus `FeedEater:Watch:Token`); unset or failing, it uses the static `config/watch.json`. `config/watch-map.json`
+  maps images to upstream GitHub repos (add rows for more). A release newer than the pinned version is read by the model (what changed,
+  breaking yes/no/unknown with a quote); one that mentions security, a CVE, a vulnerability or breaking goes to Telegram on its own,
+  the rest in the digest header. `/ui/releases` lists products and releases. Each release is announced once; nothing is applied.
+- **📌 Save** (Telegram, Today, Posts, Feedback, item page) bookmarks the link in Karakeep once. Karakeep being down gives a notice.
+- **Suggested feeds** on `/ui/sources`: domains behind your 👍 items that no subscribed feed covers, with the feed URL found on the
+  homepage (3 domains per poll, rechecked after 30 days). Subscribe in Miniflux yourself.
+- **Prompt eval.** `dotnet FeedEater.dll eval --max-usd 0.25 [--max-items 40] [--reads] [--out report.md]` re-runs the current prompts
+  over your voted items and prints how relevance agrees with the votes and how often "new" appears with no version or date. It says when
+  there are too few votes (under 10 up and 10 down in the sample) and stops at the spend limit.
+- **Taste learning, guarded.** `dotnet FeedEater.dll taste` is an offline report (held-out agreement of a learned model against the
+  current ranking). `FeedEater:Taste:Learn` (default false) adds a bounded learned term; with under 100 votes (10 of each kind) it
+  refuses and the digest header says so. The default ranking is unchanged.
+- **Quiet hours.** `FeedEater:Quiet:From` and `To` (local time, default none) hold the scheduled digest, the weekly review and release
+  alerts. `/quiet` (or `/quiet on|off|status`) and a button on Today toggle it by hand; `/digest` still works. Driving it from the
+  senses service is a follow-up.
+
 ## Running a digest on demand
 
 The scheduled digest runs once a day inside 07:30 to 12:00 Kyiv time. To run one outside that:
