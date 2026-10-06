@@ -28,7 +28,7 @@ public sealed class FeedsCommand(FeedStore feeds, FeedManager manager)
         {
             { Ok: false } => $"Not added: {E(result.Error!)}",
             { Existing: true } => $"Already subscribed: {E(result.Title)}.",
-            _ => $"Added {E(result.Title)}; {result.Items} recent entries stored.",
+            _ => $"Added {E(result.Title)}; {result.Items} recent {(result.Items == 1 ? "entry" : "entries")} stored.",
         };
     }
 
