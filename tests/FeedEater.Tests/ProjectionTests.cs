@@ -34,6 +34,24 @@ public class ProjectionTests
     }
 
     [Fact]
+    public void A_large_set_is_fitted_on_a_subset_and_every_point_is_still_projected()
+    {
+        var grid = (from x in Enumerable.Range(0, 50) from y in Enumerable.Range(0, 30) select (x: (double)x, y: y / 5.0)).ToList();
+        var points = Projection.Project(grid.Select(g => OnPlane(g.x, g.y)).ToList());
+
+        Assert.Equal(1500, points.Count);
+        Assert.True(Math.Abs(Correlation(points.Select(p => p.X).ToList(), grid.Select(g => g.x).ToList())) > 0.999);
+        Assert.True(Math.Abs(Correlation(points.Select(p => p.Y).ToList(), grid.Select(g => g.y).ToList())) > 0.99);
+    }
+
+    private static double Correlation(IReadOnlyList<double> a, IReadOnlyList<double> b)
+    {
+        var ma = a.Average();
+        var mb = b.Average();
+        return a.Zip(b, (x, y) => (x - ma) * (y - mb)).Sum() / Math.Sqrt(a.Sum(x => (x - ma) * (x - ma)) * b.Sum(y => (y - mb) * (y - mb)));
+    }
+
+    [Fact]
     public void The_same_input_gives_the_same_points()
     {
         var vectors = Enumerable.Range(0, 20).Select(i => OnPlane(Math.Sin(i), Math.Cos(i * 3))).ToList();
