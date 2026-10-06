@@ -56,6 +56,14 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Cluster:Threshold` | `0.84` | Cosine similarity at or above which items from different feeds count as one story. Raise it if unrelated items merge, lower it (0.82) if one story shows up twice. |
 | `FeedEater:Cluster:WindowDays` | `3` | Items published within this many days of each other can join one story. |
 
+## Duel
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Duel:Enabled` | `true` | False turns the twice-daily duel off: two unvoted items in one message, one tap picks the one you would rather read. Needs the Telegram bot. |
+| `FeedEater:Duel:PerDay` | `2` | Most duels sent per local day; later slots of the day are skipped. |
+| `FeedEater:Duel:Times` | `12:30,20:30` | Local times a duel is sent, comma separated (HH:mm). A slot missed while the service was down is sent only within 2 hours of its time. |
+
 ## Fetch
 
 | Key | Default | Description |

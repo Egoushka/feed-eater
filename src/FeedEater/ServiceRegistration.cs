@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using FeedEater.Digest;
+using FeedEater.Duels;
 using FeedEater.Eval;
 using FeedEater.Fetch;
 using FeedEater.Ingest;
@@ -48,6 +49,7 @@ public static class ServiceRegistration
         services.AddSingleton<SignalStore>();
         services.AddSingleton<WeeklyStore>();
         services.AddSingleton<ReleaseStore>();
+        services.AddSingleton<DuelStore>();
         services.AddSingleton<QuietHours>();
         services.AddSingleton<UsageStore>();
         services.AddSingleton<IUsageSink>(sp => sp.GetRequiredService<UsageStore>());
@@ -163,6 +165,11 @@ public static class ServiceRegistration
             if (telegram)
             {
                 services.AddHostedService<WeeklyReview>();
+                if (settings.Duel.Enabled)
+                {
+                    services.AddHostedService<DuelJob>();
+                }
+
                 services.AddHostedService<TelegramPoller>();
             }
         }

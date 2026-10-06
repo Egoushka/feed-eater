@@ -44,6 +44,7 @@ public sealed class FeedEaterOptions
     public WatchOptions Watch { get; set; } = new();
     public TasteOptions Taste { get; set; } = new();
     public QuietOptions Quiet { get; set; } = new();
+    public DuelOptions Duel { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -147,6 +148,19 @@ public sealed class QuietOptions
     /// <summary>How long a manual "quiet on" lasts.</summary>
     [Description("Hours a manual /quiet on lasts.")]
     public int ManualHours { get; set; } = 12;
+}
+
+public sealed class DuelOptions
+{
+    [Description("False turns the twice-daily duel off: two unvoted items in one message, one tap picks the one you would rather read. Needs the Telegram bot.")]
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>A string, not a list: the configuration binder appends to a list default instead of replacing it.</summary>
+    [Description("Local times a duel is sent, comma separated (HH:mm). A slot missed while the service was down is sent only within 2 hours of its time.")]
+    public string Times { get; set; } = "12:30,20:30";
+
+    [Description("Most duels sent per local day; later slots of the day are skipped.")]
+    public int PerDay { get; set; } = 2;
 }
 
 public sealed class TasteOptions

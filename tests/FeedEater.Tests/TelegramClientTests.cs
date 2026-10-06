@@ -40,6 +40,21 @@ public sealed class TelegramClientTests
     }
 
     [Fact]
+    public async Task Edit_text_sends_html_for_the_message_and_no_buttons()
+    {
+        var (client, handler) = Build("""{"ok":true,"result":true}""");
+
+        await client.EditTextAsync(42, 7, "You picked &lt;x&gt;", default);
+
+        var call = handler.Calls.Single();
+        Assert.Equal("http://tg/botT/editMessageText", call.Uri);
+        Assert.Contains("\"message_id\":7", call.Body, StringComparison.Ordinal);
+        Assert.Contains("\"parse_mode\":\"HTML\"", call.Body, StringComparison.Ordinal);
+        Assert.Equal("You picked &lt;x&gt;", System.Text.Json.JsonDocument.Parse(call.Body).RootElement.GetProperty("text").GetString());
+        Assert.DoesNotContain("reply_markup", call.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Not_ok_becomes_TelegramException_with_the_description()
     {
         var (client, _) = Build("""{"ok":false,"error_code":400,"description":"Bad Request: message is not modified"}""");

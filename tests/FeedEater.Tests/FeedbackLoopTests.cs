@@ -69,7 +69,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var feedback = new FeedbackStore(pg.Db);
         IIdeaSink sink = _localIdeas ? new LocalIdeaSink() : new PlaneIdeaSink(new PlaneClient(planeStub.Client("http://plane/"), options), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
-        var handler = new CallbackHandler(telegram, feedback, filer, items, new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
+        var handler = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
         // Embeddings fail, so search falls back to keywords; chat answers with the next _chat reply.
         var embedder = new StubHandler((request, body) =>
         {
