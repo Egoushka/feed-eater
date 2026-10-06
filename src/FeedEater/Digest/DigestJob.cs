@@ -8,9 +8,9 @@ using FeedEater.Telegram;
 
 namespace FeedEater.Digest;
 
-/// <summary>Runs the digest inside the 07:30–12:00 window; a failure is reported once on Telegram and retried with backoff.</summary>
+/// <summary>Runs the digest inside the 07:30–12:00 window, held while quiet hours are in effect (a digest asked for by hand is not); a failure is reported once on Telegram and retried with backoff.</summary>
 public sealed class DigestJob(
-    DigestRun run, DigestStore digests, TelegramClient telegram, DigestTrigger trigger,
+    DigestRun run, DigestStore digests, TelegramClient telegram, DigestTrigger trigger, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<DigestJob> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -42,6 +42,8 @@ public sealed class DigestJob(
             throw;
         }
     }
+
+    protected override async Task<bool> HoldAsync(CancellationToken ct) => await quiet.IsQuietAsync(ct);
 
     protected override async Task RunAsync(string key, CancellationToken ct)
     {

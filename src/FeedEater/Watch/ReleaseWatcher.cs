@@ -16,7 +16,7 @@ namespace FeedEater.Watch;
 /// own; the rest ride in the next digest header. Each release is recorded and announced once. Nothing is ever applied.
 /// </summary>
 public sealed partial class ReleaseWatcher(
-    WatchSource source, ItemStore items, ReleaseStore releases, LiteLlmClient llm, TelegramClient telegram,
+    WatchSource source, ItemStore items, ReleaseStore releases, LiteLlmClient llm, TelegramClient telegram, QuietHours quiet,
     IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<ReleaseWatcher> logger)
     : PollingLoop(health, time, logger)
 {
@@ -105,9 +105,9 @@ public sealed partial class ReleaseWatcher(
 
     private async Task AnnounceAsync(WatchedProduct product, ReleaseRow row, CancellationToken ct)
     {
-        if (options.Value.Telegram.Token.Length == 0)
+        if (options.Value.Telegram.Token.Length == 0 || await quiet.IsQuietAsync(ct))
         {
-            return;
+            return;   // left for the next digest
         }
 
         try

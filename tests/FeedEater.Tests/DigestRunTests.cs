@@ -138,7 +138,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private DigestJob BuildJob(DigestRun run, DigestStore digests, StubHandler notices, IOptions<FeedEaterOptions> options, FakeTimeProvider time) =>
         new(run, digests, new TelegramClient(notices.Client("http://tg/botT/")), new DigestTrigger(new CursorStore(pg.Db), options, time),
-            new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DigestJob>.Instance);
+            new QuietHours(new CursorStore(pg.Db), options, time), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DigestJob>.Instance);
 
     private async Task SeedAsync()
     {
@@ -593,5 +593,49 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await run.RunAsync(Today, default);
 
         Assert.DoesNotContain("Learned taste", _sent[0], StringComparison.Ordinal);
+    }
+
+    private static IOptions<FeedEaterOptions> QuietOptions() => Options.Create(new FeedEaterOptions
+    {
+        ProfilePath = "Fixtures/profile.json",
+        Telegram = new TelegramOptions { AllowedUserId = 42 },
+        Quiet = new FeedEater.QuietOptions { From = new TimeSpan(22, 0, 0), To = new TimeSpan(8, 0, 0) },
+    });
+
+    [Fact]
+    public async Task A_due_digest_waits_for_quiet_hours_to_end_and_then_runs_once()
+    {
+        await SeedAsync();
+        var (run, digests, _) = Build();
+        var options = QuietOptions();
+        var time = new FakeTimeProvider(Now);   // 07:30 Kyiv, inside 22:00 to 08:00
+        var job = BuildJob(run, digests, new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""")), options, time);
+
+        await job.TickAsync(default);
+        await job.TickAsync(default);
+        Assert.Empty(_sent);
+        Assert.Null(await digests.GetAsync(Today, default));
+
+        time.Advance(TimeSpan.FromMinutes(35));   // 08:05
+        await job.TickAsync(default);
+        await job.TickAsync(default);
+
+        Assert.Equal(3, _sent.Count);
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+    }
+
+    [Fact]
+    public async Task A_digest_asked_for_by_hand_is_not_held_by_quiet_hours()
+    {
+        await SeedAsync();
+        var (run, digests, _) = Build();
+        var options = QuietOptions();
+        var time = new FakeTimeProvider(Now);
+        var job = BuildJob(run, digests, new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""")), options, time);
+        await new DigestTrigger(new CursorStore(pg.Db), options, time).RequestAsync(false, default);
+
+        await job.TickAsync(default);
+
+        Assert.Equal(3, _sent.Count);
     }
 }

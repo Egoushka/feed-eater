@@ -62,7 +62,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var handler = new CallbackHandler(telegram, feedback, filer, items, new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
         var embedder = new StubHandler((_, _) => StubHandler.Json("{}", System.Net.HttpStatusCode.ServiceUnavailable));   // search falls back to keywords
         var llm = new FeedEater.Llm.LiteLlmClient(embedder.Client("http://llm/"), new UsageStore(pg.Db), options);
-        var commands = new CommandHandler(telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new FeedEater.Search.ArchiveSearch(items, llm), options);
+        var commands = new CommandHandler(telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new QuietHours(new CursorStore(pg.Db), options, TimeProvider.System), new FeedEater.Search.ArchiveSearch(items, llm), options);
         var poller = new TelegramPoller(telegram, handler, commands, new CursorStore(pg.Db), new LoopHealth(TimeProvider.System), TimeProvider.System, NullLogger<TelegramPoller>.Instance);
         return (poller, planeStub);
     }
@@ -427,5 +427,33 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("no link to save", Answers(), StringComparison.Ordinal);
         Assert.Empty(_karakeepBodies);
         Assert.False((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
+    }
+
+    [Theory]
+    [InlineData("/quiet", "Quiet mode is on until")]
+    [InlineData("/quiet on", "Quiet mode is on until")]
+    [InlineData("/quiet off", "Quiet mode is off.")]
+    [InlineData("/quiet status", "Quiet mode is off.")]
+    [InlineData("/quiet maybe", "Usage: /quiet")]
+    public async Task The_quiet_command_toggles_and_reports(string text, string expected)
+    {
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 42, text)}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.StartsWith(expected, Assert.Single(Replies()).Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Only_the_owner_can_change_quiet_mode()
+    {
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Message(10, 999, "/quiet on")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Empty(Replies());
+        Assert.Null(await new CursorStore(pg.Db).GetAsync("quiet:manual", default));
     }
 }

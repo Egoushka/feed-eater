@@ -96,6 +96,7 @@ public static class UiEndpoints
         secured.MapPost("/vote", h.VoteAsync);
         secured.MapPost("/feeds/mute", h.MuteFeedAsync);
         secured.MapPost("/digest/run", h.RunDigestAsync);
+        secured.MapPost("/quiet", h.QuietAsync);
         secured.MapPost("/logout", UiHandlers.Logout);
         return app;
     }

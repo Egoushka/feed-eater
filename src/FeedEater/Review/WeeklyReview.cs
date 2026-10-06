@@ -7,12 +7,14 @@ namespace FeedEater.Review;
 
 /// <summary>Sundays at 18:30 Kyiv: the week's figures to Telegram and into /ui/weekly. Runs once per Sunday; a missed one runs at start.</summary>
 public sealed class WeeklyReview(
-    WeeklyStore weekly, TelegramClient telegram,
+    WeeklyStore weekly, TelegramClient telegram, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<WeeklyReview> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
     protected override string Name => "weekly-review";
     protected override string? DueKey(DateTime localNow) => Schedule.LatestWeekly(localNow, DayOfWeek.Sunday, new TimeSpan(18, 30, 0));
+
+    protected override async Task<bool> HoldAsync(CancellationToken ct) => await quiet.IsQuietAsync(ct);
 
     protected override async Task RunAsync(string key, CancellationToken ct)
     {

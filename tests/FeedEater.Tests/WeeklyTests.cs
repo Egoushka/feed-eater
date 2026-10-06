@@ -160,7 +160,7 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
             sent.Add(body);
             return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
         });
-        return (new WeeklyReview(new WeeklyStore(pg.Db), new TelegramClient(stub.Client("http://tg/botT/")), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<WeeklyReview>.Instance), time, sent);
+        return (new WeeklyReview(new WeeklyStore(pg.Db), new TelegramClient(stub.Client("http://tg/botT/")), new QuietHours(new CursorStore(pg.Db), options, time), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<WeeklyReview>.Instance), time, sent);
     }
 
     [Fact]
@@ -200,5 +200,20 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
 
         var row = (await new WeeklyStore(pg.Db).LatestAsync(default))!;
         Assert.Null(row.SentAt);   // stored, not marked sent, so the UI has it and the job retries
+    }
+
+    [Fact]
+    public async Task The_review_waits_out_quiet_hours()
+    {
+        await SeedWeekAsync();
+        var (job, time, sent) = BuildJob(Until.AddMinutes(1));
+        await new CursorStore(pg.Db).SetAsync("quiet:manual", $"on|{Until.AddHours(2):O}", default);
+
+        await job.TickAsync(default);
+        Assert.Empty(sent);
+
+        time.Advance(TimeSpan.FromHours(3));
+        await job.TickAsync(default);
+        Assert.Single(sent);
     }
 }

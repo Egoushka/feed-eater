@@ -26,6 +26,7 @@ public sealed class FeedEaterOptions
     public FetchOptions Fetch { get; set; } = new();
     public WatchOptions Watch { get; set; } = new();
     public TasteOptions Taste { get; set; } = new();
+    public QuietOptions Quiet { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 }
@@ -82,6 +83,17 @@ public sealed class WatchOptions
 
     /// <summary>Image to upstream GitHub repo map; empty means config/watch-map.json beside the app.</summary>
     public string MapPath { get; set; } = "";
+}
+
+public sealed class QuietOptions
+{
+    /// <summary>Local time (in <c>FeedEater:TimeZone</c>) at which quiet hours start; both From and To must be set. A window may cross midnight.</summary>
+    public TimeSpan? From { get; set; }
+
+    public TimeSpan? To { get; set; }
+
+    /// <summary>How long a manual "quiet on" lasts.</summary>
+    public int ManualHours { get; set; } = 12;
 }
 
 public sealed class TasteOptions

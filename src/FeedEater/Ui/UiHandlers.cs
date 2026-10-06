@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
 using FeedEater.Fetch;
+using FeedEater.Loops;
 using FeedEater.Search;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -13,7 +14,7 @@ namespace FeedEater.Ui;
 
 public sealed class UiHandlers(
     ItemStore items, DigestStore digests, FeedbackStore feedback, ProfileStore profiles, UsageStore usage, ArchiveSearch search,
-    CallbackHandler callbacks, FeedDiscoverer discovery, WeeklyStore weekly, WatchSource watch, ReleaseStore releases, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
+    CallbackHandler callbacks, FeedDiscoverer discovery, QuietHours quiet, WeeklyStore weekly, WatchSource watch, ReleaseStore releases, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
     IOptions<FeedEaterOptions> options, TimeProvider time)
 {
     private const int SearchLimit = 30;
@@ -85,7 +86,7 @@ public sealed class UiHandlers(
             latest is { Status: "sent" } && latest.LocalDate == today,
             pending is null ? null : pending.Resend ? "A send-again" : "A",
             await trigger.LastResultAsync(ct));
-        return Html(UiPages.Today(p, latest, latest is null ? [] : await ShownAsync(latest, ct), await FiguresAsync(ct), run));
+        return Html(UiPages.Today(p, latest, latest is null ? [] : await ShownAsync(latest, ct), await FiguresAsync(ct), run, await quiet.StatusAsync(ct)));
     }
 
     public async Task<IResult> DigestAsync(HttpContext ctx, string date, CancellationToken ct)
@@ -255,6 +256,18 @@ public sealed class UiHandlers(
         }
 
         return await items.SetFeedMutedAsync(feed, form["mute"] == "1", ct) ? SeeOther(ctx, SafeBack(form["back"])) : NotFound(Context(ctx));
+    }
+
+    public async Task<IResult> QuietAsync(HttpContext ctx, CancellationToken ct)
+    {
+        var mode = (await ctx.Request.ReadFormAsync(ct))["mode"].ToString();
+        if (mode is not ("on" or "off"))
+        {
+            return Results.BadRequest();
+        }
+
+        await quiet.SetAsync(mode == "on", ct);
+        return SeeOther(ctx, "/ui?notice=" + (mode == "on" ? "quiet-on" : "quiet-off"));
     }
 
     public async Task<IResult> RunDigestAsync(HttpContext ctx, CancellationToken ct)

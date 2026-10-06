@@ -233,7 +233,7 @@ public sealed class ReleaseWatcherTests(PostgresFixture pg) : IAsyncLifetime
         return new ReleaseWatcher(
             new WatchSource(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://x/"), options, NullLogger<WatchSource>.Instance),
             new ItemStore(pg.Db), new ReleaseStore(pg.Db), new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
-            new TelegramClient(tg.Client("http://tg/botT/")), options, new LoopHealth(time), time, NullLogger<ReleaseWatcher>.Instance);
+            new TelegramClient(tg.Client("http://tg/botT/")), new QuietHours(new CursorStore(pg.Db), options, time), options, new LoopHealth(time), time, NullLogger<ReleaseWatcher>.Instance);
     }
 
     private async Task<long> ReleaseItemAsync(string repo, string tag, string notes = "Bug fixes.", double hoursAgo = 2)
@@ -313,6 +313,19 @@ public sealed class ReleaseWatcherTests(PostgresFixture pg) : IAsyncLifetime
         _llmDown = false;
         Assert.Equal(1, await watcher.RunAsync(default));
         Assert.Single(_telegram);
+    }
+
+    [Fact]
+    public async Task During_quiet_hours_an_urgent_release_is_recorded_but_not_sent_and_goes_in_the_digest()
+    {
+        await ReleaseItemAsync("juanfont/headscale", "v0.30.0", "Security fix.");
+        await new CursorStore(pg.Db).SetAsync("quiet:manual", $"on|{Now.AddHours(2):O}", default);
+
+        await Build().RunAsync(default);
+
+        Assert.Empty(_telegram);
+        Assert.Null(Assert.Single(await RowsAsync()).AnnouncedAt);
+        Assert.Single(await new ReleaseStore(pg.Db).TakeForDigestAsync("2026-10-06", default));
     }
 
     [Fact]

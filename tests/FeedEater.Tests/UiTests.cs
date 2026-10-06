@@ -903,4 +903,23 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
     {
         Assert.Contains("Nothing to suggest yet", await GetAsync("/ui/sources", await LoginAsync()), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Today_shows_quiet_mode_and_the_button_toggles_it()
+    {
+        var cookie = await LoginAsync();
+        var page = await GetAsync("/ui", cookie);
+        Assert.Contains("Quiet mode is off.", page, StringComparison.Ordinal);
+        Assert.Contains("Turn quiet mode on", page, StringComparison.Ordinal);
+
+        var on = await PostAsync("/ui/quiet", cookie, ("mode", "on"));
+        Assert.Equal("/ui?notice=quiet-on", on.Headers.Location!.OriginalString);
+        var quiet = await GetAsync("/ui", cookie);
+        Assert.Contains("Quiet mode is on until", quiet, StringComparison.Ordinal);
+        Assert.Contains("Turn quiet mode off", quiet, StringComparison.Ordinal);
+
+        await PostAsync("/ui/quiet", cookie, ("mode", "off"));
+        Assert.Contains("Turn quiet mode on", await GetAsync("/ui", cookie), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/ui/quiet", cookie, ("mode", "sideways"))).StatusCode);
+    }
 }

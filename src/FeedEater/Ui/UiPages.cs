@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using FeedEater.Digest;
 using FeedEater.Fetch;
+using FeedEater.Loops;
 using FeedEater.Storage;
 using FeedEater.Watch;
 using static FeedEater.Ui.Html;
@@ -71,6 +72,8 @@ public static class UiPages
         ["save-down"] = "Karakeep is not reachable; nothing was saved. Try again later.",
         ["save-off"] = "Karakeep is not configured, so nothing was saved.",
         ["save-refused"] = "This item has no web link to save.",
+        ["quiet-on"] = "Quiet mode is on.",
+        ["quiet-off"] = "Quiet mode is off.",
         ["digest-off"] = "The digest job is off: Telegram is not configured.",
     };
 
@@ -96,13 +99,18 @@ public static class UiPages
     public static string Message(PageContext p, string title, string text) =>
         Layout(p, title, null, $"<h1>{E(title)}</h1><p>{E(text)}</p>");
 
-    public static string Today(PageContext p, DigestRow? digest, IReadOnlyList<ItemView> items, Figures figures, RunPanel run)
+    public static string Today(PageContext p, DigestRow? digest, IReadOnlyList<ItemView> items, Figures figures, RunPanel run, QuietStatus? quiet = null)
     {
         var h = new StringBuilder();
         h.Append("<h1>Today</h1>");
         Brief(h, items);
         Stats(h, figures);
         RunControls(h, p, run);
+        if (quiet is not null)
+        {
+            QuietControls(h, p, quiet);
+        }
+
         if (digest is null)
         {
             h.Append("<p class=\"empty\">No digest yet.</p>");
@@ -653,6 +661,13 @@ public static class UiPages
             .Append($"<div><dt>Spend this month</dt><dd>{Money(f.MonthSpend)}{(f.Budget > 0 ? $" <span class=\"muted\">of {Money(f.Budget)}</span>" : "")}</dd></div>")
             .Append($"<div><dt>7-day 👍 rate</dt><dd>{Percent(f.WeekUpRate)}</dd></div>")
             .Append($"<div><dt>Yesterday</dt><dd>👍 {N(f.Yesterday.Up)} · 👎 {N(f.Yesterday.Down)}</dd></div></dl>");
+    }
+
+    private static void QuietControls(StringBuilder h, PageContext p, QuietStatus quiet)
+    {
+        h.Append($"<section class=\"panel\" aria-labelledby=\"quiet-h\"><h2 id=\"quiet-h\">Quiet mode</h2><p role=\"status\">{E(quiet.Text)} While it is on, the digest, the weekly review and release alerts wait.</p>")
+            .Append($"<form method=\"post\" action=\"/ui/quiet\" class=\"inline\"><input type=\"hidden\" name=\"_csrf\" value=\"{E(p.Csrf)}\"><input type=\"hidden\" name=\"mode\" value=\"{(quiet.Quiet ? "off" : "on")}\">")
+            .Append($"<button type=\"submit\">{(quiet.Quiet ? "Turn quiet mode off" : "Turn quiet mode on")}</button></form></section>");
     }
 
     private static void RunControls(StringBuilder h, PageContext p, RunPanel run)

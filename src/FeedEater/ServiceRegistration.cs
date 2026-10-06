@@ -45,6 +45,7 @@ public static class ServiceRegistration
         services.AddSingleton<SignalStore>();
         services.AddSingleton<WeeklyStore>();
         services.AddSingleton<ReleaseStore>();
+        services.AddSingleton<QuietHours>();
         services.AddSingleton<UsageStore>();
         services.AddSingleton<IUsageSink>(sp => sp.GetRequiredService<UsageStore>());
         services.AddSingleton<LoopHealth>();

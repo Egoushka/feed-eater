@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
+using FeedEater.Loops;
 using FeedEater.Search;
 
 namespace FeedEater.Telegram;
@@ -10,7 +11,7 @@ namespace FeedEater.Telegram;
 /// /digest and /digest resend, /search text, and plain text as a search, from the allowed user only; anyone else is ignored
 /// without a reply. Each search hit is its own message so it carries its own 👍 👎 💡 buttons.
 /// </summary>
-public sealed class CommandHandler(TelegramClient telegram, DigestTrigger trigger, ArchiveSearch search, IOptions<FeedEaterOptions> options)
+public sealed class CommandHandler(TelegramClient telegram, DigestTrigger trigger, QuietHours quiet, ArchiveSearch search, IOptions<FeedEaterOptions> options)
 {
     private const int MaxResults = 5;
     private const int MaxQuery = 300;
@@ -33,6 +34,9 @@ public sealed class CommandHandler(TelegramClient telegram, DigestTrigger trigge
         {
             case "/digest":
                 await DigestAsync(message, words.Length == 2 ? words[1] : null, ct);
+                break;
+            case "/quiet":
+                await QuietAsync(message, words.Length == 2 ? words[1] : null, ct);
                 break;
             case "/search":
                 if (words.Length < 2)
@@ -57,6 +61,21 @@ public sealed class CommandHandler(TelegramClient telegram, DigestTrigger trigge
         var resend = argument is not null;
         await trigger.RequestAsync(resend, ct);
         await ReplyAsync(message, resend ? "Queued: today's digest will be sent again within a minute." : "Queued: the digest starts within a minute.", ct);
+    }
+
+    private async Task QuietAsync(TgMessage message, string? argument, CancellationToken ct)
+    {
+        var status = argument switch
+        {
+            null => await quiet.ToggleAsync(ct),
+            "on" => await quiet.SetAsync(true, ct),
+            "off" => await quiet.SetAsync(false, ct),
+            "status" => await quiet.StatusAsync(ct),
+            _ => null,
+        };
+        await ReplyAsync(message, status is null
+            ? "Usage: /quiet toggles, or /quiet on, /quiet off, /quiet status."
+            : $"{WebUtility.HtmlEncode(status.Text)}{(status.Quiet ? " The digest, the weekly review and release alerts wait; /digest still works." : "")}", ct);
     }
 
     private async Task SearchAsync(TgMessage message, string query, CancellationToken ct)
