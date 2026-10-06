@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
+using FeedEater.Follow;
 using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Ranking;
@@ -11,14 +12,14 @@ using FeedEater.Sources;
 namespace FeedEater.Telegram;
 
 /// <summary>
-/// /digest and /digest resend, /search text, /ask question, /quiet, /learn, /feeds, plain text as a search (or, ending in "?", a question),
+/// /digest and /digest resend, /search text, /ask question, /quiet, /learn, /feeds, /follows, /unfollow, plain text as a search (or, ending in "?", a question),
 /// and replies to an item, from the allowed user only; anyone else is ignored without a reply. While no user is allowed yet
 /// (<c>AllowedUserId</c> 0) only /start is answered, with the sender's own id. Each search hit is its own message so
 /// it carries its own 👍 👎 💡 buttons.
 /// </summary>
 public sealed class CommandHandler(
     TelegramClient telegram, DigestTrigger trigger, QuietHours quiet, ArchiveSearch search, ArchiveAnswer answers, ReplyHandler replies,
-    TasteSwitch taste, IOptions<FeedEaterOptions> options, FeedsCommand? feeds = null)
+    TasteSwitch taste, IOptions<FeedEaterOptions> options, FeedsCommand? feeds = null, StoryFollower? follower = null)
 {
     private const int MaxResults = 5;
     private const int MaxQuery = 300;
@@ -41,6 +42,10 @@ public sealed class CommandHandler(
             if (message.ReplyToItemId is { } itemId)
             {
                 await replies.HandleAsync(message.ChatId, itemId, Clip(text), ct);
+            }
+            else if (message.ReplyToFollowId is not null)
+            {
+                await ReplyAsync(message, ReplyHandler.Help, ct);
             }
             else if (text.EndsWith('?'))
             {
@@ -83,6 +88,12 @@ public sealed class CommandHandler(
                 break;
             case "/learn":
                 await LearnAsync(message, words.Length == 2 ? words[1] : null, ct);
+                break;
+            case "/follows" when follower is not null:
+                await telegram.SendAsync(message.ChatId, FollowFormatter.List(await follower.ActiveAsync(ct), options.Value.Zone), ct);
+                break;
+            case "/unfollow" when follower is not null:
+                await UnfollowAsync(message, follower, words.Length == 2 ? words[1] : null, ct);
                 break;
             case "/feeds":
                 await ReplyAsync(message, feeds is null
@@ -168,6 +179,22 @@ public sealed class CommandHandler(
         await ReplyAsync(message, WebUtility.HtmlEncode(status ?? "Usage: /learn status, /learn on, /learn off. On adds the learned term to the ranking from the next digest."), ct);
     }
 
+    /// <summary>Stops the follow named by its id, or the only one there is; otherwise lists them with their stop buttons.</summary>
+    private async Task UnfollowAsync(TgMessage message, StoryFollower stories, string? argument, CancellationToken ct)
+    {
+        var active = await stories.ActiveAsync(ct);
+        var target = argument is null
+            ? active.Count == 1 ? active[0] : null
+            : active.FirstOrDefault(f => f.Id.ToString(CultureInfo.InvariantCulture) == argument);
+        if (target is null)
+        {
+            await telegram.SendAsync(message.ChatId, FollowFormatter.List(active, options.Value.Zone), ct);
+            return;
+        }
+
+        await stories.CloseAsync(target.Id, null, ct);
+    }
+
     private static string Clip(string text) => text.Length <= MaxQuery ? text : text[..MaxQuery];
 
     private async Task SearchAsync(TgMessage message, string query, CancellationToken ct)
@@ -184,7 +211,7 @@ public sealed class CommandHandler(
         foreach (var hit in hits)
         {
             var published = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(hit.PublishedAt, DateTimeKind.Utc), zone).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
-            await telegram.SendAsync(message.ChatId, DigestFormatter.Result(hit, published, ButtonStyle.From(options.Value)), ct);
+            await telegram.SendAsync(message.ChatId, DigestFormatter.Result(hit, published, ButtonStyle.From(options.Value), options.Value.Follow.Enabled), ct);
         }
     }
 

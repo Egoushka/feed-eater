@@ -76,6 +76,15 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Fetch:PageChars` | `6000` | Characters of readable page text kept per item. |
 | `FeedEater:Fetch:ShortChars` | `800` | Only items whose own text is shorter than this many characters get their linked page fetched. |
 
+## Follow
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Follow:Days` | `14` | Days a story is followed before it is closed with a summary. |
+| `FeedEater:Follow:Enabled` | `true` | Follow this story: a 🧵 button on items that sends later items on the same story as replies to one message. False removes the button and the job. |
+| `FeedEater:Follow:MaxActive` | `5` | Stories followed at once. |
+| `FeedEater:Follow:MaxMessages` | `50` | Messages sent per followed story; the follow closes when it is reached. |
+
 ## GitHub
 
 | Key | Default | Description |

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using FeedEater.Digest;
 using FeedEater.Duels;
+using FeedEater.Follow;
 using FeedEater.Ingest;
 using FeedEater.Memory;
 using FeedEater.Plane;
@@ -51,7 +52,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true, extra: AllIntegrations);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob) }, Jobs(host));
     }
 
     [Fact]
@@ -75,7 +76,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob) }, Jobs(host));
     }
 
     [Fact]
@@ -106,6 +107,16 @@ public sealed class CompositionTests
 
         Assert.DoesNotContain(typeof(WeeklyRetain), Jobs(host));
         Assert.DoesNotContain(typeof(ReleaseWatcher), Jobs(host));
+    }
+
+    [Fact]
+    public void The_follow_job_needs_a_bot_token_and_the_setting_on()
+    {
+        using var off = Build(runJobs: true, extra: new Dictionary<string, string?> { ["FeedEater:Follow:Enabled"] = "false" });
+        using var noBot = Build(runJobs: true, telegramToken: "");
+
+        Assert.DoesNotContain(typeof(FollowJob), Jobs(off));
+        Assert.DoesNotContain(typeof(FollowJob), Jobs(noBot));
     }
 
     [Fact]

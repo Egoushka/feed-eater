@@ -356,6 +356,6 @@ public sealed class DigestRun(
             votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n'),
             (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList(), unpriced));
         var style = ButtonStyle.From(options.Value);
-        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null, style))];
+        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null, style, options.Value.Follow.Enabled))];
     }
 }

@@ -181,7 +181,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         await poller.TickAsync(default);
 
         var markup = JsonSerializer.Deserialize<JsonElement>(_telegram.Single(t => t.Method == "editMessageReplyMarkup").Body);
-        Assert.Equal(["👍 ✓", "👎"], markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0].EnumerateArray().Select(b => b.GetProperty("text").GetString()));
+        Assert.Equal(["👍 ✓", "👎", "🧵"], markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0].EnumerateArray().Select(b => b.GetProperty("text").GetString()));
     }
 
     [Fact]

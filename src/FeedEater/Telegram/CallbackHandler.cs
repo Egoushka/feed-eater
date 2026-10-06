@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using System.Text.Json;
 using FeedEater.Digest;
 using FeedEater.Duels;
+using FeedEater.Follow;
 using FeedEater.Plane;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -12,7 +13,7 @@ public enum SaveOutcome { Saved, AlreadySaved, NotConfigured, Down, Refused, NoI
 
 public sealed class CallbackHandler(
     TelegramClient telegram, FeedbackStore feedback, IdeaFiler ideas, ItemStore items, DuelStore duels, KarakeepClient karakeep,
-    IOptions<FeedEaterOptions> options, ILogger<CallbackHandler> logger)
+    IOptions<FeedEaterOptions> options, ILogger<CallbackHandler> logger, StoryFollower? follower = null)
 {
     public async Task HandleAsync(TgCallback callback, CancellationToken ct)
     {
@@ -54,6 +55,14 @@ public sealed class CallbackHandler(
 
             case DuelCallback duel:
                 await DuelAsync(callback, duel, ct);
+                break;
+
+            case FollowCallback follow when follower is not null:
+                await telegram.AnswerAsync(callback.Id, FollowMessage(await follower.StartAsync(follow.ItemId, ct), options.Value.Follow), ct);
+                break;
+
+            case UnfollowCallback stop when follower is not null:
+                await telegram.AnswerAsync(callback.Id, await follower.CloseAsync(stop.FollowId, null, ct) ? "Stopped following" : "Not following this any more", ct);
                 break;
 
             default:
@@ -136,6 +145,15 @@ public sealed class CallbackHandler(
         _ => "No such item",
     };
 
+    public static string FollowMessage(FollowOutcome outcome, FollowOptions limits) => outcome switch
+    {
+        FollowOutcome.Started => $"🧵 Following for {limits.Days} days",
+        FollowOutcome.AlreadyFollowing => "Already following this story",
+        FollowOutcome.TooMany => $"{limits.MaxActive} stories are followed already; stop one with /follows",
+        FollowOutcome.Off => "Following is off",
+        _ => "No such item",
+    };
+
     public Task ClearVoteAsync(long itemId, CancellationToken ct) => feedback.ClearVoteAsync(itemId, ct);
 
     /// <summary>Files the item's suggestion in Plane and counts it as a 👍. The project, or the reason it was not filed.</summary>
@@ -170,7 +188,7 @@ public sealed class CallbackHandler(
         try
         {
             await telegram.EditButtonsAsync(callback.ChatId, callback.MessageId,
-                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved, ButtonStyle.From(options.Value)), ct);
+                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved, ButtonStyle.From(options.Value), options.Value.Follow.Enabled), ct);
         }
         catch (TelegramException ex) when (ex.Message.Contains("not modified", StringComparison.OrdinalIgnoreCase))
         {

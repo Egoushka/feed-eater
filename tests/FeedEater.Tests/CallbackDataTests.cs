@@ -18,6 +18,19 @@ public sealed class CallbackDataTests
         Assert.IsType<NoopCallback>(CallbackData.Parse(CallbackData.Noop));
     }
 
+    [Fact]
+    public void Follow_and_unfollow_round_trip_and_only_follow_names_an_item()
+    {
+        Assert.Equal(new FollowCallback(7), CallbackData.Parse(CallbackData.Follow(7)));
+        Assert.Equal(new UnfollowCallback(3), CallbackData.Parse(CallbackData.Unfollow(3)));
+        Assert.Equal(7, CallbackData.ItemIdOf("f:7"));
+        Assert.Null(CallbackData.ItemIdOf("u:3"));
+        Assert.Equal(3, CallbackData.FollowIdOf("u:3"));
+        Assert.Null(CallbackData.FollowIdOf("f:7"));
+        Assert.Null(CallbackData.FollowIdOf("v:3:u"));
+        Assert.Null(CallbackData.Parse("u:abc"));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -42,4 +55,8 @@ public sealed class CallbackDataTests
     [Fact]
     public void A_duel_button_fits_telegrams_64_byte_limit_for_the_largest_id() =>
         Assert.True(Encoding.UTF8.GetByteCount(CallbackData.Duel(long.MaxValue, 's')) <= 64);
+
+    [Fact]
+    public void Follow_buttons_fit_telegrams_64_byte_limit_for_the_largest_id() =>
+        Assert.True(Encoding.UTF8.GetByteCount(CallbackData.Follow(long.MaxValue)) <= 64 && Encoding.UTF8.GetByteCount(CallbackData.Unfollow(long.MaxValue)) <= 64);
 }

@@ -83,7 +83,7 @@ public static class DigestFormatter
         return new OutMessage(sb.ToString());
     }
 
-    public static OutMessage Item(DigestItem i, short? vote, string? filedIn, ButtonStyle? style = null)
+    public static OutMessage Item(DigestItem i, short? vote, string? filedIn, ButtonStyle? style = null, bool follow = false)
     {
         var title = E(Clip(i.Title, 300));
         var link = IsLinkable(i.Url) ? $"<a href=\"{E(i.Url)}\">{title}</a>" : title;
@@ -108,11 +108,11 @@ public static class DigestFormatter
             }
         }
 
-        return new OutMessage(html.ToString(), Buttons(i.Id, i.Suggestion is not null, vote, filedIn, style: style));
+        return new OutMessage(html.ToString(), Buttons(i.Id, i.Suggestion is not null, vote, filedIn, style: style, follow: follow));
     }
 
     /// <summary>One search hit as its own message, with the same buttons as a digest item.</summary>
-    public static OutMessage Result(SearchHit h, string publishedLocal, ButtonStyle? style = null)
+    public static OutMessage Result(SearchHit h, string publishedLocal, ButtonStyle? style = null, bool follow = false)
     {
         var title = E(Clip(h.Title, 300));
         var link = IsLinkable(h.Url) ? $"<a href=\"{E(h.Url)}\">{title}</a>" : title;
@@ -123,10 +123,11 @@ public static class DigestFormatter
             html.Append("\n\n").Append(E(Clip(h.Summary.Trim(), 240)));
         }
 
-        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn, h.Saved, style));
+        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn, h.Saved, style, follow));
     }
 
-    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn, bool saved = false, ButtonStyle? style = null)
+    /// <summary><paramref name="follow"/> adds 🧵, which follows the item's story; off, the buttons are as before.</summary>
+    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn, bool saved = false, ButtonStyle? style = null, bool follow = false)
     {
         style ??= ButtonStyle.Default;
         var first = new List<Button>
@@ -137,6 +138,11 @@ public static class DigestFormatter
         if (style.CanSave)
         {
             first.Add(saved ? new Button("📌 Saved ✓", CallbackData.Noop) : new Button("📌 Save", CallbackData.Save(id)));
+        }
+
+        if (follow)
+        {
+            first.Add(new Button("🧵", CallbackData.Follow(id)));
         }
 
         var rows = new List<IReadOnlyList<Button>> { first };
