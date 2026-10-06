@@ -15,7 +15,7 @@ namespace FeedEater.Ui;
 
 public sealed class UiHandlers(
     ItemStore items, DigestStore digests, FeedbackStore feedback, ProfileStore profiles, UsageStore usage, ArchiveSearch search,
-    CallbackHandler callbacks, FeedDiscoverer discovery, QuietHours quiet, WeeklyStore weekly, WatchSource watch, ReleaseStore releases, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
+    CallbackHandler callbacks, FeedDiscoverer discovery, QuietHours quiet, WeeklyStore weekly, AutopsyStore autopsy, WatchSource watch, ReleaseStore releases, DigestTrigger trigger, UiSession session, LoginThrottle throttle,
     IOptions<FeedEaterOptions> options, TimeProvider time, SourcesUi? sources = null)
 {
     private const int SearchLimit = 30;
@@ -197,6 +197,26 @@ public sealed class UiHandlers(
         }
 
         return Html(UiPages.Weekly(p, row, await weekly.ListAsync(52, ct)));
+    }
+
+    public async Task<IResult> AutopsyAsync(HttpContext ctx, string? date, CancellationToken ct)
+    {
+        var p = Context(ctx);
+        AutopsyRow? row;
+        if (date is null)
+        {
+            row = await autopsy.LatestAsync(ct);
+        }
+        else if (DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) && await autopsy.GetAsync(date, ct) is { } found)
+        {
+            row = found;
+        }
+        else
+        {
+            return NotFound(p);
+        }
+
+        return Html(UiPages.Autopsy(p, row, await autopsy.ListAsync(24, ct), Settings.GitHub.Enabled && Settings.Telegram.Token.Length > 0));
     }
 
     public async Task<IResult> ReleasesAsync(HttpContext ctx, CancellationToken ct) =>

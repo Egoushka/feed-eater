@@ -65,6 +65,7 @@ public static partial class UiPages
     [
         ("/ui", "Today"), ("/ui/posts", "Posts"), ("/ui/feedback", "Feedback"), ("/ui/search", "Search"), ("/ui/digests", "Digests"), ("/ui/weekly", "Weekly"),
         ("/ui/sources", "Sources"), ("/ui/releases", "Releases"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
+        ("/ui/autopsy", "Autopsy"),
         ("/ui/setup", "Setup"),
     ];
 
