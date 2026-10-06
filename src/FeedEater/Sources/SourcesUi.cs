@@ -71,7 +71,7 @@ public sealed class SourcesUi(FeedStore feeds, FeedManager manager, UiSession se
         "added" => "Feed added.",
         "exists" => "Already subscribed.",
         "removed" => "Feed removed.",
-        "imported" => $"Imported {Count(query["n"])} feeds ({Count(query["dup"])} were already there); they are fetched within a few minutes.",
+        "imported" => $"Imported {Count(query["n"])} feeds ({Count(query["dup"])} were already there); they are fetched within a minute or two.",
         _ => null,
     };
 

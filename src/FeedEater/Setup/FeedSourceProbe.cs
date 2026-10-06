@@ -61,7 +61,7 @@ public sealed class DefaultFeedSourceProbe(FeedDb db, IServiceProvider services,
             }
 
             return fetched == 0
-                ? CheckResult.Warn($"{feeds} {noun}, none fetched yet", "The first fetch runs within a few minutes of start; check again.")
+                ? CheckResult.Warn($"{feeds} {noun}, none fetched yet", "The first fetch runs within a minute or two; check again.")
                 : CheckResult.Ok($"{feeds} {noun}, {fetched} fetched{(failing > 0 ? $", {failing} failing" : "")}");
         }
         catch (PostgresException ex) when (ex.SqlState == NoTable)

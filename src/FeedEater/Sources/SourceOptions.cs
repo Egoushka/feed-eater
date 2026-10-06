@@ -30,5 +30,5 @@ public sealed class SourceOptions
 
     /// <summary>How often the ingest loop looks for feeds that are due.</summary>
     [Description("How often the ingest loop looks for feeds that are due.")]
-    public TimeSpan PollInterval { get; set; } = TimeSpan.FromMinutes(5);
+    public TimeSpan PollInterval { get; set; } = TimeSpan.FromMinutes(1);
 }

@@ -81,7 +81,7 @@ get their article text from the page itself when the digest reads them.
 | `BackfillDays` | 14 | Age limit for the first fetch of a feed |
 | `FeedInterval` | 30 min | Per feed |
 | `MaxBackoff` | 24 h | Longest wait after repeated failures |
-| `PollInterval` | 5 min | How often the ingest loop looks for feeds that are due |
+| `PollInterval` | 1 min | How often the ingest loop looks for feeds that are due |
 
 ## Web UI
 

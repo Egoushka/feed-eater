@@ -146,7 +146,7 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Source:FeedInterval` | `00:30:00` | How often each feed is fetched; repeated failures double the wait up to MaxBackoff. |
 | `FeedEater:Source:Kind` | `builtin` | Where entries come from: builtin (feed-eater reads the feeds itself) or miniflux (copies entries from Miniflux). Switching on a populated database is unsupported. |
 | `FeedEater:Source:MaxBackoff` | `1.00:00:00` | The longest wait between fetches of a feed that keeps failing. |
-| `FeedEater:Source:PollInterval` | `00:05:00` | How often the ingest loop looks for feeds that are due. |
+| `FeedEater:Source:PollInterval` | `00:01:00` | How often the ingest loop looks for feeds that are due. |
 
 ## Taste
 
