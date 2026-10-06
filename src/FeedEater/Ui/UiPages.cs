@@ -65,7 +65,7 @@ public static partial class UiPages
     [
         ("/ui", "Today"), ("/ui/posts", "Posts"), ("/ui/feedback", "Feedback"), ("/ui/search", "Search"), ("/ui/digests", "Digests"), ("/ui/weekly", "Weekly"),
         ("/ui/sources", "Sources"), ("/ui/releases", "Releases"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
-        ("/ui/setup", "Setup"),
+        ("/ui/map", "Map"), ("/ui/setup", "Setup"),
     ];
 
     private static readonly Dictionary<string, string> Notices = new()

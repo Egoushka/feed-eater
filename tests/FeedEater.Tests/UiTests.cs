@@ -141,7 +141,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
     public static TheoryData<string> Pages =>
     [
-        "/ui", "/ui/posts", "/ui/feedback", "/ui/weekly", "/ui/weekly/2026-10-04", "/ui/releases", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage",
+        "/ui", "/ui/posts", "/ui/feedback", "/ui/weekly", "/ui/weekly/2026-10-04", "/ui/releases", "/ui/search", "/ui/search?q=postgres", "/ui/digests", "/ui/sources", "/ui/ideas", "/ui/usage", "/ui/map",
         "/ui/item/1", "/ui/digest/2026-10-05", "/ui/digest/run",
     ];
 

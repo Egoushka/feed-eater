@@ -162,3 +162,11 @@ button.quiet:hover { color: var(--fg); border-color: var(--edge); }
 td .inline { margin: 0; }
 .releases { list-style: none; padding: 0; display: grid; gap: var(--space-3); } .releases li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-3) var(--space-4); }
 code.copy { user-select: all; overflow-wrap: anywhere; background: var(--surface-2); border-radius: 4px; padding: 2px 6px; }
+.map { display: block; width: 100%; max-width: 44rem; height: auto; margin: var(--space-3) 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.map .none { fill: var(--muted); opacity: 0.5; }
+.map .up { fill: var(--good); stroke: var(--bg); stroke-width: 1; }
+.map .down { stroke: var(--bad); stroke-width: 2.5; stroke-linecap: round; }
+.map .unseen { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 4 3; }
+.map text { fill: var(--fg); font: 600 12px var(--font); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; pointer-events: none; }
+.map a:hover .up, .map a:hover .down { stroke: var(--fg); }
+.map a:focus-visible { outline: 3px solid var(--accent); }
