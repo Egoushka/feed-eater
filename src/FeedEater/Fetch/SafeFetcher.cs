@@ -18,7 +18,7 @@ public sealed record FetchResult(FetchOutcome Outcome, string? Body = null, Uri?
 public sealed class SafeFetcher(HttpClient http, IOptions<FeedEaterOptions> options, CursorStore cursors, TimeProvider time, ILogger<SafeFetcher> logger)
 {
     public const string ClientName = "safe-fetch";
-    public const string UserAgent = "feed-eater/0.5.0 (+https://github.com/Egoushka/feed-eater)";
+    public const string UserAgent = "feed-eater/0.5.0";
     private const int MaxRedirects = 3;
     private const int MaxBytes = 1024 * 1024;
     internal static int PruneAbove { get; set; } = 256;

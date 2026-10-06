@@ -5,10 +5,10 @@ using System.Text.Json;
 
 namespace FeedEater.Memory;
 
-/// <summary>Hindsight's retain API, the same body host/opt-homelab/ingest.py sends.</summary>
+/// <summary>Hindsight's retain API.</summary>
 public sealed class HindsightClient(HttpClient http)
 {
-    // Plain JSON to a trusted API, never HTML: the default encoder escapes "+" as \u002B, so "+03:00" would not match ingest.py's body.
+    // Plain JSON to a trusted API, never HTML: the default encoder escapes "+" as \u002B, so "+03:00" would be sent as an escape sequence.
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     public async Task RetainAsync(

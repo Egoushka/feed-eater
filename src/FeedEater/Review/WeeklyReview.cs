@@ -6,7 +6,7 @@ using FeedEater.Telegram;
 
 namespace FeedEater.Review;
 
-/// <summary>Sundays at 18:30 Kyiv: the week's figures to Telegram and into /ui/weekly. Runs once per Sunday; a missed one runs at start.</summary>
+/// <summary>Sundays at 18:30 local time: the week's figures to Telegram and into /ui/weekly. Runs once per Sunday; a missed one runs at start.</summary>
 public sealed class WeeklyReview(
     WeeklyStore weekly, TelegramClient telegram, QuietHours quiet, TasteSwitch taste,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<WeeklyReview> logger)

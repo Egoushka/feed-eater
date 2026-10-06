@@ -4,7 +4,7 @@ namespace FeedEater.Watch;
 
 public sealed record Pinned(string Service, string? Version, string Image);
 
-/// <summary>Reads the rows of homelab-gitops' PINS.md: "| service | version | `image:tag@sha256:...` |".</summary>
+/// <summary>Reads the rows of a PINS.md: "| service | version | `image:tag@sha256:...` |".</summary>
 public static partial class PinsParser
 {
     public static IReadOnlyList<Pinned> Parse(string text)

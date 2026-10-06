@@ -9,11 +9,11 @@ public static partial class Prompts
     public static (string System, string User) Triage(
         string about, IReadOnlyList<Profile> profiles, string title, string feed, string text, int maxChars, string? linked = null) => (
         $$"""
-        You rank news items for one reader. About him: {{about}}
+        You rank news items for one reader. About the reader: {{about}}
         Reply with one JSON object and nothing else:
         {"relevance": 0-3, "project": "<key>" or null, "kind": "improve" | "new" | "fyi", "reason": "<at most 20 words>"}
-        relevance: 3 = he should act on it this week, 2 = worth reading today, 1 = marginal, 0 = noise.
-        kind: improve = changes one of his projects; new = something he could build or adopt separately (new to his stack, not new in the world); fyi = worth knowing only.
+        relevance: 3 = the reader should act on it this week, 2 = worth reading today, 1 = marginal, 0 = noise.
+        kind: improve = changes one of the reader's projects; new = something the reader could build or adopt separately (new to the reader's stack, not new in the world); fyi = worth knowing only.
         Never call a project or product new, recent or just launched unless the item states a release, version or date that supports it.
         project: one of the keys listed, or null.
         {{Untrusted}}
@@ -30,12 +30,12 @@ public static partial class Prompts
     public static (string System, string User) Read(
         string about, IReadOnlyList<Profile> profiles, Profile? match, string title, string url, string feed, string text, int maxChars, string? repoFacts = null, string? linked = null) => (
         $$"""
-        You read one article for one reader and tell him what matters. About him: {{about}}
+        You read one article for one reader and tell them what matters. About the reader: {{about}}
         Reply with one JSON object and nothing else:
-        {"summary": "<at most 2 sentences: what it is and what this item adds>", "why": "<1 sentence: why it matters to him>", "kind": "improve" | "new" | "fyi", "project": "<key>" or null, "suggestion": "<at most 2 sentences: one concrete action>" or null}
+        {"summary": "<at most 2 sentences: what it is and what this item adds>", "why": "<1 sentence: why it matters to the reader>", "kind": "improve" | "new" | "fyi", "project": "<key>" or null, "suggestion": "<at most 2 sentences: one concrete action>" or null}
         Write in English whatever the article's language. Plain words, no hype; if it is a minor release, say so.
         Give a suggestion only when kind is improve (an action in that project) or new (something to build or adopt).
-        kind "new" means new to his stack, not new in the world. Never call a project or product new, recent, launched or just released unless the article states a release, version or date that supports it; a post by the author showing off their own tool is not evidence that the tool is new. Describe what it is and what changed in this item instead.
+        kind "new" means new to the reader's stack, not new in the world. Never call a project or product new, recent, launched or just released unless the article states a release, version or date that supports it; a post by the author showing off their own tool is not evidence that the tool is new. Describe what it is and what changed in this item instead.
         If repository facts are given, trust them over the article's wording about age and activity.
         {{Untrusted}}
         project: one of the keys listed, or null.
@@ -60,33 +60,33 @@ public static partial class Prompts
         """ + "\n" + Untrusted,
         $"""
         Product: {product}
-        He runs: {running}
+        The reader runs: {running}
 
         Release (from a feed, untrusted)
         {Fence($"Released: {released}\n\n{notes}")}
         """);
 
-    /// <summary>His reply to one item, turned into one action. The reply is his; the item is feed data.</summary>
-    public static (string System, string User) Reply(IReadOnlyList<(string Plane, string About)> planeProjects, string title, string feed, string? summary, string reply) => (
+    /// <summary>The reader's reply to one item, turned into one action. The reply is the reader's; the item is feed data.</summary>
+    public static (string System, string User) Reply(IReadOnlyList<(string Project, string About)> projects, string title, string feed, string? summary, string reply) => (
         """
         You turn the reader's short reply to one news item into one action on that item. Reply with one JSON object and nothing else:
-        {"action": "up" | "down" | "idea" | "save" | "mute" | "ask" | "unclear", "project": "<Plane identifier>" or null, "idea": "<text>" or null, "question": "<text>" or null}
-        up / down: he likes or dislikes the item ("good", "more like this", "noise", "not for me").
-        idea: he wants it filed as an idea or task ("file this", "idea for JARVIS", "add to the homelab backlog"). project: the Plane identifier of the project he names, as written in the list, or the name he used if it is not in the list; null when he names none. idea: the idea in his own words when he wrote one beyond the request, else null.
+        {"action": "up" | "down" | "idea" | "save" | "mute" | "ask" | "unclear", "project": "<project identifier>" or null, "idea": "<text>" or null, "question": "<text>" or null}
+        up / down: the reader likes or dislikes the item ("good", "more like this", "noise", "not for me").
+        idea: the reader wants it filed as an idea or task ("file this", "idea for <project>", "add to the backlog"). project: the identifier of the project the reader names, as written in the list, or the name they used if it is not in the list; null when they name none. idea: the idea in the reader's own words when they wrote one beyond the request, else null.
         save: bookmark it or keep it for later.
-        mute: he does not want this feed or source any more.
-        ask: any question or request about the item (summarise, explain, what the comments say, does it matter for X). question: his request restated so it stands alone.
+        mute: the reader does not want this feed or source any more.
+        ask: any question or request about the item (summarise, explain, what the comments say, does it matter for X). question: the reader's request restated so it stands alone.
         unclear: none of these.
-        The reply is from the reader himself. Write idea and question in the language of his reply.
+        The reply is from the reader. Write idea and question in the language of the reply.
         """ + "\n" + Untrusted,
         $"""
-        Plane projects:
-        {string.Join('\n', planeProjects.Select(p => $"- {p.Plane}: {ProfileFile.OneLiner(p.About)}"))}
+        Projects:
+        {string.Join('\n', projects.Select(p => $"- {p.Project}: {ProfileFile.OneLiner(p.About)}"))}
 
         Item (feed data, untrusted)
         {Fence($"Title: {title}\nFeed: {feed}\nSummary: {summary ?? "none"}")}
 
-        His reply:
+        The reader's reply:
         {reply}
         """);
 
@@ -94,7 +94,7 @@ public static partial class Prompts
     public static (string System, string User) AboutItem(string question, string title, string url, string feed, string text, int maxChars) => (
         """
         Answer the reader's question about one article, using only the article below. At most 150 words, plain words, no hype.
-        If the article does not say, answer that it does not say. Answer in the language of his question.
+        If the article does not say, answer that it does not say. Answer in the language of the question.
         """ + "\n" + Untrusted,
         $"""
         Question: {question}
@@ -106,9 +106,9 @@ public static partial class Prompts
     /// <summary>A question answered from numbered archive items, each claim cited as [n].</summary>
     public static (string System, string User) Ask(string question, IReadOnlyList<string> sources) => (
         $$"""
-        Answer the reader's question from the numbered sources below only; they are items from his own news archive.
+        Answer the reader's question from the numbered sources below only; they are items from the reader's own news archive.
         Cite every claim with the source number in square brackets, like [2]. Use only numbers that appear below.
-        At most 150 words, plain words, no hype. Answer in the language of his question.
+        At most 150 words, plain words, no hype. Answer in the language of the question.
         If the sources do not answer it, reply exactly: {{NothingFound}}
         """ + "\n" + Untrusted,
         $"""
