@@ -165,8 +165,8 @@ needs a dump and restore; changing the image tag is not enough.
 
 ### To a release with duels, follows, the autopsy and vote weights
 
-Migrations 0012 (vote weight), 0014 (duels), 0015 (follows) and 0016 (autopsy) run on the first start and need no action; there is no
-0013 on purpose. Existing votes keep weight 1. Duels, follows and the autopsy start on their own once the Telegram bot (and, for the
+Migrations 0012 (vote weight), 0014 (duels), 0015 (follows), 0016 (autopsy), 0018 (snapshot failures) and 0019 (duel send failures) run on
+the first start and need no action; there is no 0013 or 0017 on purpose. Existing votes keep weight 1. Duels, follows and the autopsy start on their own once the Telegram bot (and, for the
 autopsy, `FeedEater__GitHub__User`) is set, so a running install begins sending duels at the next 12:30 or 20:30; set
 `FeedEater__Duel__Enabled=false` to avoid that.
 

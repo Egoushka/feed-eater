@@ -311,7 +311,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
         await poller.TickAsync(default);
 
-        var today = new DigestTrigger(new CursorStore(pg.Db), Options.Create(new FeedEaterOptions()), TimeProvider.System).Today();
+        var today = new DigestTrigger(new CursorStore(pg.Db), Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv" }), TimeProvider.System).Today();   // the poller's zone: the UTC date differs after local midnight
         Assert.Equal($"{mode}:{today}", await new CursorStore(pg.Db).GetAsync("digest:force", default));
         Assert.Contains("Queued", Assert.Single(_telegram, t => t.Method == "sendMessage").Body, StringComparison.Ordinal);
     }
