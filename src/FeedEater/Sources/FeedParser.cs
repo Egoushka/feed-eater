@@ -48,7 +48,7 @@ public static partial class FeedParser
     private static ParsedFeed? FromXml(string text, Uri feedUrl)
     {
         var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null, CheckCharacters = false };
-        using var reader = XmlReader.Create(new StringReader(text), settings);
+        using var reader = XmlReader.Create(new StringReader(ControlChars().Replace(text, "")), settings);
         var root = XDocument.Load(reader).Root;
         return root?.Name.LocalName switch
         {
@@ -156,6 +156,10 @@ public static partial class FeedParser
 
         return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) ? at.UtcDateTime : null;
     }
+
+    /// <summary>Control characters XML 1.0 forbids; feeds with one are common and the text around it is fine.</summary>
+    [GeneratedRegex(@"[\x00-\x08\x0B\x0C\x0E-\x1F]", RegexOptions.None, 250)]
+    private static partial Regex ControlChars();
 
     [GeneratedRegex(@"^[A-Za-z]{3,9},\s*", RegexOptions.None, 250)]
     private static partial Regex WeekdayPrefix();
