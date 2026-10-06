@@ -111,6 +111,18 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Loading_the_setup_page_writes_no_usage_rows()
+    {
+        var cookie = await LoginAsync();
+
+        await GetSetupAsync(cookie);
+        await GetSetupAsync(cookie);
+
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        Assert.Equal(0, await Dapper.SqlMapper.ExecuteScalarAsync<int>(c, "select count(*) from llm_usage"));
+    }
+
+    [Fact]
     public async Task The_setup_page_shows_the_fix_and_holds_no_secret()
     {
         var html = await (await GetSetupAsync(await LoginAsync())).Content.ReadAsStringAsync();

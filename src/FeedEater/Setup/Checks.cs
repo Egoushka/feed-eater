@@ -83,7 +83,7 @@ internal sealed class LlmChatCheck(IServiceProvider services, IOptions<FeedEater
     {
         try
         {
-            await services.GetRequiredService<LiteLlmClient>().ChatAsync(model, "Reply with one word.", "ok", 5, "doctor", ct);
+            await services.GetRequiredService<LiteLlmClient>().ChatAsync(model, "Reply with one word.", "ok", 5, UsageStore.CheckPurpose, ct);
             return null;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -106,7 +106,7 @@ internal sealed class LlmEmbeddingCheck(IServiceProvider services, IOptions<Feed
         var llm = options.Value.Llm;
         try
         {
-            var vectors = await services.GetRequiredService<LiteLlmClient>().EmbedAsync(["feed-eater doctor"], "doctor", ct);
+            var vectors = await services.GetRequiredService<LiteLlmClient>().EmbedAsync(["feed-eater doctor"], UsageStore.CheckPurpose, ct);
             return vectors[0].Length == Dimensions
                 ? CheckResult.Ok($"{llm.EmbedModel} returns {Dimensions} dimensions")
                 : CheckResult.Fail($"{llm.EmbedModel} returns {vectors[0].Length} dimensions, the database column is vector({Dimensions})",

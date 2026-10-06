@@ -25,8 +25,19 @@ public sealed record PurposeSpend
 
 public sealed class UsageStore(FeedDb db) : IUsageSink
 {
+    /// <summary>
+    /// The purpose of the calls <c>doctor</c> and <c>/ui/setup</c> make. They are probes, not spend, and the page makes them on every load,
+    /// so they are not stored (not cached for a minute instead: that would still add a row, with "cost unknown", every minute).
+    /// </summary>
+    public const string CheckPurpose = "doctor";
+
     public async Task AddAsync(string purpose, string model, int inputTokens, int outputTokens, decimal? cost, CancellationToken ct)
     {
+        if (purpose == CheckPurpose)
+        {
+            return;
+        }
+
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
