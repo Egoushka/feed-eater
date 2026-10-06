@@ -152,6 +152,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
         await new FollowStore(pg.Db).AddSentAsync(follow, b, default);
         await new DuelStore(pg.Db).CreateAsync(a, b, DateTimeOffset.UtcNow, default);
         await c.ExecuteAsync("insert into repo_snapshots (item_id, repo, taken_at, stars) values (@a, 'o/r', now(), 3)", new { a });
+        await new AutopsyStore(pg.Db).AddFailureAsync(b, default);
         await c.ExecuteAsync("insert into autopsy (month, built_at, report, message) values ('2026-10-01', now(), '{}'::jsonb, 'm')");
 
         await pg.ResetAsync();
@@ -162,6 +163,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("follows", tables);
         Assert.Contains("follow_items", tables);
         Assert.Contains("repo_snapshots", tables);
+        Assert.Contains("snapshot_failures", tables);
         Assert.Contains("autopsy", tables);
         foreach (var table in tables)
         {
@@ -202,7 +204,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
     {
         var numbers = ScriptsUpTo(9999).Select(n => n.Split(".Migrations.")[1][..4]).Order(StringComparer.Ordinal).ToList();
 
-        Assert.Equal(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0014", "0015", "0016"], numbers);
+        Assert.Equal(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0014", "0015", "0016", "0018"], numbers);
     }
 
     [Fact]
@@ -214,7 +216,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
             new DatabaseMigrator(Database(name, pg), NullLogger<DatabaseMigrator>.Instance).Run();
 
             var tables = await TablesAsync(Database(name, pg));
-            Assert.All(new[] { "duels", "follows", "follow_items", "repo_snapshots", "autopsy", "votes" }, t => Assert.Contains(t, tables));
+            Assert.All(new[] { "duels", "follows", "follow_items", "repo_snapshots", "snapshot_failures", "autopsy", "votes" }, t => Assert.Contains(t, tables));
         }
         finally
         {
@@ -223,7 +225,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_database_with_0001_to_0011_applied_takes_0012_and_0014_to_0016_and_keeps_its_rows()
+    public async Task A_database_with_0001_to_0011_applied_takes_0012_and_0014_to_0018_and_keeps_its_rows()
     {
         var name = await CreateAsync();
         var connection = Database(name, pg);
@@ -255,10 +257,10 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
             await after.OpenAsync();
             Assert.Equal<double>([1, 1], await after.QueryAsync<double>("select weight::double precision from votes order by item_id"));
             var tables = await TablesAsync(connection);
-            Assert.All(new[] { "duels", "follows", "follow_items", "repo_snapshots", "autopsy" }, t => Assert.Contains(t, tables));
+            Assert.All(new[] { "duels", "follows", "follow_items", "repo_snapshots", "snapshot_failures", "autopsy" }, t => Assert.Contains(t, tables));
             await after.ExecuteAsync("insert into duels (a, b) values (1, 2)");
             await after.ExecuteAsync("insert into follows (root_item_id, started_at, ends_at) values (1, now(), now())");
-            Assert.Equal(["0012", "0014", "0015", "0016"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
+            Assert.Equal(["0012", "0014", "0015", "0016", "0018"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
                 .Select(s => s.Split(".Migrations.")[1][..4]).Where(n => string.CompareOrdinal(n, "0011") > 0));
         }
         finally

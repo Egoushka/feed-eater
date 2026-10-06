@@ -22,6 +22,8 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
 
     private sealed record Rig(AutopsyJob Job, FakeTimeProvider Time, StubHandler Github, List<string> Sent);
 
+    private bool _telegramDown;
+
     /// <summary><paramref name="repos"/>: name to (stars, days since the last push, archived). A repo that is not listed answers 404.</summary>
     private static Func<string, HttpResponseMessage> Github(Dictionary<string, (int Stars, int PushedDaysAgo, bool Archived)> repos) => path =>
     {
@@ -40,13 +42,14 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
     {
         var time = new FakeTimeProvider(Now);
         var sent = new List<string>();
+        _telegramDown = telegramFails;
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv", Telegram = new TelegramOptions { AllowedUserId = 42 }, GitHub = new GitHubOptions { User = "octocat", Token = token },
         });
         var stub = new StubHandler((_, body) =>
         {
-            if (telegramFails)
+            if (_telegramDown)
             {
                 return StubHandler.Json("""{"ok":false,"description":"Too Many Requests"}""");
             }
@@ -200,17 +203,54 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Single(rig.Sent);
     }
 
+    private static HttpResponseMessage RateLimited(HttpStatusCode status)
+    {
+        var response = StubHandler.Json("{}", status);
+        if (status == HttpStatusCode.Forbidden)
+        {
+            response.Headers.Add("X-RateLimit-Remaining", "0");
+        }
+
+        return response;
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.UnavailableForLegalReasons)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.Forbidden)]   // a 403 that is not the rate limit
+    public async Task A_repo_that_cannot_be_checked_is_left_for_next_month_and_the_others_are_still_scored_every_month(HttpStatusCode failure)
+    {
+        var broken = await SnapshotAsync("Broken", "acme/broken", ageDays: 95);   // the oldest, so it comes first every month
+        var first = await SnapshotAsync("First", "acme/grew");
+        var second = await SnapshotAsync("Second", "acme/alive");
+        var rig = Build(path => path.Contains("/acme/broken", StringComparison.Ordinal) ? StubHandler.Json("{}", failure) : Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value))(path));
+
+        await rig.Job.TickAsync(default);
+
+        var r = (await new AutopsyStore(pg.Db).LatestAsync(default))!.Report;
+        Assert.Equal([first, second], r.Items.Select(i => i.ItemId).Order());
+        Assert.Equal(1, r.Unchecked);
+        Assert.Equal(new string?[] { null, "2026-11-01", "2026-11-01" }, await MonthsOfAsync([broken, first, second]));
+
+        var third = await SnapshotAsync("Third", "acme/quiet", ageDays: 90);
+        rig.Time.Advance(TimeSpan.FromDays(30));
+        await rig.Job.TickAsync(default);
+
+        var next = (await new AutopsyStore(pg.Db).GetAsync("2026-12-01", default))!.Report;
+        Assert.Equal([third], next.Items.Select(i => i.ItemId));
+        Assert.Equal(1, next.Unchecked);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.Forbidden)]
     [InlineData(HttpStatusCode.TooManyRequests)]
-    [InlineData(HttpStatusCode.InternalServerError)]
-    public async Task A_refused_call_leaves_that_repo_and_the_rest_for_next_month(HttpStatusCode refusal)
+    public async Task A_rate_limit_leaves_that_repo_and_the_rest_for_next_month(HttpStatusCode refusal)
     {
         var first = await SnapshotAsync("First", "acme/grew");
         var second = await SnapshotAsync("Second", "acme/alive");
         var third = await SnapshotAsync("Third", "acme/quiet");
         var refuse = true;
-        var rig = Build(path => refuse && path.Contains("/acme/alive", StringComparison.Ordinal) ? StubHandler.Json("{}", refusal) : Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value))(path));
+        var rig = Build(path => refuse && path.Contains("/acme/alive", StringComparison.Ordinal) ? RateLimited(refusal) : Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value))(path));
 
         await rig.Job.TickAsync(default);
 
@@ -232,7 +272,7 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
     public async Task When_GitHub_answers_nothing_there_is_no_report_and_every_snapshot_waits()
     {
         var ids = new[] { await SnapshotAsync("One", "acme/grew"), await SnapshotAsync("Two", "acme/alive"), await SnapshotAsync("Zero", null, stars: null) };
-        var rig = Build(_ => StubHandler.Json("{}", HttpStatusCode.TooManyRequests));
+        var rig = Build(_ => RateLimited(HttpStatusCode.TooManyRequests));
 
         await rig.Job.TickAsync(default);
 
@@ -297,7 +337,38 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_failed_send_keeps_the_autopsy_unsent_and_the_retry_rebuilds_the_same_month()
+    public async Task A_failed_send_is_retried_with_the_saved_report_and_asks_GitHub_for_nothing()
+    {
+        await SeedMixedAsync();
+        var limited = false;
+        var rig = Build(path => limited ? RateLimited(HttpStatusCode.TooManyRequests) : Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value))(path), telegramFails: true);
+        var store = new AutopsyStore(pg.Db);
+
+        await Assert.ThrowsAsync<TelegramException>(() => rig.Job.TickAsync(default));
+        var calls = rig.Github.Calls.Count;
+        limited = true;   // a retry that asked again would hit the limit and drop the report
+
+        for (var retry = 0; retry < 3; retry++)
+        {
+            await Assert.ThrowsAsync<TelegramException>(() => rig.Job.TickAsync(default));
+        }
+
+        Assert.Equal(calls, rig.Github.Calls.Count);
+        Assert.Null((await store.LatestAsync(default))!.SentAt);
+
+        _telegramDown = false;
+        await rig.Job.TickAsync(default);
+
+        var sent = (await store.LatestAsync(default))!;
+        Assert.NotNull(sent.SentAt);
+        Assert.Equal(5, sent.Report.Items.Count);
+        Assert.Equal(calls, rig.Github.Calls.Count);
+        Assert.Contains("Hype autopsy", Assert.Single(rig.Sent), StringComparison.Ordinal);
+        Assert.Single(await store.ListAsync(10, default));
+    }
+
+    [Fact]
+    public async Task A_failed_send_keeps_the_autopsy_unsent_and_the_retry_sends_it()
     {
         await SeedMixedAsync();
         var rig = Build(Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value)), telegramFails: true);
@@ -309,7 +380,6 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Null(stored.SentAt);   // stored, so /ui/autopsy has it, but not marked sent
         Assert.Equal(5, stored.Report.Items.Count);
 
-        // The retry for the same month still sees the rows it scored.
         var retry = Build(Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value)));
         await retry.Job.TickAsync(default);
 

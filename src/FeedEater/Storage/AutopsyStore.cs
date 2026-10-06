@@ -62,6 +62,18 @@ public sealed class AutopsyStore(FeedDb db)
             """, new { limit }, cancellationToken: ct))).ToList();
     }
 
+    /// <summary>Counts a run in which GitHub failed for the item's repo and returns how many have failed so far.</summary>
+    public async Task<int> AddFailureAsync(long itemId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<int>(new CommandDefinition(
+            """
+            insert into snapshot_failures (item_id, failures) values (@itemId, 1)
+            on conflict (item_id) do update set failures = snapshot_failures.failures + 1
+            returning failures
+            """, new { itemId }, cancellationToken: ct));
+    }
+
     /// <summary>The first snapshot of an item stays; a second one for the same item is ignored.</summary>
     public async Task AddAsync(RepoSnapshot s, CancellationToken ct)
     {

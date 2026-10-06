@@ -196,17 +196,28 @@ public sealed class RepoSnapshotJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Single(github.Calls);
     }
 
+    /// <summary>What GitHub answers when the hourly limit is used up: 429, or 403 with no requests remaining.</summary>
+    private static HttpResponseMessage RateLimited(HttpStatusCode status)
+    {
+        var response = StubHandler.Json("{}", status);
+        if (status == HttpStatusCode.Forbidden)
+        {
+            response.Headers.Add("X-RateLimit-Remaining", "0");
+        }
+
+        return response;
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.Forbidden)]
     [InlineData(HttpStatusCode.TooManyRequests)]
-    [InlineData(HttpStatusCode.InternalServerError)]
-    public async Task A_refused_call_ends_the_run_cleanly_and_the_item_is_taken_the_next_day(HttpStatusCode refusal)
+    public async Task A_rate_limit_ends_the_run_cleanly_and_the_item_is_taken_the_next_day(HttpStatusCode refusal)
     {
         await LikeAsync("First", "acme/one");
         await LikeAsync("Second", "acme/two");
         await LikeAsync("Third", "acme/three");
         var limited = true;
-        var (job, github, time) = Build(path => limited && path.Contains("/acme/two", StringComparison.Ordinal) ? StubHandler.Json("{}", refusal) : Ok(path));
+        var (job, github, time) = Build(path => limited && path.Contains("/acme/two", StringComparison.Ordinal) ? RateLimited(refusal) : Ok(path));
 
         await job.TickAsync(default);   // does not throw: the run just ends, and its key is kept
 
@@ -222,11 +233,38 @@ public sealed class RepoSnapshotJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(["acme/one", "acme/two", "acme/three"], (await RowsAsync()).Select(r => r.Repo));
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.UnavailableForLegalReasons)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.Forbidden)]   // a 403 that is not the rate limit
+    public async Task A_repo_that_keeps_failing_does_not_hold_back_the_later_likes_and_is_given_up_after_three_runs(HttpStatusCode failure)
+    {
+        await LikeAsync("Blocked", "acme/blocked");
+        await LikeAsync("Second", "acme/two");
+        await LikeAsync("Third", "acme/three");
+        var (job, github, _) = Build(path => path.Contains("/acme/blocked", StringComparison.Ordinal) ? StubHandler.Json("{}", failure) : Ok(path));
+
+        Assert.Equal(2, await job.SnapshotAsync(default));
+        Assert.Equal(["acme/two", "acme/three"], (await RowsAsync()).Select(r => r.Repo));
+        Assert.Equal(5, github.Calls.Count);   // the blocked repo once, then the two others
+
+        Assert.Equal(0, await job.SnapshotAsync(default));
+        Assert.Equal(6, github.Calls.Count);   // asked a second time
+
+        Assert.Equal(1, await job.SnapshotAsync(default));   // the third refusal gives it up: a row with the repo and no stars
+        var blocked = (await RowsAsync()).Single(r => r.Repo == "acme/blocked");
+        Assert.Null(blocked.Stars);
+        Assert.Equal(7, github.Calls.Count);
+
+        Assert.Equal(0, await job.SnapshotAsync(default));
+        Assert.Equal(7, github.Calls.Count);   // and never asked again
+    }
+
     [Fact]
     public async Task A_refused_release_call_stores_nothing_for_that_repo_because_the_tag_would_be_wrong()
     {
         await LikeAsync("First", "acme/one");
-        var (job, _, _) = Build(path => path.EndsWith("/releases/latest", StringComparison.Ordinal) ? StubHandler.Json("{}", HttpStatusCode.Forbidden) : StubHandler.Json(Repo));
+        var (job, _, _) = Build(path => path.EndsWith("/releases/latest", StringComparison.Ordinal) ? RateLimited(HttpStatusCode.Forbidden) : StubHandler.Json(Repo));
 
         Assert.Equal(0, await job.SnapshotAsync(default));
 

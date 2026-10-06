@@ -8,8 +8,8 @@ namespace FeedEater.Hype;
 
 /// <summary>
 /// Daily at 05:00: every 👍 item without a snapshot gets one, so the autopsy has a starting point. Without <c>GitHub:Token</c> a run
-/// stops at <see cref="RequestsPerRun"/> requests (the anonymous limit is 60 an hour) and the next day carries on; a refused or
-/// failed call also ends the run cleanly.
+/// stops at <see cref="RequestsPerRun"/> requests (the anonymous limit is 60 an hour) and the next day carries on; a rate limit or an
+/// unreachable GitHub also ends the run cleanly. Any other refusal skips that repo; the third one in a row gives it an empty snapshot.
 /// </summary>
 public sealed class RepoSnapshotJob(
     GitHubStarsClient github, AutopsyStore store, CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time,
@@ -18,6 +18,7 @@ public sealed class RepoSnapshotJob(
 {
     internal const int RequestsPerRun = 40;
     internal const int RequestsPerLookup = 2;   // the repo, then its latest release
+    private const int MaxFailures = 3;
     private const int MaxCandidates = 500;
 
     protected override string Name => "repo-snapshots";
@@ -65,10 +66,23 @@ public sealed class RepoSnapshotJob(
             }
 
             requests += lookup.Requests;
-            if (lookup.Outcome is LookupOutcome.RateLimited or LookupOutcome.Failed)
+            if (lookup.Outcome == LookupOutcome.RateLimited)
             {
-                Logger.LogWarning("GitHub refused or failed ({Outcome}); snapshots continue on the next daily run", lookup.Outcome);
+                Logger.LogWarning("GitHub rate limit reached; snapshots continue on the next daily run");
                 break;
+            }
+
+            if (lookup.Outcome == LookupOutcome.Failed)
+            {
+                var failures = await store.AddFailureAsync(c.ItemId, ct);
+                Logger.LogWarning("GitHub failed for {Owner}/{Repo} ({Failures} of {Max}); skipped", owner, repo, failures, MaxFailures);
+                if (failures >= MaxFailures)
+                {
+                    await store.AddAsync(new RepoSnapshot(c.ItemId, $"{owner}/{repo}", at, null, null, null, null), ct);
+                    taken++;
+                }
+
+                continue;
             }
 
             var facts = lookup.Facts;

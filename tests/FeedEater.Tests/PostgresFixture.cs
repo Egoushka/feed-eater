@@ -23,7 +23,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     {
         await using var c = await Db.DataSource.OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand(
-            "truncate duels, follow_items, follows, autopsy, repo_snapshots, feed_suggestions, saved, releases, weekly, llm_usage, cursors, profiles, signals, ideas, votes, digests, reads, triage, items, feeds restart identity cascade", c);
+            "truncate duels, follow_items, follows, autopsy, snapshot_failures, repo_snapshots, feed_suggestions, saved, releases, weekly, llm_usage, cursors, profiles, signals, ideas, votes, digests, reads, triage, items, feeds restart identity cascade", c);
         await cmd.ExecuteNonQueryAsync();
     }
 

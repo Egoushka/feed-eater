@@ -10,7 +10,7 @@ namespace FeedEater.Hype;
 /// <summary>
 /// The 1st of the month at 09:00: scores every 👍 item whose repo snapshot has reached <see cref="AutopsyRules.MinAgeDays"/> days and was
 /// not scored yet, stores the result for /ui/autopsy and sends the summary. Needs no model. A repo GitHub cannot answer for (or a run
-/// past the anonymous request budget) is left for next month's autopsy.
+/// past the anonymous request budget or the rate limit) is left for next month's autopsy; only the rate limit and an unreachable GitHub end the run.
 /// </summary>
 public sealed class AutopsyJob(
     AutopsyStore store, GitHubStarsClient github, TelegramClient telegram, QuietHours quiet,
@@ -22,20 +22,31 @@ public sealed class AutopsyJob(
 
     protected override async Task<bool> HoldAsync(CancellationToken ct) => await quiet.IsQuietAsync(ct);
 
+    /// <summary>An autopsy that was saved but not sent (the send failed) is only sent again: asking GitHub again could not rebuild it.</summary>
     protected override async Task RunAsync(string key, CancellationToken ct)
     {
-        var at = Time.GetUtcNow();
-        var report = await BuildAsync(key, at, ct);
-        if (report is null)
+        var html = await store.GetAsync(key, ct) is { SentAt: null } unsent ? unsent.Message : await BuildAndSaveAsync(key, ct);
+        if (html is null)
         {
             Logger.LogInformation("No 👍 item reached its autopsy this month; no report");
             return;
         }
 
-        var message = AutopsyFormatter.Message(key, report);
-        await store.SaveAsync(key, at, report, message.Html, ct);
-        await telegram.SendAsync(Settings.Telegram.AllowedUserId, message, ct);
+        await telegram.SendAsync(Settings.Telegram.AllowedUserId, new OutMessage(html), ct);
         await store.MarkSentAsync(key, Time.GetUtcNow(), ct);
+    }
+
+    private async Task<string?> BuildAndSaveAsync(string key, CancellationToken ct)
+    {
+        var at = Time.GetUtcNow();
+        if (await BuildAsync(key, at, ct) is not { } report)
+        {
+            return null;
+        }
+
+        var html = AutopsyFormatter.Message(key, report).Html;
+        await store.SaveAsync(key, at, report, html, ct);
+        return html;
     }
 
     /// <summary>Null when nothing could be scored (a report of items without a repo says nothing); otherwise the snapshots it covers are marked as scored.</summary>
@@ -70,12 +81,31 @@ public sealed class AutopsyJob(
                 continue;
             }
 
-            var lookup = await LookupAsync(s.Repo, ct);
-            requests += lookup.Requests;
-            if (lookup.Outcome is LookupOutcome.RateLimited or LookupOutcome.Failed)
+            RepoLookup lookup;
+            try
             {
-                Logger.LogWarning("GitHub refused or failed ({Outcome}); the rest wait for next month", lookup.Outcome);
+                lookup = await LookupAsync(s.Repo, ct);
+            }
+            catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+            {
+                Logger.LogWarning(ex, "GitHub unreachable; the rest wait for next month");
                 stopped = true;
+                notChecked++;
+                continue;
+            }
+
+            requests += lookup.Requests;
+            if (lookup.Outcome == LookupOutcome.RateLimited)
+            {
+                Logger.LogWarning("GitHub rate limit reached; the rest wait for next month");
+                stopped = true;
+                notChecked++;
+                continue;
+            }
+
+            if (lookup.Outcome == LookupOutcome.Failed)
+            {
+                Logger.LogWarning("GitHub failed for {Repo}; left for next month", s.Repo);
                 notChecked++;
                 continue;
             }
@@ -96,7 +126,7 @@ public sealed class AutopsyJob(
         return AutopsyScorer.Build(items, noRepo, noBaseline, notChecked, at);
     }
 
-    /// <summary>A call that failed outright (unreachable, slow, an answer this does not read) is Failed like a refused one.</summary>
+    /// <summary>An answer this does not read is Failed like a refused call; an unreachable or slow GitHub still throws.</summary>
     private async Task<RepoLookup> LookupAsync(string fullName, CancellationToken ct)
     {
         var parts = fullName.Split('/', 2);
@@ -104,9 +134,9 @@ public sealed class AutopsyJob(
         {
             return await github.LookupAsync(parts[0], parts[1], ct);
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or KeyNotFoundException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException)
         {
-            Logger.LogWarning(ex, "GitHub facts for {Repo} unavailable; left for next month", fullName);
+            Logger.LogWarning(ex, "GitHub facts for {Repo} unreadable; left for next month", fullName);
             return new RepoLookup(LookupOutcome.Failed, null, RepoSnapshotJob.RequestsPerLookup);
         }
     }

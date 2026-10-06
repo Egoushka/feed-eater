@@ -6,7 +6,7 @@ namespace FeedEater.Signals;
 
 public sealed record Star(string FullName, string Url, string? Description, IReadOnlyList<string> Topics, DateTimeOffset StarredAt);
 
-/// <summary>Found: the facts are complete. Gone: 404. RateLimited: 403 or 429. Failed: any other status.</summary>
+/// <summary>Found: the facts are complete. Gone: 404. RateLimited: 429, or 403 with no requests remaining. Failed: any other status, a 403 that is not the rate limit included.</summary>
 public enum LookupOutcome { Found, Gone, RateLimited, Failed }
 
 /// <summary>What GitHub said about one repo and how many requests that took (the rate limit counts them). <see cref="Facts"/> is set for Found, and for RateLimited when only the release call was refused.</summary>
@@ -25,7 +25,7 @@ public sealed class GitHubStarsClient(HttpClient http, IOptions<FeedEaterOptions
         using var response = await http.GetAsync(path, ct);
         if (!response.IsSuccessStatusCode)
         {
-            return new RepoLookup(Failure(response.StatusCode), null, 1);
+            return new RepoLookup(Failure(response), null, 1);
         }
 
         var body = Json.Parse(await response.Content.ReadAsStringAsync(ct));
@@ -39,9 +39,9 @@ public sealed class GitHubStarsClient(HttpClient http, IOptions<FeedEaterOptions
             tag = Json.Str(release, "tag_name");
             released = release.TryGetProperty("published_at", out var p) && p.ValueKind == JsonValueKind.String ? p.GetDateTimeOffset() : null;
         }
-        else if (Failure(releaseResponse.StatusCode) == LookupOutcome.RateLimited)
+        else if (releaseResponse.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests)
         {
-            outcome = LookupOutcome.RateLimited;   // "no release" would read as a change, so the caller must not trust the tag
+            outcome = Failure(releaseResponse);   // "no release" would read as a change, so the caller must not trust the tag
         }
 
         var facts = new RepoFacts(
@@ -54,10 +54,11 @@ public sealed class GitHubStarsClient(HttpClient http, IOptions<FeedEaterOptions
         return new RepoLookup(outcome, facts, 2);
     }
 
-    private static LookupOutcome Failure(HttpStatusCode status) => status switch
+    private static LookupOutcome Failure(HttpResponseMessage response) => response.StatusCode switch
     {
         HttpStatusCode.NotFound => LookupOutcome.Gone,
-        HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests => LookupOutcome.RateLimited,
+        HttpStatusCode.TooManyRequests => LookupOutcome.RateLimited,
+        HttpStatusCode.Forbidden when response.Headers.TryGetValues("X-RateLimit-Remaining", out var remaining) && remaining.FirstOrDefault() == "0" => LookupOutcome.RateLimited,
         _ => LookupOutcome.Failed,
     };
 

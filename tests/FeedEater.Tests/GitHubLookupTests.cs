@@ -46,9 +46,10 @@ public sealed class GitHubLookupTests
 
     [Theory]
     [InlineData(HttpStatusCode.NotFound, LookupOutcome.Gone)]
-    [InlineData(HttpStatusCode.Forbidden, LookupOutcome.RateLimited)]
+    [InlineData(HttpStatusCode.Forbidden, LookupOutcome.Failed)]   // not the rate limit: GitHub says requests remain
     [InlineData(HttpStatusCode.TooManyRequests, LookupOutcome.RateLimited)]
     [InlineData(HttpStatusCode.InternalServerError, LookupOutcome.Failed)]
+    [InlineData(HttpStatusCode.UnavailableForLegalReasons, LookupOutcome.Failed)]
     [InlineData(HttpStatusCode.Unauthorized, LookupOutcome.Failed)]
     public async Task A_refused_repo_call_says_why_and_costs_one_request(HttpStatusCode status, LookupOutcome outcome)
     {
@@ -61,17 +62,43 @@ public sealed class GitHubLookupTests
         Assert.Single(stub.Calls);
     }
 
-    [Theory]
-    [InlineData(HttpStatusCode.Forbidden)]
-    [InlineData(HttpStatusCode.TooManyRequests)]
-    public async Task A_refused_release_call_is_rate_limited_but_the_plain_facts_call_still_gets_the_repo(HttpStatusCode status)
+    private static HttpResponseMessage Refused(HttpStatusCode status, string? remaining)
     {
-        var (client, _) = Build(path => IsRelease(path) ? StubHandler.Json("{}", status) : StubHandler.Json(Repo));
+        var response = StubHandler.Json("""{"message":"x"}""", status);
+        if (remaining is not null)
+        {
+            response.Headers.Add("X-RateLimit-Remaining", remaining);
+        }
+
+        return response;
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, "0", LookupOutcome.RateLimited)]
+    [InlineData(HttpStatusCode.Forbidden, "17", LookupOutcome.Failed)]
+    [InlineData(HttpStatusCode.Forbidden, null, LookupOutcome.Failed)]
+    [InlineData(HttpStatusCode.TooManyRequests, null, LookupOutcome.RateLimited)]
+    public async Task A_403_is_a_rate_limit_only_when_no_requests_remain_and_a_429_always_is(HttpStatusCode status, string? remaining, LookupOutcome outcome)
+    {
+        var (client, _) = Build(_ => Refused(status, remaining));
+
+        var lookup = await client.LookupAsync("acme", "widget", default);
+
+        Assert.Equal(outcome, lookup.Outcome);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, "0", LookupOutcome.RateLimited)]
+    [InlineData(HttpStatusCode.Forbidden, "17", LookupOutcome.Failed)]
+    [InlineData(HttpStatusCode.TooManyRequests, null, LookupOutcome.RateLimited)]
+    public async Task A_refused_release_call_is_not_trusted_but_the_plain_facts_call_still_gets_the_repo(HttpStatusCode status, string? remaining, LookupOutcome outcome)
+    {
+        var (client, _) = Build(path => IsRelease(path) ? Refused(status, remaining) : StubHandler.Json(Repo));
 
         var lookup = await client.LookupAsync("acme", "widget", default);
         var facts = await client.RepoFactsAsync("acme", "widget", default);
 
-        Assert.Equal(LookupOutcome.RateLimited, lookup.Outcome);
+        Assert.Equal(outcome, lookup.Outcome);
         Assert.Equal(1240, lookup.Facts!.Stars);
         Assert.Equal(1240, facts!.Stars);   // the digest keeps using what it got, as before
     }
