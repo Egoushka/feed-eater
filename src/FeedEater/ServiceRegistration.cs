@@ -88,6 +88,7 @@ public static class ServiceRegistration
         {
             http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.5.0");
+            Bearer(http, Settings(sp).GitHub.Token);
         });
 
         services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(sp => SafeFetcher.CreateHandler(Settings(sp).Source.AllowedHosts));

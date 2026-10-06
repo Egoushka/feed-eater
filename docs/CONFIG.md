@@ -21,6 +21,7 @@ An integration is off until its required settings are filled. An off integration
 | Plane | `Plane:BaseUrl`, `Plane:Token` and `Plane:Workspace` | Ideas go to the local list (see `Ideas:Sink`); open Plane work is not read into project vectors. |
 | Karakeep | `Karakeep:BaseUrl` and `Karakeep:Token` | No 📌 button and no bookmark import. |
 | GitHub stars | `GitHub:User` | No stars import. |
+| Hype autopsy | `GitHub:User` and `Telegram:Token` | No repo snapshots and no monthly autopsy; `GitHub:Token` is optional and lifts the 60 requests an hour limit. |
 | Hindsight | `Hindsight:BaseUrl` | No weekly summary is sent. |
 | Release watch | `Watch:Source` or `Watch:FallbackPath` | No release watch and no release alerts. |
 | Linked pages | `Fetch:MaxPerDay` above 0 | No linked page or Hacker News comment is fetched. |
@@ -73,6 +74,7 @@ An integration is off until its required settings are filled. An off integration
 | Key | Default | Description |
 |---|---|---|
 | `FeedEater:GitHub:BaseUrl` | `https://api.github.com/` | GitHub API URL. |
+| `FeedEater:GitHub:Token` | (empty) | GitHub token, sent on every GitHub call. Optional: it lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it). A token with no scopes is enough. |
 | `FeedEater:GitHub:User` | (empty) | GitHub user whose public stars count as liked items. Empty means no stars import. |
 
 ## Hindsight
