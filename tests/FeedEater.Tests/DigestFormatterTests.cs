@@ -46,6 +46,36 @@ public sealed class DigestFormatterTests
     }
 
     [Fact]
+    public void Optional_buttons_follow_the_style_Karakeep_adds_save_and_Plane_names_the_idea_button()
+    {
+        var local = new ButtonStyle(CanSave: false, ToPlane: false);
+
+        var fresh = DigestFormatter.Buttons(42, true, null, null, style: local);
+        var filed = DigestFormatter.Buttons(42, true, 1, "inbox", style: local);
+
+        Assert.Equal(["👍", "👎"], fresh[0].Select(b => b.Text));
+        Assert.Equal(("💡 Save idea", "i:42"), (fresh[1].Single().Text, fresh[1].Single().Data));
+        Assert.Equal("✓ Saved as an idea", filed[1].Single().Text);
+        Assert.Equal("💡 To Plane", DigestFormatter.Buttons(42, true, null, null)[1].Single().Text);   // default: as before
+        Assert.Equal(new ButtonStyle(false, false), ButtonStyle.From(new FeedEaterOptions()));
+        Assert.Equal(new ButtonStyle(true, true), ButtonStyle.From(new FeedEaterOptions
+        {
+            Karakeep = new KarakeepOptions { BaseUrl = "http://k/", Token = "t" },
+            Plane = new PlaneOptions { BaseUrl = "http://p/", Token = "t", Workspace = "w" },
+        }));
+    }
+
+    [Fact]
+    public void The_header_shows_unknown_cost_instead_of_a_zero_it_cannot_know()
+    {
+        string Spend(decimal known, int unpriced) => DigestFormatter.Header(Header(null) with { MonthSpend = known, UnpricedCalls = unpriced }).Html;
+
+        Assert.Contains("spend this month $1.23\n", Spend(1.234m, 0), StringComparison.Ordinal);
+        Assert.Contains("spend this month unknown\n", Spend(0m, 12), StringComparison.Ordinal);
+        Assert.Contains("spend this month $1.23 and 3 calls of unknown cost\n", Spend(1.234m, 3), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Huge_fields_stay_under_telegrams_limit_and_a_huge_url_drops_the_link()
     {
         var big = new string('&', 10_000);

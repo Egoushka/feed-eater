@@ -154,7 +154,7 @@ public sealed class CommandHandler(
         foreach (var hit in hits)
         {
             var published = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(hit.PublishedAt, DateTimeKind.Utc), zone).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
-            await telegram.SendAsync(message.ChatId, DigestFormatter.Result(hit, published), ct);
+            await telegram.SendAsync(message.ChatId, DigestFormatter.Result(hit, published, ButtonStyle.From(options.Value)), ct);
         }
     }
 

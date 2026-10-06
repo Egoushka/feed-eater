@@ -20,6 +20,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
     private bool _answerFails;
     private System.Net.HttpStatusCode _karakeepStatus = System.Net.HttpStatusCode.Created;
     private string _karakeepToken = "k";
+    private bool _localIdeas;
     private readonly List<string> _karakeepBodies = [];
     private System.Net.HttpStatusCode _planeStatus = System.Net.HttpStatusCode.Created;
     private string _planeBody = """{"issue":{"id":"issue-1"}}""";
@@ -34,7 +35,13 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
     private (TelegramPoller Poller, StubHandler Plane) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42 }, Karakeep = new KarakeepOptions { Token = _karakeepToken } });
+        var options = Options.Create(new FeedEaterOptions
+        {
+            TimeZone = "Europe/Kyiv",
+            Telegram = new TelegramOptions { AllowedUserId = 42 },
+            Karakeep = new KarakeepOptions { BaseUrl = "http://karakeep/", Token = _karakeepToken },
+            Plane = _localIdeas ? new PlaneOptions() : new PlaneOptions { BaseUrl = "http://plane/", Token = "p", Workspace = "homelab", FallbackProject = "FEED" },
+        });
         var karakeepStub = new StubHandler((_, body) =>
         {
             _karakeepBodies.Add(body);
@@ -60,7 +67,8 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var telegram = new TelegramClient(telegramStub.Client("http://tg/botT/"));
         var items = new ItemStore(pg.Db);
         var feedback = new FeedbackStore(pg.Db);
-        var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), new PlaneClient(planeStub.Client("http://plane/"), options), options, TimeProvider.System);
+        IIdeaSink sink = _localIdeas ? new LocalIdeaSink() : new PlaneIdeaSink(new PlaneClient(planeStub.Client("http://plane/"), options), options);
+        var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
         var handler = new CallbackHandler(telegram, feedback, filer, items, new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
         // Embeddings fail, so search falls back to keywords; chat answers with the next _chat reply.
         var embedder = new StubHandler((request, body) =>
@@ -75,7 +83,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         });
         var llm = new FeedEater.Llm.LiteLlmClient(embedder.Client("http://llm/"), new UsageStore(pg.Db), options);
         var search = new FeedEater.Search.ArchiveSearch(items, llm);
-        var replies = new ReplyHandler(telegram, handler, items, new ProfileStore(pg.Db), llm, options, NullLogger<ReplyHandler>.Instance);
+        var replies = new ReplyHandler(telegram, handler, items, new ProfileStore(pg.Db), llm, sink, options, NullLogger<ReplyHandler>.Instance);
         var commands = new CommandHandler(
             telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new QuietHours(new CursorStore(pg.Db), options, TimeProvider.System),
             search, new FeedEater.Search.ArchiveAnswer(search, items, llm, options), replies,
@@ -142,6 +150,38 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal("LAB", item.FiledIn);
         Assert.Equal(1, item.Vote);
         Assert.Contains("Filed in LAB", Answers(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task With_the_local_sink_the_idea_button_saves_the_idea_without_calling_Plane()
+    {
+        _localIdeas = true;
+        var id = await SeedReadItemAsync("Try it.");
+        var (poller, plane) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"i:{id}")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Empty(plane.Calls);
+        var item = (await new ItemStore(pg.Db).GetAsync(id, default))!;
+        Assert.Equal(("homelab", 1), (item.FiledIn, item.Vote));
+        Assert.Equal("", (await new FeedbackStore(pg.Db).GetIdeaAsync(id, default))!.PlaneIssueId);
+        Assert.Contains("Saved as an idea", Answers(), StringComparison.Ordinal);
+        Assert.Contains("Saved as an idea", _telegram.Single(t => t.Method == "editMessageReplyMarkup").Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Without_Karakeep_the_refreshed_keyboard_has_no_save_button()
+    {
+        _karakeepToken = "";
+        var id = await SeedReadItemAsync("Try it.");
+        var (poller, _) = Build();
+        _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"v:{id}:u")}}]}""";
+
+        await poller.TickAsync(default);
+
+        var markup = JsonSerializer.Deserialize<JsonElement>(_telegram.Single(t => t.Method == "editMessageReplyMarkup").Body);
+        Assert.Equal(["👍 ✓", "👎"], markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0].EnumerateArray().Select(b => b.GetProperty("text").GetString()));
     }
 
     [Fact]
@@ -531,6 +571,46 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var prompt = Assert.Single(_chatBodies);
         Assert.Contains("JARVIS", prompt, StringComparison.Ordinal);
         Assert.Contains("idea for jarvis: use it for memory", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task With_the_local_sink_a_reply_naming_a_profile_saves_the_idea_under_its_key()
+    {
+        _localIdeas = true;
+        var id = await SeedReadItemAsync("Try it.");
+        await AddJarvisProfileAsync();
+        var (poller, plane) = Build();
+        _chat.Enqueue("""{"action":"idea","project":"jarvis","idea":"Use it for memory.","question":null}""");
+        _updates = $$"""{"ok":true,"result":[{{ReplyTo(10, id, "idea for jarvis: use it for memory")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Empty(plane.Calls);
+        Assert.Equal("jarvis", (await new ItemStore(pg.Db).GetAsync(id, default))!.FiledIn);
+        Assert.Equal("💡 Saved as an idea", Assert.Single(Replies()).Text);
+    }
+
+    [Fact]
+    public async Task With_the_local_sink_an_unknown_project_lists_the_profile_keys_and_the_inbox()
+    {
+        _localIdeas = true;
+        var id = await SeedReadItemAsync("Try it.");
+        await AddJarvisProfileAsync();
+        var (poller, _) = Build();
+        _chat.Enqueue("""{"action":"idea","project":"Nytka"}""");
+        _updates = $$"""{"ok":true,"result":[{{ReplyTo(10, id, "file for nytka")}}]}""";
+
+        await poller.TickAsync(default);
+
+        Assert.Equal("No project called Nytka. Known: homelab, jarvis, inbox.", Assert.Single(Replies()).Text);
+        Assert.Null(await new FeedbackStore(pg.Db).GetIdeaAsync(id, default));
+    }
+
+    [Fact]
+    public void The_help_text_is_valid_Telegram_html_so_angle_brackets_are_encoded()
+    {
+        Assert.Contains("idea for &lt;project&gt;", ReplyHandler.Help, StringComparison.Ordinal);
+        Assert.DoesNotContain("<", ReplyHandler.Help, StringComparison.Ordinal);
     }
 
     [Fact]
