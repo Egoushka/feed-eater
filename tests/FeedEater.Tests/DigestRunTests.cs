@@ -32,6 +32,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private int _triageCalls;
     private bool _llmDown;
     private bool _readsDown;
+    private bool _learn;
     private System.Net.HttpStatusCode _githubStatus = HttpStatusCode.NotFound;
     private readonly List<string> _readPrompts = [];
     private readonly List<string> _githubCalls = [];
@@ -97,7 +98,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private (DigestRun Run, DigestStore Digests, StubHandler Miniflux) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 }, Taste = new TasteOptions { Learn = _learn } });
         var time = new FakeTimeProvider(Now);
         var miniflux = new StubHandler((_, _) => StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{LongText}</p>" })));
         var llm = new StubHandler((_, body) => body.Contains("\"input\"", StringComparison.Ordinal)
@@ -567,5 +568,30 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("juanfont/headscale 0.30.0 is out (breaking: no): &lt;b&gt;Fixes.&lt;/b&gt;", header, StringComparison.Ordinal);
         Assert.DoesNotContain("late/arrival", string.Concat(_sent), StringComparison.Ordinal);
         Assert.Equal(["late/arrival"], (await releases.TakeForDigestAsync("2026-10-06", default)).Select(r => r.Repo));
+    }
+
+    [Fact]
+    public async Task Switching_the_learned_taste_on_with_too_few_votes_is_refused_in_the_header_and_ranking_stays_default()
+    {
+        await SeedAsync();
+        _learn = true;
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        var header = JsonSerializer.Deserialize<JsonElement>(_sent[0]).GetProperty("text").GetString()!;
+        Assert.Contains("Learned taste is switched on but needs 100 votes", header, StringComparison.Ordinal);
+        Assert.Equal(3, _sent.Count);   // the digest still went out with the default ranking
+    }
+
+    [Fact]
+    public async Task Without_the_flag_the_header_says_nothing_about_learned_taste()
+    {
+        await SeedAsync();
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.DoesNotContain("Learned taste", _sent[0], StringComparison.Ordinal);
     }
 }

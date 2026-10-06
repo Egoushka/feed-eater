@@ -106,6 +106,22 @@ public sealed class FeedbackStore(FeedDb db)
         order by v.at desc limit @limit
         """, limit, ct);
 
+    /// <summary>Every vote on an embedded item, newest first, as a training example.</summary>
+    public async Task<IReadOnlyList<FeedEater.Ranking.LabeledVector>> LabeledVectorsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        var rows = await c.QueryAsync<LabeledRow>(new CommandDefinition(
+            "select i.embedding::real[] as embedding, v.value::int as value from votes v join items i on i.id = v.item_id where i.embedding is not null order by v.at desc",
+            cancellationToken: ct));
+        return rows.Select(r => new FeedEater.Ranking.LabeledVector(r.Embedding, r.Value > 0)).ToList();
+    }
+
+    private sealed record LabeledRow
+    {
+        public float[] Embedding { get; init; } = [];
+        public int Value { get; init; }
+    }
+
     public async Task<IReadOnlyList<FeedVotes>> FeedVotesAsync(CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);

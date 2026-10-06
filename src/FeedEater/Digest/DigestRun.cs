@@ -109,6 +109,16 @@ public sealed class DigestRun(
         var taste = Taste.Build(
             await feedback.PositiveVectorsAsync(o.Caps.Centroid, ct), await feedback.NegativeVectorsAsync(o.Caps.Centroid, ct),
             await feedback.FeedVotesAsync(ct), o.Weights);
+        if (o.Taste.Learn)
+        {
+            var (model, note) = LearnedTaste.Prepare(await feedback.LabeledVectorsAsync(ct), o.Taste);
+            taste = taste with { Learned = model };
+            if (note is not null)
+            {
+                notes.Add(note);
+            }
+        }
+
         var scored = candidates.Select(c => Scorer.Score(c.Id, c.FeedId, c.Embedding, profileList, taste, o.Weights)).ToList();
         await items.SetScoresAsync(scored, ct);
 

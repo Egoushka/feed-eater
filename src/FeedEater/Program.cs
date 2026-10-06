@@ -12,6 +12,11 @@ if (args.FirstOrDefault() == "eval")
     return await EvalCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "taste")
+{
+    return await TasteCommand.RunAsync(args[1..]);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, logging) => logging
     .ReadFrom.Configuration(context.Configuration)

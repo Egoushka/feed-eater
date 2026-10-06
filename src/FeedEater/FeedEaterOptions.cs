@@ -25,6 +25,7 @@ public sealed class FeedEaterOptions
     public ClusterOptions Cluster { get; set; } = new();
     public FetchOptions Fetch { get; set; } = new();
     public WatchOptions Watch { get; set; } = new();
+    public TasteOptions Taste { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 }
@@ -83,6 +84,17 @@ public sealed class WatchOptions
     public string MapPath { get; set; } = "";
 }
 
+public sealed class TasteOptions
+{
+    /// <summary>
+    /// Adds a learned (logistic regression on embeddings) term to the ranking. Off by default; with fewer than <see cref="MinVotes"/>
+    /// votes it refuses to switch on and the digest header says so. Run <c>dotnet FeedEater.dll taste</c> first.
+    /// </summary>
+    public bool Learn { get; set; }
+
+    public int MinVotes { get; set; } = 100;
+}
+
 public sealed class MinifluxOptions
 {
     public string BaseUrl { get; set; } = "http://100.64.0.2:8092/";
@@ -123,6 +135,9 @@ public sealed class WeightsOptions
     public double Prior { get; set; } = 0.2;
     public int MinPositives { get; set; } = 10;
     public int MinFeedVotes { get; set; } = 5;
+
+    /// <summary>Weight of the learned term when <c>Taste:Learn</c> is on: (probability - 0.5) times this.</summary>
+    public double Learned { get; set; } = 0.3;
 }
 
 public sealed class TelegramOptions
