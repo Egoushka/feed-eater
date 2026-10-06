@@ -96,6 +96,8 @@ public static class ServiceRegistration
             http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
         });
         services.AddSingleton<PageEnricher>();
+        services.AddSingleton<DiscoveryStore>();
+        services.AddSingleton<FeedDiscoverer>();
         services.AddHttpClient<WatchSource>();
 
         services.AddHttpClient<HindsightClient>((sp, http) =>

@@ -161,3 +161,4 @@ button.quiet:hover { color: var(--fg); border-color: var(--edge); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 td .inline { margin: 0; }
 .releases { list-style: none; padding: 0; display: grid; gap: var(--space-3); } .releases li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-3) var(--space-4); }
+code.copy { user-select: all; overflow-wrap: anywhere; background: var(--surface-2); border-radius: 4px; padding: 2px 6px; }

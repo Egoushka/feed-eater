@@ -881,4 +881,26 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
             }
         }
     }
+
+    [Fact]
+    public async Task The_sources_page_suggests_feeds_with_the_feed_url_as_copyable_text_and_encodes_everything()
+    {
+        var liked = await PostAsync(1, $"{Hostile} liked", 1, url: "https://good.example/post");
+        await new FeedbackStore(pg.Db).SetVoteAsync(liked, 1, default);
+        await new DiscoveryStore(pg.Db).SaveAsync("good.example", "https://good.example/feed?a=1&b=<x>", "found", DateTimeOffset.UtcNow, default);
+        var cookie = await LoginAsync();
+
+        var page = await GetAsync("/ui/sources", cookie);
+
+        Assert.Contains("Suggested feeds", page, StringComparison.Ordinal);
+        Assert.Contains("<code class=\"copy\">https://good.example/feed?a=1&amp;b=&lt;x&gt;</code>", page, StringComparison.Ordinal);
+        Assert.Contains("href=\"/ui/item/", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task The_sources_page_says_when_there_is_nothing_to_suggest()
+    {
+        Assert.Contains("Nothing to suggest yet", await GetAsync("/ui/sources", await LoginAsync()), StringComparison.Ordinal);
+    }
 }

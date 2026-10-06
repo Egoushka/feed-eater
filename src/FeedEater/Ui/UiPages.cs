@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using FeedEater.Digest;
+using FeedEater.Fetch;
 using FeedEater.Storage;
 using FeedEater.Watch;
 using static FeedEater.Ui.Html;
@@ -363,7 +364,7 @@ public static class UiPages
         return Layout(p, "Digests", "/ui/digests", h.ToString());
     }
 
-    public static string Sources(PageContext p, IReadOnlyList<SourceRow> rows, string sort, bool desc, bool flaggedOnly)
+    public static string Sources(PageContext p, IReadOnlyList<SourceRow> rows, string sort, bool desc, bool flaggedOnly, IReadOnlyList<SuggestedFeed>? suggestions = null)
     {
         var h = new StringBuilder("<h1>Sources</h1><p class=\"meta\">Items published in the last 30 days, per Miniflux feed. Muting a feed keeps it ingested and searchable but leaves it out of digests and the Today brief.</p>");
         h.Append(flaggedOnly
@@ -372,6 +373,7 @@ public static class UiPages
         if (rows.Count == 0)
         {
             h.Append("<p class=\"empty\">No feeds.</p>");
+            Suggested(h, suggestions ?? []);
             return Layout(p, "Sources", "/ui/sources", h.ToString());
         }
 
@@ -403,7 +405,34 @@ public static class UiPages
         }
 
         h.Append("</tbody></table></div>");
+        Suggested(h, suggestions ?? []);
         return Layout(p, "Sources", "/ui/sources", h.ToString());
+    }
+
+    private static void Suggested(StringBuilder h, IReadOnlyList<SuggestedFeed> suggestions)
+    {
+        h.Append("<h2>Suggested feeds</h2><p class=\"meta\">Sites you keep liking that no subscribed feed covers, with the feed found on their homepage. Subscribe in Miniflux; feed-eater never writes there.</p>");
+        if (suggestions.Count == 0)
+        {
+            h.Append("<p class=\"empty\">Nothing to suggest yet. Like posts from sites you do not follow.</p>");
+            return;
+        }
+
+        h.Append("<div class=\"scroll\"><table><thead><tr><th>Site</th><th class=\"num\">Likes</th><th>Why</th><th>Feed</th></tr></thead><tbody>");
+        foreach (var s in suggestions)
+        {
+            var why = string.Join("<br>", s.Why.Take(3).Select(l => $"<a href=\"/ui/item/{N(l.Id)}\">{E(l.Title.Length <= 70 ? l.Title : l.Title[..69] + "…")}</a>"));
+            var feed = s.Found switch
+            {
+                { Status: "found", FeedUrl: { } url } => $"<code class=\"copy\">{E(url)}</code>",
+                { Status: "none" } => "<span class=\"muted\">no feed link on the homepage</span>",
+                { Status: "failed" } => "<span class=\"muted\">homepage could not be read</span>",
+                _ => "<span class=\"muted\">not checked yet</span>",
+            };
+            h.Append($"<tr><td>{External("https://" + s.Domain + "/", s.Domain)}</td><td class=\"num\">{N(s.Why.Count)}</td><td>{why}</td><td>{feed}</td></tr>");
+        }
+
+        h.Append("</tbody></table></div>");
     }
 
     public static string Weekly(PageContext p, WeeklyRow? row, IReadOnlyList<string> weeks)

@@ -21,6 +21,7 @@ public sealed class IngestorTests(PostgresFixture pg) : IAsyncLifetime
             new MinifluxClient(miniflux.Client("http://miniflux/")),
             new ItemStore(pg.Db),
             new StoryClusterer(new ClusterStore(pg.Db), options, NullLogger<StoryClusterer>.Instance),
+            new FeedEater.Fetch.FeedDiscoverer(new DiscoveryStore(pg.Db), new ItemStore(pg.Db), new FeedEater.Fetch.SafeFetcher(new HttpClient(new StubHandler((_, _) => StubHandler.Json("x"))), options, new CursorStore(pg.Db), TimeProvider.System, NullLogger<FeedEater.Fetch.SafeFetcher>.Instance), options, TimeProvider.System, NullLogger<FeedEater.Fetch.FeedDiscoverer>.Instance),
             new PageEnricher(new ItemStore(pg.Db), new FeedEater.Fetch.SafeFetcher(new HttpClient(new StubHandler((_, _) => StubHandler.Json("x"))), options, new CursorStore(pg.Db), TimeProvider.System, NullLogger<FeedEater.Fetch.SafeFetcher>.Instance),
                 new FeedEater.Fetch.HnClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://hn/")), options, TimeProvider.System, NullLogger<PageEnricher>.Instance),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),

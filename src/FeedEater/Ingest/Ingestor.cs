@@ -10,7 +10,7 @@ namespace FeedEater.Ingest;
 
 /// <summary>Copies new Miniflux entries into the archive, then embeds every row that has no vector yet.</summary>
 public sealed class Ingestor(
-    MinifluxClient miniflux, ItemStore items, StoryClusterer clusterer, PageEnricher pages, LiteLlmClient llm, IOptions<FeedEaterOptions> options,
+    MinifluxClient miniflux, ItemStore items, StoryClusterer clusterer, FeedDiscoverer discovery, PageEnricher pages, LiteLlmClient llm, IOptions<FeedEaterOptions> options,
     LoopHealth health, TimeProvider time, ILogger<Ingestor> logger)
     : PollingLoop(health, time, logger)
 {
@@ -30,6 +30,7 @@ public sealed class Ingestor(
         var assigned = await items.AssignProfileKeysAsync(ct);
         var linked = await clusterer.RunAsync(ct);
         var fetched = await pages.RunAsync(ct);
+        await discovery.RunAsync(ct);
         Logger.LogInformation("Ingested {Added} entries, embedded {Embedded}, assigned {Assigned} profile keys, clustered {Linked}, fetched {Fetched} pages", added, embedded, assigned, linked, fetched);
     }
 
