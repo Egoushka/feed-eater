@@ -37,6 +37,13 @@ public sealed class GitHubStarsClient(HttpClient http, IOptions<FeedEaterOptions
             tag, released);
     }
 
+    /// <summary>One read of the configured user; fails when GitHub does not know them.</summary>
+    public async Task PingAsync(CancellationToken ct)
+    {
+        using var response = await http.GetAsync($"users/{Uri.EscapeDataString(options.Value.GitHub.User)}", ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<IReadOnlyList<Star>> PageAsync(int page, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get,

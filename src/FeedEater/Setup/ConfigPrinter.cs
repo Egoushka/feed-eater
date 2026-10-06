@@ -107,25 +107,3 @@ public static partial class ConfigPrinter
     [GeneratedRegex(@"\b(password|pwd)\s*=[^;]*", RegexOptions.IgnoreCase, 250)]
     private static partial Regex Password();
 }
-
-/// <summary>Entry for <c>dotnet FeedEater.dll doctor</c>: builds only the configuration, never the web host or any job.</summary>
-public static class DoctorCommand
-{
-    private const string Usage = "Usage: doctor --print-config";
-
-    public static async Task<int> RunAsync(string[] args)
-    {
-        if (!args.Contains("--print-config"))
-        {
-            await Console.Error.WriteLineAsync(Usage);
-            return 2;
-        }
-
-        foreach (var line in ConfigPrinter.Lines(Host.CreateApplicationBuilder().Configuration))
-        {
-            Console.WriteLine(line);
-        }
-
-        return 0;
-    }
-}

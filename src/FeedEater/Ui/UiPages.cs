@@ -59,12 +59,13 @@ public sealed record SourceRow(SourceStats Stats, string? Flag)
 /// Server-rendered pages. Every dynamic value goes through <see cref="Html.E"/>; links to feed URLs go through
 /// <see cref="Html.External"/>. There is no script, so the page needs no inline handler and the CSP allows none.
 /// </summary>
-public static class UiPages
+public static partial class UiPages
 {
     private static readonly (string Path, string Label)[] Nav =
     [
         ("/ui", "Today"), ("/ui/posts", "Posts"), ("/ui/feedback", "Feedback"), ("/ui/search", "Search"), ("/ui/digests", "Digests"), ("/ui/weekly", "Weekly"),
         ("/ui/sources", "Sources"), ("/ui/releases", "Releases"), ("/ui/ideas", "Ideas"), ("/ui/usage", "Usage"),
+        ("/ui/setup", "Setup"),
     ];
 
     private static readonly Dictionary<string, string> Notices = new()
