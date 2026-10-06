@@ -272,6 +272,17 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Doctor_reports_an_unknown_Source_Kind_as_FAIL_and_does_not_crash()
+    {
+        var (code, output) = await DoctorAsync(Config(("FeedEater:Source:Kind", "minifux")), SetupStubs.Services());
+
+        Assert.Equal(1, code);
+        Assert.Equal("FAIL", StatusOf(output, "feed source"));
+        Assert.Contains("must be builtin or miniflux", output, StringComparison.Ordinal);
+        Assert.Contains("FeedEater__Source__Kind", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Doctor_exits_0_when_only_an_optional_service_fails_and_shows_it_as_FAIL()
     {
         await Seed.ItemAsync(pg, 1, "A post", TestVectors.OneHot(0));

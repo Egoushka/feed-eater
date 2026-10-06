@@ -255,8 +255,8 @@ public sealed class SetupChecksTests
     [Fact]
     public async Task The_feed_source_line_shows_what_the_registered_probe_says()
     {
-        var ok = await RunAsync(new FeedSourceCheck(Services(s => s.AddSingleton<IFeedSourceProbe>(new FakeProbe(CheckResult.Ok("12 feeds"))))));
-        var fail = await RunAsync(new FeedSourceCheck(Services(s => s.AddSingleton<IFeedSourceProbe>(new FakeProbe(CheckResult.Fail("no feeds", "Add one."), "Miniflux")))));
+        var ok = await RunAsync(new FeedSourceCheck(Services(s => s.AddSingleton<IFeedSourceProbe>(new FakeProbe(CheckResult.Ok("12 feeds")))), Options.Create(Opts())));
+        var fail = await RunAsync(new FeedSourceCheck(Services(s => s.AddSingleton<IFeedSourceProbe>(new FakeProbe(CheckResult.Fail("no feeds", "Add one."), "Miniflux"))), Options.Create(Opts())));
 
         Assert.Equal("built-in reader: 12 feeds", ok.Result.Detail);
         Assert.True(ok.Required);
@@ -268,9 +268,20 @@ public sealed class SetupChecksTests
     [Fact]
     public async Task A_probe_that_throws_fails_the_line_without_throwing()
     {
-        var row = await RunAsync(new FeedSourceCheck(Services(_ => { })));
+        var row = await RunAsync(new FeedSourceCheck(Services(_ => { }), Options.Create(Opts())));
 
         Assert.Equal(CheckStatus.Fail, row.Result.Status);
+    }
+
+    [Fact]
+    public async Task An_unknown_Source_Kind_fails_the_feed_source_line_without_asking_the_probe()
+    {
+        var probe = new FakeProbe(CheckResult.Ok("12 feeds"));
+        var row = await RunAsync(new FeedSourceCheck(Services(s => s.AddSingleton<IFeedSourceProbe>(probe)), Options.Create(Opts(o => o.Source.Kind = "minifux"))));
+
+        Assert.Equal(CheckStatus.Fail, row.Result.Status);
+        Assert.Equal("Source:Kind is \"minifux\"; it must be builtin or miniflux", row.Result.Detail);
+        Assert.Contains("FeedEater__Source__Kind", row.Result.Fix, StringComparison.Ordinal);
     }
 
     // optional integrations

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using FeedEater.Storage;
 
 namespace FeedEater.Sources;
@@ -26,6 +27,12 @@ public static class ImportOpmlCommand
         builder.Configuration["FeedEater:RunJobs"] = "false";
         builder.Services.AddFeedEater(builder.Configuration);
         using var host = builder.Build();
+        if (host.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value.Source.KindProblem is { } problem)
+        {
+            await Console.Error.WriteLineAsync(problem);
+            return 2;
+        }
+
         if (host.Services.GetService<FeedManager>() is not { } manager)
         {
             await Console.Error.WriteLineAsync("import-opml needs FeedEater:Source:Kind=builtin; with miniflux, subscribe in Miniflux.");

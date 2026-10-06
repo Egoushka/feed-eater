@@ -13,6 +13,11 @@ public sealed class SourceOptions
 
     public bool IsBuiltin => !string.Equals(Kind, Miniflux, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Why <see cref="Kind"/> is not usable, or null. Anything but a known kind would silently run the empty built-in reader, so startup refuses it and doctor reports it.</summary>
+    public string? KindProblem => string.Equals(Kind, Builtin, StringComparison.OrdinalIgnoreCase) || string.Equals(Kind, Miniflux, StringComparison.OrdinalIgnoreCase)
+        ? null
+        : $"Source:Kind is \"{Kind}\"; it must be builtin or miniflux";
+
     /// <summary>Hosts a configured feed URL may name although they are private (self-hosted RSSHub, Nitter); any port. Exact host names. Article and linked-page fetches never get this.</summary>
     [Description("Exact host names a configured feed URL may point at although they are private (self-hosted RSSHub, Nitter); any port. Applies to feed URLs only, never to article or linked-page fetches.")]
     public string[] AllowedHosts { get; set; } = [];

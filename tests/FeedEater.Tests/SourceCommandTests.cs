@@ -67,6 +67,18 @@ public sealed class ImportOpmlCommandTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_unknown_Source_Kind_exits_2_and_stores_nothing()
+    {
+        await File.WriteAllTextAsync(_file, """<opml version="2.0"><body><outline text="Loose" xmlUrl="https://b.example/rss"/></body></opml>""");
+
+        var result = await RunAsync("minifux", _file);
+
+        Assert.Equal(2, result.Exit);
+        Assert.Contains("must be builtin or miniflux", result.Error, StringComparison.Ordinal);
+        Assert.Empty(await FeedsAsync());
+    }
+
+    [Fact]
     public async Task A_file_that_is_not_opml_exits_1_and_stores_nothing()
     {
         await File.WriteAllTextAsync(_file, "<html>nope");
@@ -156,6 +168,30 @@ public sealed class SourceCompositionTests
         Assert.NotNull(host.Services.GetRequiredService<CommandHandler>());
         Assert.NotNull(host.Services.GetRequiredService<UiHandlers>());
         Assert.Contains(host.Services.GetServices<IHostedService>(), s => s is Ingestor);
+    }
+
+    [Theory]
+    [InlineData("builtin", true)]
+    [InlineData("BuiltIn", true)]
+    [InlineData("miniflux", true)]
+    [InlineData("MINIFLUX", true)]
+    [InlineData("minifux", false)]
+    [InlineData("", false)]
+    [InlineData("built-in", false)]
+    public void Kind_must_be_builtin_or_miniflux_in_any_case(string kind, bool valid) =>
+        Assert.Equal(valid, new SourceOptions { Kind = kind }.KindProblem is null);
+
+    [Fact]
+    public void The_app_refuses_to_start_with_an_unknown_Kind_and_says_why()
+    {
+        using var app = new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>().WithWebHostBuilder(b => b
+            .UseSetting("ConnectionStrings:FeedEater", "Host=localhost;Database=unused")
+            .UseSetting("FeedEater:RunJobs", "false")
+            .UseSetting("FeedEater:Source:Kind", "minifux"));
+
+        var error = Assert.ThrowsAny<Exception>(() => app.CreateClient());
+
+        Assert.Contains("Source:Kind is \"minifux\"; it must be builtin or miniflux", error.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

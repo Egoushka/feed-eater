@@ -192,13 +192,18 @@ internal sealed class ProfileCheck(IOptions<FeedEaterOptions> options) : IIntegr
 }
 
 /// <summary>Asks the active <see cref="IFeedSourceProbe"/>: where feeds come from is the one part of setup that differs by mode.</summary>
-internal sealed class FeedSourceCheck(IServiceProvider services) : IIntegrationCheck
+internal sealed class FeedSourceCheck(IServiceProvider services, IOptions<FeedEaterOptions> options) : IIntegrationCheck
 {
     public string Name => "feed source";
     public bool Required => true;
 
     public async Task<CheckResult> RunAsync(CancellationToken ct)
     {
+        if (options.Value.Source.KindProblem is { } problem)
+        {
+            return CheckResult.Fail(problem, $"Set {Hints.Env("Source:Kind")} to builtin, or to miniflux to copy entries from Miniflux.");
+        }
+
         try
         {
             var probe = services.GetRequiredService<IFeedSourceProbe>();

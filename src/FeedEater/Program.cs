@@ -36,6 +36,12 @@ builder.Host.UseSerilog((context, logging) => logging
 builder.Services.AddFeedEater(builder.Configuration);
 
 var app = builder.Build();
+var feedEater = app.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
+if (feedEater.Source.KindProblem is { } kindProblem)
+{
+    throw new InvalidOperationException(kindProblem);
+}
+
 app.Services.GetRequiredService<DatabaseMigrator>().Run();
 
 var token = app.Configuration["Mcp:Token"];
@@ -44,7 +50,6 @@ if (string.IsNullOrEmpty(token))
     app.Logger.LogWarning("Mcp:Token is not set; /mcp refuses every request");
 }
 
-var feedEater = app.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
 if (feedEater.RunJobs && feedEater.Telegram.Token.Length == 0)
 {
     app.Logger.LogWarning("FeedEater:Telegram:Token is not set; the digest and the Telegram poller are off");
