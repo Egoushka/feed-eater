@@ -23,6 +23,7 @@ public sealed class FeedEaterOptions
     public GitHubOptions GitHub { get; set; } = new();
     public HindsightOptions Hindsight { get; set; } = new();
     public ClusterOptions Cluster { get; set; } = new();
+    public FetchOptions Fetch { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 }
@@ -39,6 +40,31 @@ public sealed class ClusterOptions
 
     /// <summary>Items published within this many days of each other can cluster.</summary>
     public int WindowDays { get; set; } = 3;
+}
+
+public sealed class FetchOptions
+{
+    /// <summary>Pages fetched per ingest poll, newest items first.</summary>
+    public int MaxPerPoll { get; set; } = 40;
+
+    /// <summary>Fetches per UTC day across the whole service.</summary>
+    public int MaxPerDay { get; set; } = 400;
+
+    /// <summary>Only items whose own text is shorter than this get their linked page fetched.</summary>
+    public int ShortChars { get; set; } = 800;
+
+    /// <summary>Characters of readable page text kept per item.</summary>
+    public int PageChars { get; set; } = 6000;
+
+    public int Comments { get; set; } = 5;
+    public string HnApiBase { get; set; } = "https://hn.algolia.com/api/v1/";
+
+    /// <summary>Hosts never fetched (login-walled or hostile); subdomains match.</summary>
+    public string[] BlockedHosts { get; set; } =
+    [
+        "facebook.com", "instagram.com", "x.com", "twitter.com", "linkedin.com", "tiktok.com", "youtube.com", "youtu.be",
+        "t.me", "discord.com", "medium.com", "nytimes.com", "wsj.com", "bloomberg.com", "ft.com",
+    ];
 }
 
 public sealed class MinifluxOptions

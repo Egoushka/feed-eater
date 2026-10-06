@@ -529,4 +529,23 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Empty(_githubCalls);
         Assert.DoesNotContain(_readPrompts, p => p.Contains("Repository facts", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task The_fetched_page_and_comments_reach_the_read_prompt_fenced_as_untrusted()
+    {
+        await SeedAsync();
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update items set extra_text = @t where title = 'Keep A'", new { t = "Linked page (pingularity.dev):\nFirst released in 2024.\n\nTop comments:\n- Solid." });
+        }
+
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        var prompt = Assert.Single(_readPrompts, p => p.Contains("Title: Keep A", StringComparison.Ordinal));
+        Assert.Contains("untrusted_page", prompt, StringComparison.Ordinal);   // the body is JSON, so the angle brackets are escaped
+        Assert.Contains("First released in 2024.", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(_readPrompts, p => p.Contains("Title: Keep B", StringComparison.Ordinal) && p.Contains("First released", StringComparison.Ordinal));
+    }
 }

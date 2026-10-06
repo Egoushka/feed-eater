@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using FeedEater.Digest;
+using FeedEater.Fetch;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -81,6 +82,18 @@ public static class ServiceRegistration
             http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
             http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.4.0");
         });
+
+        services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(SafeFetcher.CreateHandler);
+        services.AddSingleton(sp => new SafeFetcher(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(SafeFetcher.ClientName), sp.GetRequiredService<IOptions<FeedEaterOptions>>(),
+            sp.GetRequiredService<CursorStore>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<SafeFetcher>>()));
+        services.AddHttpClient<HnClient>((sp, http) =>
+        {
+            http.BaseAddress = new Uri(Settings(sp).Fetch.HnApiBase);
+            http.Timeout = TimeSpan.FromSeconds(10);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+        });
+        services.AddSingleton<PageEnricher>();
 
         services.AddHttpClient<HindsightClient>((sp, http) =>
         {

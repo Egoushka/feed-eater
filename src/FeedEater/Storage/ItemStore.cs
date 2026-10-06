@@ -9,7 +9,10 @@ public sealed record ClusterMember(long Id, string Title, string Url, string Fee
 public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl, bool Muted = false);
 
 public sealed record NewItem(
-    long EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content);
+    long EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
+    string? LinkUrl = null, long? HnId = null);
+
+public sealed record PendingLink(long Id, string? LinkUrl, long? HnId);
 
 public sealed record PendingEmbed
 {
@@ -28,6 +31,7 @@ public sealed record Candidate
     public string Url { get; init; } = "";
     public string FeedTitle { get; init; } = "";
     public string Content { get; init; } = "";
+    public string? ExtraText { get; init; }
     public float[] Embedding { get; init; } = [];
 }
 
@@ -138,8 +142,8 @@ public sealed class ItemStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.ExecuteScalarAsync<long?>(new CommandDefinition(
             """
-            insert into items (miniflux_entry_id, feed_id, url, canonical_url, title_hash, title, published_at, content, duplicate_of)
-            values (@EntryId, @FeedId, @Url, @CanonicalUrl, @TitleHash, @Title, @PublishedAt, @Content,
+            insert into items (miniflux_entry_id, feed_id, url, canonical_url, title_hash, title, published_at, content, link_url, hn_id, duplicate_of)
+            values (@EntryId, @FeedId, @Url, @CanonicalUrl, @TitleHash, @Title, @PublishedAt, @Content, @LinkUrl, @HnId,
                     coalesce(
                         (select id from items where @CanonicalUrl <> '' and canonical_url = @CanonicalUrl order by id limit 1),
                         (select id from items
@@ -188,7 +192,7 @@ public sealed class ItemStore(FeedDb db)
         return (await c.QueryAsync<Candidate>(new CommandDefinition(
             """
             select distinct on (coalesce(i.cluster_of, i.id))
-                   i.id, i.miniflux_entry_id, i.feed_id, i.title, i.url, coalesce(f.title, '') as feed_title, i.content,
+                   i.id, i.miniflux_entry_id, i.feed_id, i.title, i.url, coalesce(f.title, '') as feed_title, i.content, i.extra_text,
                    i.embedding::real[] as embedding
             from items i left join feeds f on f.id = i.feed_id
             where i.published_at > @publishedAfter and i.duplicate_of is null and i.embedding is not null
@@ -240,6 +244,28 @@ public sealed class ItemStore(FeedDb db)
                 return total;
             }
         }
+    }
+
+    /// <summary>Recent link posts with a short teaser that have not been tried yet, newest first.</summary>
+    public async Task<IReadOnlyList<PendingLink>> PendingLinksAsync(DateTimeOffset since, int maxContentChars, int limit, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<PendingLink>(new CommandDefinition(
+            """
+            select id, link_url, hn_id from items
+            where extra_fetched_at is null and (link_url is not null or hn_id is not null)
+              and published_at > @since and duplicate_of is null and length(content) < @maxContentChars
+            order by published_at desc, id desc
+            limit @limit
+            """, new { since = since.UtcDateTime, maxContentChars, limit }, cancellationToken: ct))).ToList();
+    }
+
+    /// <summary>Records the one attempt for this item; null text means nothing usable was found.</summary>
+    public async Task SaveExtraAsync(long id, string? text, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        await c.ExecuteAsync(new CommandDefinition(
+            "update items set extra_text = @text, extra_fetched_at = now() where id = @id", new { id, text }, cancellationToken: ct));
     }
 
     public async Task SetContentAsync(long id, string content, CancellationToken ct)

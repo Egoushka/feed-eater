@@ -130,7 +130,7 @@ public sealed class DigestRun(
                 }
 
                 var c = byId[s.ItemId];
-                var (system, user) = Prompts.Triage(about, profileList, c.Title, c.FeedTitle, c.Content, o.Caps.TriageChars);
+                var (system, user) = Prompts.Triage(about, profileList, c.Title, c.FeedTitle, c.Content, o.Caps.TriageChars, Clip(c.ExtraText, 1200));
                 triageCalls++;
                 try
                 {
@@ -186,7 +186,7 @@ public sealed class DigestRun(
                     var text = await FullTextAsync(c, ct);
                     var match = profileList.FirstOrDefault(p => p.Key == (t.Project ?? s.ProfileKey));
                     var facts = await RepoFactsAsync(repoFacts, c.Url, text, ct);
-                    var (system, user) = Prompts.Read(about, profileList, match, c.Title, c.Url, c.FeedTitle, text, o.Caps.ReadChars, facts);
+                    var (system, user) = Prompts.Read(about, profileList, match, c.Title, c.Url, c.FeedTitle, text, o.Caps.ReadChars, facts, Clip(c.ExtraText, o.Fetch.PageChars));
                     r = LlmJson.Read((await llm.ChatAsync(o.Llm.ReadModel, system, user, ReadMaxTokens, "read", ct)).Content, keys);
                     if (r is not null)
                     {
@@ -259,6 +259,8 @@ public sealed class DigestRun(
         cache[key] = line;
         return line;
     }
+
+    private static string? Clip(string? text, int max) => text is null || text.Length <= max ? text : text[..max];
 
     private async Task<string> FullTextAsync(Candidate c, CancellationToken ct)
     {
