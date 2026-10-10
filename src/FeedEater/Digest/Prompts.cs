@@ -13,6 +13,7 @@ public static partial class Prompts
         Reply with one JSON object and nothing else:
         {"relevance": 0-3, "project": "<key>" or null, "kind": "improve" | "new" | "fyi", "reason": "<at most 20 words>"}
         relevance: 3 = the reader should act on it this week, 2 = worth reading today, 1 = marginal, 0 = noise.
+        A generic "how do I start", "what do you use" or "which one should I pick" question with no new tool, release or technique is noise (0).
         kind: improve = changes one of the reader's projects; new = something the reader could build or adopt separately (new to the reader's stack, not new in the world); fyi = worth knowing only.
         Never call a project or product new, recent or just launched unless the item states a release, version or date that supports it.
         project: one of the keys listed, or null.
@@ -32,7 +33,9 @@ public static partial class Prompts
         $$"""
         You read one article for one reader and tell them what matters. About the reader: {{about}}
         Reply with one JSON object and nothing else:
-        {"summary": "<at most 2 sentences: what it is and what this item adds>", "why": "<1 sentence: why it matters to the reader>", "kind": "improve" | "new" | "fyi", "project": "<key>" or null, "suggestion": "<at most 2 sentences: one concrete action>" or null}
+        {"relevance": 0-3, "summary": "<at most 2 sentences: what it is and what this item adds>", "why": "<1 sentence: why it matters to the reader>", "kind": "improve" | "new" | "fyi", "project": "<key>" or null, "suggestion": "<at most 2 sentences: one concrete action>" or null}
+        relevance: your verdict after reading the whole item. 3 = the reader should act on it this week, 2 = worth reading today, 1 = marginal, 0 = noise. The title may have promised more than the text delivers: judge the text.
+        A generic "how do I start", "what do you use" or "which one should I pick" question with no new tool, release or technique is noise (0), however on-topic its subject.
         Write in English whatever the article's language. Plain words, no hype; if it is a minor release, say so.
         Give a suggestion only when kind is improve (an action in that project) or new (something to build or adopt).
         kind "new" means new to the reader's stack, not new in the world. Never call a project or product new, recent, launched or just released unless the article states a release, version or date that supports it; a post by the author showing off their own tool is not evidence that the tool is new. Describe what it is and what changed in this item instead.

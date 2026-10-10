@@ -29,7 +29,7 @@ public sealed class AnalysisStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.QuerySingleOrDefaultAsync<ReadResult>(new CommandDefinition(
-            "select summary, why, kind, project, suggestion from reads where item_id = @itemId",
+            "select summary, why, kind, project, suggestion, relevance from reads where item_id = @itemId",
             new { itemId }, cancellationToken: ct));
     }
 
@@ -38,10 +38,10 @@ public sealed class AnalysisStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into reads (item_id, summary, why, kind, project, suggestion, model)
-            values (@itemId, @Summary, @Why, @Kind, @Project, @Suggestion, @model)
+            insert into reads (item_id, summary, why, kind, project, suggestion, relevance, model)
+            values (@itemId, @Summary, @Why, @Kind, @Project, @Suggestion, @Relevance, @model)
             on conflict (item_id) do update set summary = excluded.summary, why = excluded.why, kind = excluded.kind,
-                                                project = excluded.project, suggestion = excluded.suggestion, model = excluded.model, at = now()
-            """, new { itemId, r.Summary, r.Why, r.Kind, r.Project, r.Suggestion, model }, cancellationToken: ct));
+                                                project = excluded.project, suggestion = excluded.suggestion, relevance = excluded.relevance, model = excluded.model, at = now()
+            """, new { itemId, r.Summary, r.Why, r.Kind, r.Project, r.Suggestion, r.Relevance, model }, cancellationToken: ct));
     }
 }
