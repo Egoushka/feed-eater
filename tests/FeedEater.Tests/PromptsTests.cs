@@ -32,6 +32,19 @@ public sealed class PromptsTests
     }
 
     [Fact]
+    public void Both_prompts_call_generic_how_do_i_start_questions_noise_and_read_asks_for_a_verdict()
+    {
+        var (triage, _) = Prompts.Triage("Dev.", [Homelab], "T", "F", "body", 2000);
+        var (read, _) = Prompts.Read("Dev.", [Homelab], null, "T", "https://u", "F", "body", 24000);
+
+        Assert.Contains("\"relevance\": 0-3", read, StringComparison.Ordinal);
+        foreach (var system in new[] { triage, read })
+        {
+            Assert.Contains("\"how do I start\"", system, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void Both_prompts_forbid_claiming_novelty_without_evidence_and_define_kind_new()
     {
         var (triage, _) = Prompts.Triage("Dev.", [Homelab], "T", "F", "body", 2000);

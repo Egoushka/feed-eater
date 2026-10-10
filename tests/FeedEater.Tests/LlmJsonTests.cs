@@ -54,6 +54,18 @@ public sealed class LlmJsonTests
     }
 
     [Fact]
+    public void Read_parses_the_post_read_relevance_and_leaves_it_null_when_absent()
+    {
+        var low = LlmJson.Read("""{"relevance":0,"summary":"S.","why":"W.","kind":"fyi"}""", Keys)!;
+        var clamped = LlmJson.Read("""{"relevance":"7","summary":"S.","why":"W.","kind":"fyi"}""", Keys)!;
+        var missing = LlmJson.Read("""{"summary":"S.","why":"W.","kind":"fyi"}""", Keys)!;
+
+        Assert.Equal(0, low.Relevance);
+        Assert.Equal(3, clamped.Relevance);
+        Assert.Null(missing.Relevance);
+    }
+
+    [Fact]
     public void Read_without_a_summary_is_unusable()
     {
         Assert.Null(LlmJson.Read("""{"why":"W.","kind":"fyi"}""", Keys));
