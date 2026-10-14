@@ -379,8 +379,17 @@ public sealed class ItemStore(FeedDb db)
             """,
             new
             {
-                since = f.Since.UtcDateTime, micros = before?.Micros, cursorId = before?.Id ?? 0L, f.Category, f.FeedId, f.Project, f.Kind,
-                unrated = f.UnratedOnly, summaryOnly = f.SummaryOnly, showMuted = f.ShowMuted, limit,
+                since = f.Since.UtcDateTime,
+                micros = before?.Micros,
+                cursorId = before?.Id ?? 0L,
+                f.Category,
+                f.FeedId,
+                f.Project,
+                f.Kind,
+                unrated = f.UnratedOnly,
+                summaryOnly = f.SummaryOnly,
+                showMuted = f.ShowMuted,
+                limit,
             }, cancellationToken: ct))).ToList();
     }
 

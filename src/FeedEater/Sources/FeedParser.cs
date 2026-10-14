@@ -29,7 +29,14 @@ public static partial class FeedParser
 
     private static readonly Dictionary<string, string> ZoneOffsets = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["EST"] = "-0500", ["EDT"] = "-0400", ["CST"] = "-0600", ["CDT"] = "-0500", ["MST"] = "-0700", ["MDT"] = "-0600", ["PST"] = "-0800", ["PDT"] = "-0700",
+        ["EST"] = "-0500",
+        ["EDT"] = "-0400",
+        ["CST"] = "-0600",
+        ["CDT"] = "-0500",
+        ["MST"] = "-0700",
+        ["MDT"] = "-0600",
+        ["PST"] = "-0800",
+        ["PDT"] = "-0700",
     };
 
     public static bool TryParse(string body, Uri feedUrl, out ParsedFeed feed)

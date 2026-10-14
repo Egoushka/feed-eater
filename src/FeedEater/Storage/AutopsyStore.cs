@@ -116,8 +116,10 @@ public sealed class AutopsyStore(FeedDb db)
             """,
             new
             {
-                month, clusterThreshold,
-                ripe = now.AddDays(-AutopsyRules.MinAgeDays).UtcDateTime, expired = now.AddDays(-AutopsyRules.MaxAgeDays).UtcDateTime,
+                month,
+                clusterThreshold,
+                ripe = now.AddDays(-AutopsyRules.MinAgeDays).UtcDateTime,
+                expired = now.AddDays(-AutopsyRules.MaxAgeDays).UtcDateTime,
             }, cancellationToken: ct));
         return rows.Select(r => new AutopsyCandidate(
             new RepoSnapshot(r.ItemId, r.Repo, Utc(r.TakenAt), r.Stars, r.PushedAt is { } p ? Utc(p) : null, r.ReleaseTag, r.CreatedAt is { } created ? Utc(created) : null),

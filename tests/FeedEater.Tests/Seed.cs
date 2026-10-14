@@ -19,8 +19,14 @@ public static class Seed
             """,
             new
             {
-                entryId, feedId, url = $"https://example.com/{Guid.NewGuid():N}", title,
-                publishedAt = publishedAt ?? DateTime.UtcNow, ingestedAt = ingestedAt ?? DateTime.UtcNow, content, embedding,
+                entryId,
+                feedId,
+                url = $"https://example.com/{Guid.NewGuid():N}",
+                title,
+                publishedAt = publishedAt ?? DateTime.UtcNow,
+                ingestedAt = ingestedAt ?? DateTime.UtcNow,
+                content,
+                embedding,
             });
     }
 

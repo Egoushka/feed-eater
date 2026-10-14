@@ -100,7 +100,11 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var id = await Seed.ItemAsync(pg, 1, "Backup tool", TestVectors.OneHot(0));
         await new AnalysisStore(pg.Db).SaveReadAsync(id, new ReadResult
         {
-            Summary = "S.", Why = "W.", Kind = suggestion is null ? "fyi" : "improve", Project = project, Suggestion = suggestion,
+            Summary = "S.",
+            Why = "W.",
+            Kind = suggestion is null ? "fyi" : "improve",
+            Project = project,
+            Suggestion = suggestion,
         }, "m", default);
         return id;
     }
@@ -520,10 +524,15 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         update_id = updateId,
         message = new
         {
-            message_id = 9, from = new { id = 42 }, chat = new { id = 42 }, text,
+            message_id = 9,
+            from = new { id = 42 },
+            chat = new { id = 42 },
+            text,
             reply_to_message = new
             {
-                message_id = 3, chat = new { id = 42 }, text = "item",
+                message_id = 3,
+                chat = new { id = 42 },
+                text = "item",
                 reply_markup = new { inline_keyboard = new[] { new[] { new { text = "👍", callback_data = $"v:{itemId}:u" }, new { text = "💡", callback_data = $"i:{itemId}" } } } },
             },
         },
