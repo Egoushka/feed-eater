@@ -148,7 +148,12 @@ public sealed class ClusterTests(PostgresFixture pg) : IAsyncLifetime
     {
         var item = new DigestItem
         {
-            Id = 1, Title = "T", Url = "https://a.example", Feed = "F", Summary = "S", Why = "W",
+            Id = 1,
+            Title = "T",
+            Url = "https://a.example",
+            Feed = "F",
+            Summary = "S",
+            Why = "W",
             AlsoIn = [new(2, "t", "https://b.example/x", "Feed B"), new(3, "t", "javascript:alert(1)", "<b>Feed C</b>"), new(4, "t", "https://d.example", "D"), new(5, "t", "https://e.example", "E")],
         };
 

@@ -10,8 +10,15 @@ public sealed class DigestFormatterTests
 {
     private static DigestItem Item(string? suggestion = "Add pg_stat_io to the dashboard.", string url = "https://example.com/a?x=1&y=2") => new()
     {
-        Id = 42, Title = "Postgres <18.1> & friends", Url = url, Feed = "PostgreSQL News", Project = "homelab",
-        Kind = suggestion is null ? "fyi" : "improve", Summary = "Async I/O fixes.", Why = "Your box runs PG 18.", Suggestion = suggestion,
+        Id = 42,
+        Title = "Postgres <18.1> & friends",
+        Url = url,
+        Feed = "PostgreSQL News",
+        Project = "homelab",
+        Kind = suggestion is null ? "fyi" : "improve",
+        Summary = "Async I/O fixes.",
+        Why = "Your box runs PG 18.",
+        Suggestion = suggestion,
     };
 
     private static DigestHeader Header(double? weekUpRate) => new(
