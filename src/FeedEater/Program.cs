@@ -25,6 +25,11 @@ if (args.FirstOrDefault() == "doctor")
     return await DoctorCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "import-instagram")
+{
+    return await FeedEater.Instagram.InspectCommand.RunAsync(args[1..], Console.Out, Console.Error);
+}
+
 if (args.FirstOrDefault() == "import-opml")
 {
     return await ImportOpmlCommand.RunAsync(args[1..]);
