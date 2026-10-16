@@ -4,6 +4,7 @@ using FeedEater.Mcp;
 using FeedEater.Setup;
 using FeedEater.Sources;
 using FeedEater.Storage;
+using FeedEater.Swipe;
 using FeedEater.Ui;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -63,6 +64,11 @@ if (feedEater.Telegram.Token.Length > 0 && feedEater.Telegram.AllowedUserId == 0
 app.MapGet("/healthz", async (FeedDb db, CancellationToken ct) => await db.PingAsync(ct) ? Results.Ok() : Results.StatusCode(503));
 app.MapFeedEaterMcp(token);
 app.MapFeedEaterUi();
+if (feedEater.Swipe.Enabled)
+{
+    app.MapFeedEaterSwipe();
+}
+
 app.Run();
 return 0;
 

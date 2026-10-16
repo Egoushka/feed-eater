@@ -167,6 +167,20 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Source:MaxBackoff` | `1.00:00:00` | The longest wait between fetches of a feed that keeps failing. |
 | `FeedEater:Source:PollInterval` | `00:01:00` | How often the ingest loop looks for feeds that are due. |
 
+## Swipe
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Swipe:CandidateDays` | `14` | Items published in the last this many days can be shown. |
+| `FeedEater:Swipe:Cards` | `40` | Cards in one session; the summary card follows the last one. |
+| `FeedEater:Swipe:CategoriesPath` | `/config/categories.json` | Your categories (what counts as a good use of attention: shares, events, seed flag); shape in categories.example.json. A missing file means one category, everything. |
+| `FeedEater:Swipe:CategoryFloor` | `0.2` | Cosine similarity below which an item belongs to no category. |
+| `FeedEater:Swipe:CooldownMinutes` | `180` | Minutes after a session ends before the next one can start. |
+| `FeedEater:Swipe:Enabled` | `false` | Swipe mode: a phone page at /swipe showing one card per screen, with a hard cap per session. Off by default; needs Mcp:Token for the sign-in. |
+| `FeedEater:Swipe:Minutes` | `15` | Minutes after which a session ends with the summary card, whatever the card count. |
+| `FeedEater:Swipe:RepeatDays` | `30` | An item shown in swipe mode is not shown again for this many days. |
+| `FeedEater:Swipe:SessionsPerDay` | `3` | Most sessions that can start per local day. |
+
 ## Taste
 
 | Key | Default | Description |
