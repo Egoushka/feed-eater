@@ -209,6 +209,15 @@ public sealed class SwipeOptions
     [Description("Cosine similarity below which an item belongs to no category.")]
     public double CategoryFloor { get; set; } = 0.2;
 
+    [Description("Share of cards chosen for exploration: a random item from outside the best-ranked part that is unlike the rest of the session. Its yield is the only honest test of the ranking.")]
+    public double Epsilon { get; set; } = 0.2;
+
+    [Description("Good and not-good examples (each) the yield model needs before it adds to the ranking.")]
+    public int YieldMinEvents { get; set; } = 30;
+
+    [Description("Weight of the yield model's (probability - 0.5) next to the taste score, once it has enough examples.")]
+    public double Yield { get; set; } = 1.0;
+
     public TimeSpan Cap => TimeSpan.FromMinutes(Minutes);
 }
 

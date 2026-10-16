@@ -291,6 +291,20 @@ public sealed partial class SwipeEndpointTests(PostgresFixture pg) : IAsyncLifet
     }
 
     [Fact]
+    public async Task An_event_row_carries_how_the_card_was_chosen()
+    {
+        await SeedItemsAsync(3);
+        var session = (await NextAsync()).GetProperty("card").GetProperty("session").GetInt64();
+        await PostAsync("act", new { session, position = 0, act = "like" });
+
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        var row = await c.QuerySingleAsync<(string Source, float? Predicted)>("select rank_source, predicted from swipe_events");
+        Assert.Contains(row.Source, new[] { "exploit", "explore" });
+        Assert.Null(row.Predicted);   // no model yet
+        Assert.Equal(3, await ScalarAsync<int>("select cardinality(queue_sources) from swipe_sessions"));
+    }
+
+    [Fact]
     public async Task The_felt_tap_is_stored_once_and_only_for_an_ended_session()
     {
         await SeedItemsAsync(3);

@@ -11,6 +11,7 @@ using FeedEater.Plane;
 using FeedEater.Profiles;
 using FeedEater.Signals;
 using FeedEater.Storage;
+using FeedEater.Swipe;
 using FeedEater.Telegram;
 using FeedEater.Watch;
 
@@ -322,4 +323,37 @@ internal sealed class WatchCheck(IServiceProvider services, IOptions<FeedEaterOp
 
     protected override string Fix(Exception ex) =>
         $"Check {Hints.Env("Watch:Source")} (a PINS.md path or https URL) or {Hints.Env("Watch:FallbackPath")} (see config/watch.example.json), and the image map in config/watch-map.json.";
+}
+
+/// <summary>Swipe mode: switched on, the categories file valid, and something unseen to show.</summary>
+internal sealed class SwipeCheck(SwipeStore swipe, IOptions<FeedEaterOptions> options, TimeProvider time) : IIntegrationCheck
+{
+    public string Name => "swipe";
+    public bool Required => false;
+
+    public async Task<CheckResult> RunAsync(CancellationToken ct)
+    {
+        var o = options.Value.Swipe;
+        if (!o.Enabled)
+        {
+            return CheckResult.Off("not switched on");
+        }
+
+        CategoriesFile categories;
+        try
+        {
+            categories = CategoriesFile.LoadOrNone(o.CategoriesPath);
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            return CheckResult.Fail($"{o.CategoriesPath}: {ex.Message}", "Fix the file; the shape is in config/categories.example.json.");
+        }
+
+        var now = time.GetUtcNow();
+        var unseen = (await swipe.CandidatesAsync(now.AddDays(-o.CandidateDays), now.AddDays(-o.RepeatDays), ct)).Count;
+        var detail = $"{unseen} unseen items, {(categories.Categories.Count == 0 ? "one pool (no categories file)" : $"{categories.Categories.Count} categories")}";
+        return unseen == 0
+            ? CheckResult.Warn(detail, "Wait for the feeds to bring new items, or raise Swipe:CandidateDays. Open the page over HTTPS to install it on the phone.")
+            : CheckResult.Ok(detail + "; open /swipe over HTTPS to install it on the phone");
+    }
 }

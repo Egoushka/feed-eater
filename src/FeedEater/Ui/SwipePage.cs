@@ -8,7 +8,7 @@ using static FeedEater.Ui.Html;
 namespace FeedEater.Ui;
 
 /// <summary><c>/ui/swipe</c>: how swipe mode is going, per week and per category. Dwell is shown on purpose and ranks nothing.</summary>
-public sealed class SwipeReportHandler(SwipeStore store, CategoryStore categories, UiSession session, IOptions<FeedEaterOptions> options, TimeProvider time)
+public sealed class SwipeReportHandler(SwipeStore store, CategoryStore categories, SwipeYield yield, UiSession session, IOptions<FeedEaterOptions> options, TimeProvider time)
 {
     private const int Weeks = 12;
     private const int CategoryDays = 30;
@@ -21,13 +21,15 @@ public sealed class SwipeReportHandler(SwipeStore store, CategoryStore categorie
         var weeks = await store.WeeksAsync(settings.TimeZone, Weeks, ct);
         var counts = await store.CategoryCardsAsync(time.GetUtcNow().AddDays(-CategoryDays), ct);
         var wanted = (await categories.AllAsync(ct)).Where(c => c.Share is > 0).ToDictionary(c => c.Key, c => (double)c.Share!.Value, StringComparer.Ordinal);
-        return UiHandlers.Html(UiPages.Swipe(page, settings.Swipe.Enabled, weeks, counts, wanted));
+        var sources = await store.SourceYieldAsync(time.GetUtcNow().AddDays(-CategoryDays), ct);
+        return UiHandlers.Html(UiPages.Swipe(page, settings.Swipe.Enabled, weeks, counts, wanted, sources, await yield.StatusAsync(ct)));
     }
 }
 
 public static partial class UiPages
 {
-    public static string Swipe(PageContext p, bool enabled, IReadOnlyList<WeekRow> weeks, IReadOnlyList<CategoryCount> categories, IReadOnlyDictionary<string, double> wanted)
+    public static string Swipe(PageContext p, bool enabled, IReadOnlyList<WeekRow> weeks, IReadOnlyList<CategoryCount> categories, IReadOnlyDictionary<string, double> wanted,
+        IReadOnlyList<SourceYield> sources, SwipeYield.Status model)
     {
         var h = new StringBuilder("<h1>Swipe</h1>");
         if (!enabled)
@@ -69,6 +71,24 @@ public static partial class UiPages
         }
 
         h.Append("</tbody></table></div>");
+
+        h.Append("<h2>Exploit and explore, last 30 days</h2>");
+        h.Append("<div class=\"scroll\"><table><thead><tr><th>Chosen by</th><th class=\"num\">Cards</th><th class=\"num\">With a good act</th><th class=\"num\">Good act rate</th><th class=\"num\">Model expected</th></tr></thead><tbody>");
+        foreach (var s in sources)
+        {
+            var rate = s.Cards == 0 ? "–" : Percent(s.Good / (double)s.Cards);
+            var expected = s.AvgPredicted is { } e ? Percent(e) : "–";
+            h.Append($"<tr><td><span class=\"badge\">{E(s.Source)}</span></td><td class=\"num\">{N(s.Cards)}</td><td class=\"num\">{N(s.Good)}</td><td class=\"num\">{rate}</td><td class=\"num\">{expected}</td></tr>");
+        }
+
+        h.Append("</tbody></table></div><p class=\"meta\">Explore cards are picked at random from outside the top of the ranking. If the ranking works, the exploit rate is clearly above the explore rate; if not, the ranking is no better than chance. A good act is an idea, a save or a share.</p>");
+
+        h.Append("<h2>Yield model</h2>");
+        h.Append(model.Ready
+            ? $"<p>Trained on {N(model.Positives)} good and {N(model.Negatives)} other cards. Held-out agreement (chance a good card outranks another, 5 folds): learned {Auc(model.LearnedAuc)}, by centroids {Auc(model.CentroidAuc)}. 50% is chance.</p>"
+            : $"<p class=\"meta\">Not used yet: it needs {N(model.Needed)} good and {N(model.Needed)} other cards; there are {N(model.Positives)} and {N(model.Negatives)}. The ranking runs on taste alone meanwhile.</p>");
         return Layout(p, "Swipe", "/ui/swipe", h.ToString());
     }
+
+    private static string Auc(double? auc) => auc is { } a ? Percent(a) : "–";
 }

@@ -23,6 +23,7 @@ public static class SetupServices
         services.AddSingleton<IIntegrationCheck, GitHubCheck>();
         services.AddSingleton<IIntegrationCheck, HindsightCheck>();
         services.AddSingleton<IIntegrationCheck, WatchCheck>();
+        services.AddSingleton<IIntegrationCheck, SwipeCheck>();
         services.AddSingleton<CheckRunner>();
         services.AddSingleton<SetupHandler>();
         return services;
