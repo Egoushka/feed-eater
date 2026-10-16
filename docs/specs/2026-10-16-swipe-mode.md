@@ -295,5 +295,12 @@ anything that rewards time in the app.
 - A queue is due recall cards (up to 12), new seeds (up to 2) and items for the rest, shuffled together. Acts: recall `good`/`again`, seed `send`/`dismiss`.
 - A seed for an item that already has a filed idea is not sent again (the sink keeps one idea per item); the card says where it is.
 
+## Built so far (PR D, part 1: `--inspect` only)
+`dotnet FeedEater.dll import-instagram <export.zip|folder> --inspect [--all] [--labels]` lists every file of the export (JSON, HTML, other counts), and for each JSON file its size, root
+type and item count. Files whose names suggest likes, saves, views, ads or topics get their full structure (key names and value types, array items merged, `?` for a key only some
+items have); `--all` gives every file the full structure. It prints no value, so the output can be pasted into Appendix A; `label` field values (field names in some exports)
+are shown only with `--labels`. It needs no database or configuration, reads a zip in place without extracting, skips JSON over 20 MB and stops at 50 000 files. The parsers, tables and
+`/ui/attention` wait for Appendix A.
+
 ## Appendix A: real export file list
 _Empty until G1. Paste the `--inspect` output here._
