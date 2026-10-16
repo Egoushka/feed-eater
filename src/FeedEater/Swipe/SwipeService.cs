@@ -6,7 +6,9 @@ using FeedEater.Ui;
 
 namespace FeedEater.Swipe;
 
-public sealed record CardView(long Session, int Position, int Total, string Title, string Feed, string? Category, string Why, string? Url, string Age, bool HasSuggestion);
+public sealed record CardView(
+    long Session, int Position, int Total, string Title, string Feed, string? Category, string Why, string? Url, string Age, bool HasSuggestion,
+    string Kind = "item", string? Back = null);
 
 public sealed record SummaryView(long Session, string Reason, int Cards, int Minutes, IReadOnlyDictionary<string, int> Acts, IReadOnlyList<string> Categories, bool Rated);
 
@@ -17,14 +19,17 @@ public sealed record NextResult(string Type, CardView? Card = null, SummaryView?
 
 public sealed record ActResult(bool Ok, string Message);
 
-internal sealed record Queued(long ItemId, string? Category, string Source, float? Predicted);
+internal sealed record Queued(string Kind, long RefId, string? Category, string Source, float? Predicted);
 
 /// <summary>Starts, resumes and ends sessions, hands out the cards and applies what the owner does with them. Every id the client names is a position in the session's own queue.</summary>
 public sealed class SwipeService(
-    SwipeStore store, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
+    SwipeStore store, RecallStore recall, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
     CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
 {
     public static readonly string[] Acts = ["idea", "save", "share", "like", "dislike", "open"];
+    private static readonly string[] RecallActs = ["good", "again"];
+    private static readonly string[] SeedActs = ["send", "dismiss"];
+    private static readonly string[] Strongest = [.. Acts, .. RecallActs, .. SeedActs];
     private static readonly string[] Directions = ["up", "down", "left", "right", "none"];
     private const int MaxDwellMs = 3_600_000;
     private const double SwipeVoteWeight = 0.5;
@@ -76,6 +81,12 @@ public sealed class SwipeService(
             return await SummaryResultAsync((await store.GetAsync(s.Id, ct))!, ct);
         }
 
+        var kind = s.QueueKinds.ElementAtOrDefault(position) ?? "item";
+        if (kind != "item")
+        {
+            return await SpecialCardAsync(s, position, kind, now, ct);
+        }
+
         var item = await items.GetAsync(s.QueueItems[position], ct);
         if (item is null)
         {
@@ -91,6 +102,27 @@ public sealed class SwipeService(
             Why(item), Html.SafeUrl(item.Url), Age(item.PublishedAt, now), item.Suggestion is not null));
     }
 
+    /// <summary>A recall question or a post seed. One that no longer exists is skipped like a deleted item.</summary>
+    private async Task<NextResult> SpecialCardAsync(SessionRow s, int position, string kind, DateTimeOffset now, CancellationToken ct)
+    {
+        var category = s.QueueCategories.ElementAtOrDefault(position);
+        var total = Math.Min(s.CardCap, s.QueueItems.Length);
+        CardView? view = null;
+        if (kind == "recall" && await recall.CardAsync(s.QueueItems[position], ct) is { } card)
+        {
+            view = new CardView(s.Id, position, total, card.Front, "recall", Blank(category), "", null, "", false, "recall", card.Back);
+        }
+        else if (kind == "seed" && await recall.SeedAsync(s.QueueItems[position], ct) is { } seed && await items.GetAsync(seed.ItemId, ct) is { } source)
+        {
+            view = new CardView(s.Id, position, total, seed.Angle, "post seed", Blank(category), "From: " + source.Title, Html.SafeUrl(source.Url), Age(source.PublishedAt, now), false, "seed");
+        }
+
+        await store.RaiseShownAsync(s.Id, position + 1, ct);
+        return view is null ? await CardAsync(s, position + 1, now, ct) : new NextResult("card", Card: view);
+    }
+
+    private static string? Blank(string? category) => string.IsNullOrEmpty(category) ? null : category;
+
     private async Task<SessionRow?> StartAsync(DateTimeOffset now, CancellationToken ct)
     {
         var queue = await BuildQueueAsync(now, ct);
@@ -101,16 +133,36 @@ public sealed class SwipeService(
 
         var o = Settings.Swipe;
         var id = await store.StartAsync(o.Cards, (int)o.Cap.TotalSeconds, queue.Select(q => q.Id).ToArray(), queue.Select(q => q.Category ?? "").ToArray(),
-            queue.Select(q => q.Source).ToArray(), queue.Select(q => q.Predicted is { } p ? (float)p : float.NaN).ToArray(), now, ct);
+            queue.Select(q => q.Source).ToArray(), queue.Select(q => q.Predicted is { } p ? (float)p : float.NaN).ToArray(), queue.Select(q => q.Kind).ToArray(), now, ct);
         logger.LogInformation("Swipe session {Session} started with {Count} cards", id, queue.Count);
         return await store.GetAsync(id, ct);
     }
 
+    /// <summary>Due recall cards and seeds take their places first (up to their per-session limits); items fill the rest. Then everything is shuffled together.</summary>
     internal async Task<IReadOnlyList<QueuedCard>> BuildQueueAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var o = Settings.Swipe;
+        var special = new List<QueuedCard>();
+        if (o.Recall.Enabled)
+        {
+            special.AddRange((await recall.DueAsync(now, o.Recall.PerSession, ct)).Select(c => new QueuedCard(c.Id, c.Category, "due", null, "recall")));
+        }
+
+        if (o.Seeds.Enabled)
+        {
+            special.AddRange((await recall.NewSeedsAsync(o.Seeds.PerSession, ct)).Select(x => new QueuedCard(x.Id, x.Category, "seed", null, "seed")));
+        }
+
+        var rest = await BuildItemQueueAsync(Math.Max(0, o.Cards - special.Count), now, ct);
+        var random = new Random();
+        return [.. rest.Concat(special).OrderBy(_ => random.Next())];
+    }
+
+    private async Task<IReadOnlyList<QueuedCard>> BuildItemQueueAsync(int slots, DateTimeOffset now, CancellationToken ct)
     {
         var o = Settings;
         var candidates = await store.CandidatesAsync(now.AddDays(-o.Swipe.CandidateDays), now.AddDays(-o.Swipe.RepeatDays), ct);
-        if (candidates.Count == 0)
+        if (candidates.Count == 0 || slots == 0)
         {
             return [];
         }
@@ -131,56 +183,89 @@ public sealed class SwipeService(
             var score = Scorer.Score(c.Id, c.FeedId, c.Embedding, profileList, taste, o.Weights).Score;
             double? predicted = model?.Probability(c.Embedding);
             return new QueueCandidate(
-                c.Id, predicted is { } p ? score + (o.Swipe.Yield * (p - 0.5)) : score, NearestCategory(c.Embedding, cats, o.Swipe.CategoryFloor), c.Embedding, predicted);
+                c.Id, predicted is { } p ? score + (o.Swipe.Yield * (p - 0.5)) : score, Categorizer.Nearest(c.Embedding, cats, o.Swipe.CategoryFloor), c.Embedding, predicted);
         }).ToList();
         var shares = cats.Where(c => c.Share is > 0).ToDictionary(c => c.Key, c => (double)c.Share!.Value, StringComparer.Ordinal);
-        return SwipeQueue.Build(scored, shares, o.Swipe.Cards, Random.Shared.Next(), o.Swipe.Epsilon);
-    }
-
-    private static string? NearestCategory(float[] x, IReadOnlyList<CategoryRow> cats, double floor)
-    {
-        string? key = null;
-        var best = floor;
-        foreach (var c in cats)
-        {
-            var s = Vectors.Dot(x, c.Embedding);
-            if (s >= best)
-            {
-                best = s;
-                key = c.Key;
-            }
-        }
-
-        return key;
+        return SwipeQueue.Build(scored, shares, slots, Random.Shared.Next(), o.Swipe.Epsilon);
     }
 
     public async Task<ActResult> ActAsync(long sessionId, int position, string act, CancellationToken ct)
     {
-        var queued = Acts.Contains(act, StringComparer.Ordinal) ? await QueuedAsync(sessionId, position, ct) : null;
-        if (queued is null)
+        var queued = await QueuedAsync(sessionId, position, ct);
+        if (queued is null || !ActsFor(queued.Kind).Contains(act, StringComparer.Ordinal))
         {
             return new ActResult(false, "Nothing to do.");
         }
 
-        var (itemId, category, source, predicted) = queued;
-
-        var message = act switch
+        var message = queued.Kind switch
         {
-            "like" => await VoteAsync(itemId, 1, SwipeVoteWeight, "Liked", ct),
-            "dislike" => await VoteAsync(itemId, -1, SwipeVoteWeight, "Not for me", ct),
-            "save" => await SaveAsync(itemId, ct),
-            "idea" => await IdeaAsync(itemId, ct),
-            _ => "",
+            "recall" => await RecallActAsync(queued.RefId, sessionId, act, ct),
+            "seed" => await SeedActAsync(queued.RefId, act, ct),
+            _ => act switch
+            {
+                "like" => await VoteAsync(queued.RefId, 1, SwipeVoteWeight, "Liked", ct),
+                "dislike" => await VoteAsync(queued.RefId, -1, SwipeVoteWeight, "Not for me", ct),
+                "save" => await SaveAsync(queued.RefId, ct),
+                "idea" => await IdeaAsync(queued.RefId, ct),
+                _ => "",
+            },
         };
         if (message is null)
         {
             return new ActResult(false, "Could not do that.");
         }
 
-        var existing = await store.EventAsync(sessionId, position, ct) ?? new EventRow { SessionId = sessionId, Position = position, RefId = itemId, Category = category, RankSource = source, Predicted = predicted };
+        var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
         var acts = existing.Acts.Append(act).Distinct(StringComparer.Ordinal).ToArray();
         await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
         return new ActResult(true, message);
+    }
+
+    private static string[] ActsFor(string kind) => kind switch { "recall" => RecallActs, "seed" => SeedActs, _ => Acts };
+
+    private static EventRow NewEvent(long sessionId, int position, Queued q) =>
+        new() { SessionId = sessionId, Position = position, Kind = q.Kind, RefId = q.RefId, Category = q.Category, RankSource = q.Source, Predicted = q.Predicted };
+
+    private async Task<string?> RecallActAsync(long cardId, long sessionId, string act, CancellationToken ct)
+    {
+        if (await recall.CardAsync(cardId, ct) is not { } card)
+        {
+            return null;
+        }
+
+        await recall.ReviewAsync(card, sessionId, act == "good", time.GetUtcNow(), ct);
+        return act == "good" ? "Good" : "Again tomorrow";
+    }
+
+    private async Task<string?> SeedActAsync(long seedId, string act, CancellationToken ct)
+    {
+        if (await recall.SeedAsync(seedId, ct) is not { Status: "new" } seed)
+        {
+            return await recall.SeedAsync(seedId, ct) is null ? null : "Already handled";
+        }
+
+        var now = time.GetUtcNow();
+        if (act == "dismiss")
+        {
+            await recall.ResolveSeedAsync(seed.Id, "dismissed", null, now, ct);
+            return "Dismissed";
+        }
+
+        if (await feedback.GetIdeaAsync(seed.ItemId, ct) is { } filed)
+        {
+            await recall.ResolveSeedAsync(seed.Id, "sent", filed.PlaneProject, now, ct);
+            return $"That item already has an idea in {filed.PlaneProject}";
+        }
+
+        var (project, error) = await callbacks.FileIdeaAsync(seed.ItemId, null, "[post seed] " + seed.Angle, ct);
+        if (project is null)
+        {
+            logger.LogWarning("Sending post seed {Seed} failed: {Error}", seed.Id, error);
+            return null;
+        }
+
+        await recall.ResolveSeedAsync(seed.Id, "sent", project, now, ct);
+        return $"Sent to {project}";
     }
 
     /// <summary>What happened to a card when it was left (or the page was hidden): the direction, the dwell and the time it was shown. Idempotent; the last call wins.</summary>
@@ -191,9 +276,7 @@ public sealed class SwipeService(
             return false;
         }
 
-        var (itemId, category, source, predicted) = queued;
-
-        var existing = await store.EventAsync(sessionId, position, ct) ?? new EventRow { SessionId = sessionId, Position = position, RefId = itemId, Category = category, RankSource = source, Predicted = predicted };
+        var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
         var dir = direction is not null && Directions.Contains(direction, StringComparer.Ordinal) ? direction : "none";
         var shown = shownAtMs is > 0 && DateTimeOffset.FromUnixTimeMilliseconds(shownAtMs.Value) is var at && Math.Abs((at - time.GetUtcNow()).TotalDays) < 1 ? at.UtcDateTime : (DateTime?)null;
         await store.SaveEventAsync(existing with
@@ -236,7 +319,8 @@ public sealed class SwipeService(
         var category = s.QueueCategories.ElementAtOrDefault(position);
         var source = s.QueueSources.ElementAtOrDefault(position) ?? SwipeQueue.Exploit;
         var predicted = s.QueuePredicted.Length > position && !float.IsNaN(s.QueuePredicted[position]) ? s.QueuePredicted[position] : (float?)null;
-        return new Queued(s.QueueItems[position], string.IsNullOrEmpty(category) ? null : category, source, predicted);
+        var kind = s.QueueKinds.ElementAtOrDefault(position) ?? "item";
+        return new Queued(kind, s.QueueItems[position], string.IsNullOrEmpty(category) ? null : category, source, predicted);
     }
 
     private async Task<string?> VoteAsync(long itemId, short value, double weight, string message, CancellationToken ct)
@@ -270,7 +354,7 @@ public sealed class SwipeService(
 
     /// <summary>The strongest thing done with the card, else where it was swiped.</summary>
     internal static string Primary(IReadOnlyCollection<string> acts, string? direction) =>
-        Acts.FirstOrDefault(acts.Contains) ?? (direction == "down" ? "back" : "next");
+        Strongest.FirstOrDefault(acts.Contains) ?? (direction == "down" ? "back" : "next");
 
     private DateTimeOffset DayStart(DateTimeOffset now)
     {

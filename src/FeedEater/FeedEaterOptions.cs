@@ -218,7 +218,47 @@ public sealed class SwipeOptions
     [Description("Weight of the yield model's (probability - 0.5) next to the taste score, once it has enough examples.")]
     public double Yield { get; set; } = 1.0;
 
+    public SwipeRecallOptions Recall { get; set; } = new();
+    public SwipeSeedOptions Seeds { get; set; } = new();
+    public SwipeNotesOptions Notes { get; set; } = new();
+
     public TimeSpan Cap => TimeSpan.FromMinutes(Minutes);
+}
+
+public sealed class SwipeRecallOptions
+{
+    [Description("Recall cards: questions made from the items you liked or saved (and from your notes) come back at growing intervals. False turns generating and showing them off.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("Most recall cards in one session; due cards come first, so a backlog never takes the whole session.")]
+    public int PerSession { get; set; } = 12;
+
+    [Description("Most liked or saved items turned into questions per local day (one small-model call each).")]
+    public int PerDay { get; set; } = 10;
+}
+
+public sealed class SwipeSeedOptions
+{
+    [Description("Post seeds: a one-line angle for a post, drafted from an item you liked or saved, with a send button that files it as an idea. False turns generating and showing them off.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("Most seeds in one session.")]
+    public int PerSession { get; set; } = 2;
+
+    [Description("Most seeds drafted per local day (one small-model call each).")]
+    public int PerDay { get; set; } = 3;
+}
+
+public sealed class SwipeNotesOptions
+{
+    public bool Enabled => BaseUrl.Length > 0 && Token.Length > 0;
+
+    [Description("Server that lists your notes at GET /api/v1/notes (items with id, topic, points, createdAt), for recall cards. Empty means no notes.")]
+    public string BaseUrl { get; set; } = "";
+
+    [Secret]
+    [Description("Bearer token for the notes server.")]
+    public string Token { get; set; } = "";
 }
 
 public sealed class TasteOptions

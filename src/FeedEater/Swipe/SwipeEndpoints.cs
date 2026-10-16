@@ -100,12 +100,24 @@ public static class SwipeEndpoints
         <body>
         <main id="stage" aria-live="polite"><p class="empty">Loading…</p></main>
         <nav id="bar" aria-label="Card actions" hidden>
-          <button type="button" data-do="dislike" aria-label="Not for me">👎</button>
-          <button type="button" data-do="like" aria-label="Like">👍</button>
-          <button type="button" data-do="save" aria-label="Save">📌</button>
-          <button type="button" data-do="share" aria-label="Share">📤</button>
-          <button type="button" data-do="idea" aria-label="File as an idea">💡</button>
-          <button type="button" data-do="open" aria-label="Open the link">↗</button>
+          <div data-for="item">
+            <button type="button" data-do="dislike" aria-label="Not for me">👎</button>
+            <button type="button" data-do="like" aria-label="Like">👍</button>
+            <button type="button" data-do="save" aria-label="Save">📌</button>
+            <button type="button" data-do="share" aria-label="Share">📤</button>
+            <button type="button" data-do="idea" aria-label="File as an idea">💡</button>
+            <button type="button" data-do="open" aria-label="Open the link">↗</button>
+          </div>
+          <div data-for="recall">
+            <button type="button" class="wide" data-do="reveal">Show answer</button>
+            <button type="button" class="wide" data-do="again" hidden>Again</button>
+            <button type="button" class="wide" data-do="good" hidden>Good</button>
+          </div>
+          <div data-for="seed">
+            <button type="button" class="wide" data-do="dismiss">Dismiss</button>
+            <button type="button" class="wide" data-do="send">Send as an idea</button>
+            <button type="button" data-do="open" aria-label="Open the source">↗</button>
+          </div>
           <button type="button" data-do="end" aria-label="I am done">✕</button>
         </nav>
         <div id="toast" role="status"></div>

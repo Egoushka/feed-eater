@@ -5,7 +5,7 @@ namespace FeedEater.Swipe;
 /// <summary><paramref name="Embedding"/> is only needed to pick explore cards that differ from the rest; <paramref name="Predicted"/> is the yield model's probability, when there is a model.</summary>
 public sealed record QueueCandidate(long Id, double Score, string? Category, float[]? Embedding = null, double? Predicted = null);
 
-public sealed record QueuedCard(long Id, string? Category, string Source = SwipeQueue.Exploit, double? Predicted = null);
+public sealed record QueuedCard(long Id, string? Category, string Source = SwipeQueue.Exploit, double? Predicted = null, string Kind = "item");
 
 /// <summary>The cards of one session, chosen before it starts. Pure.</summary>
 public static class SwipeQueue

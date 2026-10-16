@@ -12,6 +12,7 @@ public sealed record SessionRow
     public long[] QueueItems { get; init; } = [];
     public string[] QueueCategories { get; init; } = [];
     public string[] QueueSources { get; init; } = [];
+    public string[] QueueKinds { get; init; } = [];
     public float[] QueuePredicted { get; init; } = [];
     public short? Felt { get; init; }
     public DateTime? FeltAt { get; init; }

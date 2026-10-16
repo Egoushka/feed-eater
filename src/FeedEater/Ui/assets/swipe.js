@@ -10,6 +10,7 @@
   const DOUBLE_TAP_MS = 300;
 
   let card = null;       // the card on screen
+  let revealed = false;  // a recall answer is showing
   let shownAt = 0;
   let busy = false;
   let lastTap = 0;
@@ -76,19 +77,32 @@
 
   function renderCard(c) {
     card = c;
+    revealed = false;
     shownAt = Date.now();
     const meta = [c.category, c.feed, c.age].filter(Boolean).join(' · ');
     const box = el('article', 'card');
     box.append(el('p', 'meta', meta), el('h1', '', c.title));
     if (c.why) box.append(el('p', '', c.why));
+    if (c.kind === 'recall') box.append(Object.assign(el('p', 'answer', c.back), { id: 'answer', hidden: true }));
     stage.append(box, el('p', 'count', (c.position + 1) + ' / ' + c.total));
     bar.hidden = false;
-    bar.querySelector('[data-do=idea]').hidden = !c.hasSuggestion;
-    bar.querySelector('[data-do=open]').hidden = !c.url;
+    for (const set of bar.querySelectorAll('[data-for]')) set.hidden = set.dataset.for !== c.kind;
+    for (const b of bar.querySelectorAll('[data-for=recall] button')) b.hidden = b.dataset.do === 'reveal' ? false : true;
+    const idea = bar.querySelector('[data-for=item] [data-do=idea]');
+    if (idea) idea.hidden = !c.hasSuggestion;
+    for (const b of bar.querySelectorAll('[data-do=open]')) b.hidden = !c.url;
+  }
+
+  function reveal() {
+    if (card?.kind !== 'recall' || revealed) return;
+    revealed = true;
+    document.getElementById('answer').hidden = false;
+    for (const b of bar.querySelectorAll('[data-for=recall] button')) b.hidden = b.dataset.do === 'reveal';
   }
 
   const REASONS = { cards: 'That was the last card.', time: 'Time is up.', exhausted: 'Nothing new is left.', user: 'Done.' };
-  const LABELS = [['save', 'Saved'], ['share', 'Shared'], ['idea', 'Ideas filed'], ['like', 'Liked'], ['dislike', 'Not for me'], ['open', 'Opened']];
+  const LABELS = [['save', 'Saved'], ['share', 'Shared'], ['idea', 'Ideas filed'], ['like', 'Liked'], ['dislike', 'Not for me'], ['open', 'Opened'],
+    ['good', 'Remembered'], ['again', 'Forgot'], ['send', 'Seeds sent'], ['dismiss', 'Seeds dismissed']];
 
   function renderSummary(s) {
     const box = el('article', 'card summary');
@@ -156,9 +170,26 @@
     await load(direction === 'down' ? position - 1 : position + 1);
   }
 
+  // A horizontal swipe: right says yes (save, remembered, send), left says no (not for me, forgot, dismiss).
+  async function swipeAction(right) {
+    if (!card) return;
+    if (card.kind === 'recall') {
+      if (!revealed) return;
+      await act(right ? 'good' : 'again');
+    } else if (card.kind === 'seed') {
+      await act(right ? 'send' : 'dismiss');
+    } else {
+      await act(right ? 'save' : 'dislike');
+    }
+    return advance(right ? 'right' : 'left');
+  }
+
   async function doAction(name) {
     if (!card) return;
     if (name === 'share') return share();
+    if (name === 'reveal') return reveal();
+    if (name === 'good' || name === 'send') return swipeAction(true);
+    if (name === 'again' || name === 'dismiss') return swipeAction(false);
     if (name === 'open') {
       if (card.url) { act('open'); window.open(card.url, '_blank', 'noopener,noreferrer'); }
       return;
@@ -185,19 +216,18 @@
     start = null;
     if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) {
       const now = Date.now();
-      if (now - lastTap < DOUBLE_TAP_MS) { lastTap = 0; act('like'); } else { lastTap = now; }
+      if (card.kind === 'recall') return reveal();
+      if (card.kind === 'item' && now - lastTap < DOUBLE_TAP_MS) { lastTap = 0; act('like'); } else { lastTap = now; }
       return;
     }
     if (Math.abs(dy) >= Math.abs(dx)) return advance(dy < 0 ? 'up' : 'down');
-    if (dx > 0) { await act('save'); return advance('right'); }
-    await act('dislike');
-    return advance('left');
+    return swipeAction(dx > 0);
   });
   stage.addEventListener('pointercancel', () => { start = null; });
 
   document.addEventListener('keydown', (e) => {
-    const keys = { ArrowUp: () => advance('up'), ArrowDown: () => advance('down'), ArrowRight: () => doAction('save').then(() => advance('right')),
-      ArrowLeft: () => doAction('dislike').then(() => advance('left')), l: () => doAction('like') };
+    const keys = { ArrowUp: () => advance('up'), ArrowDown: () => advance('down'), ArrowRight: () => swipeAction(true),
+      ArrowLeft: () => swipeAction(false), l: () => doAction('like'), Enter: () => reveal() };
     if (keys[e.key]) { e.preventDefault(); keys[e.key](); }
   });
 

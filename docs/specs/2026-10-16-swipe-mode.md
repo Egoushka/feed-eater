@@ -277,5 +277,23 @@ anything that rewards time in the app.
   explore good-act rates and the model's mean expected rate. `EvalRunner` (which re-runs the LLM prompts) is not involved.
 - The `doctor` line `swipe` exists: off, or unseen item count and category count; an invalid `categories.json` fails it.
 
+## Spike answers (PR C)
+- **S3, notes:** the notes server (Nytka) answers `GET /api/v1/notes?limit=&before=` with `Authorization: Bearer`, newest first:
+  `{ items: [{ id (UUID), conversationId, conversationTitle, conversationStartedAt, topic, points[], createdAt }], nextBefore }`. The id is stable, so `note:<id>` is the dedupe key.
+  feed-eater reads it through `Swipe:Notes:BaseUrl` and `Token`; any server with that shape works.
+- **S4, Plainsight:** its manual signals come from a `signals.json` in a private config repository, read by a collector. There is no remote intake. A sent seed therefore
+  goes to the idea sink (Plane Intake, else the local list) titled `[post seed] …`, and moving it into Plainsight's `signals.json` stays a manual step.
+
+## Built differently (PR C)
+- Migration `0026_swipe_recall.sql`: `recall_cards`, `recall_reviews`, `recall_done` (a source is never asked about twice, even when it gave no cards), `post_seeds`,
+  `swipe_sessions.queue_kinds`; `swipe_events.ref_id` lost its foreign key to `items` and now points at an item, a recall card or a seed by `kind`.
+- One job (`SwipeContentJob`, every 10 minutes) makes recall cards from liked items (small model, `Recall:PerDay` 10), recall cards from notes (no chat call; one embedding
+  per batch to place them in a category) and seeds (small model, `Seeds:PerDay` 3, only items in a category flagged `seed`, or any item when no category is flagged).
+  An item the model finds no angle for is stored as a dismissed seed, so it is not asked about again.
+- Ladder 1, 3, 7, 16, 35 days; forgotten means tomorrow. A good answer at step 1 or more is "remembered" and counts as the `recall` yield event (0.7) for the card's item;
+  a sent seed counts as `idea` (1.0) for its item.
+- A queue is due recall cards (up to 12), new seeds (up to 2) and items for the rest, shuffled together. Acts: recall `good`/`again`, seed `send`/`dismiss`.
+- A seed for an item that already has a filed idea is not sent again (the sink keeps one idea per item); the card says where it is.
+
 ## Appendix A: real export file list
 _Empty until G1. Paste the `--inspect` output here._

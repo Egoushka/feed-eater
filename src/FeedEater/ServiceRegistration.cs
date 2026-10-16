@@ -119,6 +119,12 @@ public static class ServiceRegistration
         // The client carries the PINS bearer token, so it must never follow a redirect to another host.
         services.AddHttpClient<WatchSource>().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
+        services.AddHttpClient<NotesClient>((sp, http) =>
+        {
+            var o = Settings(sp).Swipe.Notes;
+            BaseAddress(http, o.BaseUrl.Length > 0 ? o.BaseUrl.TrimEnd('/') + "/" : "");
+            Bearer(http, o.Token);
+        });
         services.AddHttpClient<HindsightClient>((sp, http) =>
         {
             var o = Settings(sp).Hindsight;
@@ -150,6 +156,10 @@ public static class ServiceRegistration
             if (settings.Swipe.Enabled)
             {
                 services.AddHostedService<CategoryBuilder>();
+                if (settings.Swipe.Recall.Enabled || settings.Swipe.Seeds.Enabled)
+                {
+                    services.AddHostedService<SwipeContentJob>();
+                }
             }
 
             if (settings.Karakeep.Enabled || settings.GitHub.Enabled)
@@ -204,6 +214,7 @@ public static class ServiceRegistration
         services.AddSingleton<TasteMap>();
         services.AddSingleton<MapHandler>();
         services.AddSingleton<SwipeStore>();
+        services.AddSingleton<RecallStore>();
         services.AddSingleton<CategoryStore>();
         services.AddSingleton<SwipeYield>();
         services.AddSingleton<SwipeService>();

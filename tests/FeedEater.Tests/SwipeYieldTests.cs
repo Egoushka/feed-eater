@@ -118,7 +118,7 @@ public sealed class SwipeQueueExploreTests
     public void The_service_scores_candidates_without_reading_dwell()
     {
         var text = File.ReadAllText(RepoRoot.File("src/FeedEater/Swipe/SwipeService.cs"));
-        var build = text[text.IndexOf("BuildQueueAsync", StringComparison.Ordinal)..text.IndexOf("NearestCategory", StringComparison.Ordinal)];
+        var build = text[text.IndexOf("BuildQueueAsync", StringComparison.Ordinal)..text.IndexOf("public async Task<ActResult> ActAsync", StringComparison.Ordinal)];
 
         Assert.DoesNotContain("dwell", build, StringComparison.OrdinalIgnoreCase);
     }
@@ -167,6 +167,29 @@ public sealed class SwipeYieldStoreTests(PostgresFixture pg) : IAsyncLifetime
         Assert.NotNull(await Yield(3).ModelAsync(default));
         var status = await Yield(4).StatusAsync(default);
         Assert.Equal((3, 3, false), (status.Positives, status.Negatives, status.Ready));
+    }
+
+    [Fact]
+    public async Task A_sent_seed_and_a_remembered_card_count_as_good_examples_and_a_first_answer_does_not()
+    {
+        var sent = await Seed.ItemAsync(pg, 1, "Sent", TestVectors.OneHot(0));
+        var remembered = await Seed.ItemAsync(pg, 1, "Remembered", TestVectors.OneHot(1));
+        var firstAnswer = await Seed.ItemAsync(pg, 1, "First", TestVectors.OneHot(2));
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("insert into post_seeds (item_id, angle, status) values (@sent, 'a', 'sent')", new { sent });
+            foreach (var (item, step) in new[] { (remembered, 2), (firstAnswer, 0) })
+            {
+                var card = await c.ExecuteScalarAsync<long>(
+                    "insert into recall_cards (source, ref, item_id, front, back, due_at) values ('item', 'item:' || @item, @item, 'q', 'a', now()) returning id", new { item });
+                await c.ExecuteAsync("insert into recall_reviews (card_id, result, step_before) values (@card, 'good', @step)", new { card, step });
+            }
+        }
+
+        var data = await Yield(1).LabeledAsync(default);
+
+        Assert.Equal(2, data.Count);   // the first answer is not yet proof of memory, so it is no example at all
+        Assert.All(data, d => Assert.True(d.Liked));
     }
 
     [Fact]
