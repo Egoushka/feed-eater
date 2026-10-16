@@ -267,5 +267,15 @@ anything that rewards time in the app.
 - Not in PR A: the `doctor` swipe line (comes with PR B), recall cards, seeds, the yield model and epsilon exploration.
 - The `/ui` nav always lists Swipe.
 
+## Built differently (PR B)
+- Migration `0025_swipe_ranking.sql`: `swipe_sessions.queue_sources` and `queue_predicted` (NaN = no model yet), `swipe_events.predicted`; `rank_source` is now `exploit` or `explore`.
+- No `YieldTrainer` job: the model is trained from the event log when a session starts (a few hundred rows train in well under a second). Its inputs are the
+  acts of every card shown, labelled by `YieldLabels` (idea 1.0, share 0.8, save 0.7, like 0.3, open 0.1, dislike −0.5; positive from 0.5); the `recall` weight waits for PR C.
+- The weights `Yield`, `Epsilon` and `YieldMinEvents` live in `Swipe:`, not `Weights:`.
+- Explore: each slot is explore with probability ε; of ten random candidates from outside the top 30% by score, the one least similar to the cards already picked.
+- "Compare with today's ranking" is the held-out agreement (5-fold AUC) of the yield model against centroids on the same log, shown on `/ui/swipe`, next to exploit vs
+  explore good-act rates and the model's mean expected rate. `EvalRunner` (which re-runs the LLM prompts) is not involved.
+- The `doctor` line `swipe` exists: off, or unseen item count and category count; an invalid `categories.json` fails it.
+
 ## Appendix A: real export file list
 _Empty until G1. Paste the `--inspect` output here._

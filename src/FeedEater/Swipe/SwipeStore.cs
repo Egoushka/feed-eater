@@ -16,6 +16,8 @@ public sealed record EventRow
     public int Position { get; init; }
     public long RefId { get; init; }
     public string? Category { get; init; }
+    public string RankSource { get; init; } = "exploit";
+    public float? Predicted { get; init; }
     public DateTime? ShownAt { get; init; }
     public int? DwellMs { get; init; }
     public string? Direction { get; init; }
@@ -45,10 +47,19 @@ public sealed record WeekRow
 
 public sealed record CategoryCount(string Category, int Cards);
 
+/// <summary>Cards shown by how they were chosen, with how many drew a good act (idea, save or share) and what the model expected of them.</summary>
+public sealed record SourceYield
+{
+    public string Source { get; init; } = "";
+    public int Cards { get; init; }
+    public int Good { get; init; }
+    public double? AvgPredicted { get; init; }
+}
+
 public sealed class SwipeStore(FeedDb db)
 {
     private const string SessionColumns =
-        "id, started_at, ended_at, end_reason, card_cap, time_cap_s, cards_shown, queue_items, queue_categories, felt, felt_at";
+        "id, started_at, ended_at, end_reason, card_cap, time_cap_s, cards_shown, queue_items, queue_categories, queue_sources, queue_predicted, felt, felt_at";
 
     /// <summary>
     /// Items published after <paramref name="publishedAfter"/> that are embedded, not duplicates, not in a muted feed, not voted on and not shown
@@ -91,14 +102,14 @@ public sealed class SwipeStore(FeedDb db)
             "select count(*)::int from swipe_sessions where started_at >= @since", new { since = since.UtcDateTime }, cancellationToken: ct));
     }
 
-    public async Task<long> StartAsync(int cardCap, int timeCapS, long[] items, string[] categories, DateTimeOffset at, CancellationToken ct)
+    public async Task<long> StartAsync(int cardCap, int timeCapS, long[] items, string[] categories, string[] sources, float[] predicted, DateTimeOffset at, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.ExecuteScalarAsync<long>(new CommandDefinition(
             """
-            insert into swipe_sessions (started_at, card_cap, time_cap_s, queue_items, queue_categories)
-            values (@at, @cardCap, @timeCapS, @items, @categories) returning id
-            """, new { at = at.UtcDateTime, cardCap, timeCapS, items, categories }, cancellationToken: ct));
+            insert into swipe_sessions (started_at, card_cap, time_cap_s, queue_items, queue_categories, queue_sources, queue_predicted)
+            values (@at, @cardCap, @timeCapS, @items, @categories, @sources, @predicted) returning id
+            """, new { at = at.UtcDateTime, cardCap, timeCapS, items, categories, sources, predicted }, cancellationToken: ct));
     }
 
     public async Task EndAsync(long id, string reason, DateTimeOffset at, CancellationToken ct)
@@ -130,7 +141,7 @@ public sealed class SwipeStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.QuerySingleOrDefaultAsync<EventRow>(new CommandDefinition(
             """
-            select session_id, position, ref_id, category, shown_at, dwell_ms, direction, action, acts
+            select session_id, position, ref_id, category, rank_source, predicted, shown_at, dwell_ms, direction, action, acts
             from swipe_events where session_id = @sessionId and position = @position
             """, new { sessionId, position }, cancellationToken: ct));
     }
@@ -140,8 +151,8 @@ public sealed class SwipeStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into swipe_events (session_id, position, kind, ref_id, category, shown_at, dwell_ms, direction, action, acts)
-            values (@SessionId, @Position, 'item', @RefId, @Category, @ShownAt, @DwellMs, @Direction, @Action, @Acts)
+            insert into swipe_events (session_id, position, kind, ref_id, category, rank_source, predicted, shown_at, dwell_ms, direction, action, acts)
+            values (@SessionId, @Position, 'item', @RefId, @Category, @RankSource, @Predicted, @ShownAt, @DwellMs, @Direction, @Action, @Acts)
             on conflict (session_id, position) do update set
                 shown_at = coalesce(excluded.shown_at, swipe_events.shown_at),
                 dwell_ms = coalesce(excluded.dwell_ms, swipe_events.dwell_ms),
@@ -193,6 +204,18 @@ public sealed class SwipeStore(FeedDb db)
                    count(*) filter (where s.felt = -1)::int as drained
             from s left join e on e.week = s.week group by s.week order by s.week desc
             """, new { tz = timeZone, weeks }, cancellationToken: ct))).ToList();
+    }
+
+    public async Task<IReadOnlyList<SourceYield>> SourceYieldAsync(DateTimeOffset since, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<SourceYield>(new CommandDefinition(
+            """
+            select rank_source as source, count(*)::int as cards,
+                   count(*) filter (where acts && array['idea', 'save', 'share'])::int as good,
+                   avg(nullif(predicted, 'NaN'::real))::float8 as avg_predicted
+            from swipe_events where created_at > @since group by rank_source order by rank_source
+            """, new { since = since.UtcDateTime }, cancellationToken: ct))).ToList();
     }
 
     public async Task<IReadOnlyList<CategoryCount>> CategoryCardsAsync(DateTimeOffset since, CancellationToken ct)

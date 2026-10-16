@@ -205,6 +205,7 @@ public static class ServiceRegistration
         services.AddSingleton<MapHandler>();
         services.AddSingleton<SwipeStore>();
         services.AddSingleton<CategoryStore>();
+        services.AddSingleton<SwipeYield>();
         services.AddSingleton<SwipeService>();
         services.AddSingleton<SwipeReportHandler>();
 

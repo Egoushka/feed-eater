@@ -177,9 +177,12 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Swipe:CategoryFloor` | `0.2` | Cosine similarity below which an item belongs to no category. |
 | `FeedEater:Swipe:CooldownMinutes` | `180` | Minutes after a session ends before the next one can start. |
 | `FeedEater:Swipe:Enabled` | `false` | Swipe mode: a phone page at /swipe showing one card per screen, with a hard cap per session. Off by default; needs Mcp:Token for the sign-in. |
+| `FeedEater:Swipe:Epsilon` | `0.2` | Share of cards chosen for exploration: a random item from outside the best-ranked part that is unlike the rest of the session. Its yield is the only honest test of the ranking. |
 | `FeedEater:Swipe:Minutes` | `15` | Minutes after which a session ends with the summary card, whatever the card count. |
 | `FeedEater:Swipe:RepeatDays` | `30` | An item shown in swipe mode is not shown again for this many days. |
 | `FeedEater:Swipe:SessionsPerDay` | `3` | Most sessions that can start per local day. |
+| `FeedEater:Swipe:Yield` | `1` | Weight of the yield model's (probability - 0.5) next to the taste score, once it has enough examples. |
+| `FeedEater:Swipe:YieldMinEvents` | `30` | Good and not-good examples (each) the yield model needs before it adds to the ranking. |
 
 ## Taste
 

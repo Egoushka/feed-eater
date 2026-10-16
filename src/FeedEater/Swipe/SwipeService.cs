@@ -17,11 +17,11 @@ public sealed record NextResult(string Type, CardView? Card = null, SummaryView?
 
 public sealed record ActResult(bool Ok, string Message);
 
-internal sealed record Queued(long ItemId, string? Category);
+internal sealed record Queued(long ItemId, string? Category, string Source, float? Predicted);
 
 /// <summary>Starts, resumes and ends sessions, hands out the cards and applies what the owner does with them. Every id the client names is a position in the session's own queue.</summary>
 public sealed class SwipeService(
-    SwipeStore store, CategoryStore categories, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
+    SwipeStore store, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
     CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
 {
     public static readonly string[] Acts = ["idea", "save", "share", "like", "dislike", "open"];
@@ -100,7 +100,8 @@ public sealed class SwipeService(
         }
 
         var o = Settings.Swipe;
-        var id = await store.StartAsync(o.Cards, (int)o.Cap.TotalSeconds, queue.Select(q => q.Id).ToArray(), queue.Select(q => q.Category ?? "").ToArray(), now, ct);
+        var id = await store.StartAsync(o.Cards, (int)o.Cap.TotalSeconds, queue.Select(q => q.Id).ToArray(), queue.Select(q => q.Category ?? "").ToArray(),
+            queue.Select(q => q.Source).ToArray(), queue.Select(q => q.Predicted is { } p ? (float)p : float.NaN).ToArray(), now, ct);
         logger.LogInformation("Swipe session {Session} started with {Count} cards", id, queue.Count);
         return await store.GetAsync(id, ct);
     }
@@ -124,10 +125,16 @@ public sealed class SwipeService(
         }
 
         var cats = await categories.AllAsync(ct);
-        var scored = candidates.Select(c => new QueueCandidate(
-            c.Id, Scorer.Score(c.Id, c.FeedId, c.Embedding, profileList, taste, o.Weights).Score, NearestCategory(c.Embedding, cats, o.Swipe.CategoryFloor))).ToList();
+        var model = await yield.ModelAsync(ct);
+        var scored = candidates.Select(c =>
+        {
+            var score = Scorer.Score(c.Id, c.FeedId, c.Embedding, profileList, taste, o.Weights).Score;
+            double? predicted = model?.Probability(c.Embedding);
+            return new QueueCandidate(
+                c.Id, predicted is { } p ? score + (o.Swipe.Yield * (p - 0.5)) : score, NearestCategory(c.Embedding, cats, o.Swipe.CategoryFloor), c.Embedding, predicted);
+        }).ToList();
         var shares = cats.Where(c => c.Share is > 0).ToDictionary(c => c.Key, c => (double)c.Share!.Value, StringComparer.Ordinal);
-        return SwipeQueue.Build(scored, shares, o.Swipe.Cards, Random.Shared.Next());
+        return SwipeQueue.Build(scored, shares, o.Swipe.Cards, Random.Shared.Next(), o.Swipe.Epsilon);
     }
 
     private static string? NearestCategory(float[] x, IReadOnlyList<CategoryRow> cats, double floor)
@@ -155,7 +162,7 @@ public sealed class SwipeService(
             return new ActResult(false, "Nothing to do.");
         }
 
-        var (itemId, category) = queued;
+        var (itemId, category, source, predicted) = queued;
 
         var message = act switch
         {
@@ -170,7 +177,7 @@ public sealed class SwipeService(
             return new ActResult(false, "Could not do that.");
         }
 
-        var existing = await store.EventAsync(sessionId, position, ct) ?? new EventRow { SessionId = sessionId, Position = position, RefId = itemId, Category = category };
+        var existing = await store.EventAsync(sessionId, position, ct) ?? new EventRow { SessionId = sessionId, Position = position, RefId = itemId, Category = category, RankSource = source, Predicted = predicted };
         var acts = existing.Acts.Append(act).Distinct(StringComparer.Ordinal).ToArray();
         await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
         return new ActResult(true, message);
@@ -184,9 +191,9 @@ public sealed class SwipeService(
             return false;
         }
 
-        var (itemId, category) = queued;
+        var (itemId, category, source, predicted) = queued;
 
-        var existing = await store.EventAsync(sessionId, position, ct) ?? new EventRow { SessionId = sessionId, Position = position, RefId = itemId, Category = category };
+        var existing = await store.EventAsync(sessionId, position, ct) ?? new EventRow { SessionId = sessionId, Position = position, RefId = itemId, Category = category, RankSource = source, Predicted = predicted };
         var dir = direction is not null && Directions.Contains(direction, StringComparer.Ordinal) ? direction : "none";
         var shown = shownAtMs is > 0 && DateTimeOffset.FromUnixTimeMilliseconds(shownAtMs.Value) is var at && Math.Abs((at - time.GetUtcNow()).TotalDays) < 1 ? at.UtcDateTime : (DateTime?)null;
         await store.SaveEventAsync(existing with
@@ -227,7 +234,9 @@ public sealed class SwipeService(
         }
 
         var category = s.QueueCategories.ElementAtOrDefault(position);
-        return new Queued(s.QueueItems[position], string.IsNullOrEmpty(category) ? null : category);
+        var source = s.QueueSources.ElementAtOrDefault(position) ?? SwipeQueue.Exploit;
+        var predicted = s.QueuePredicted.Length > position && !float.IsNaN(s.QueuePredicted[position]) ? s.QueuePredicted[position] : (float?)null;
+        return new Queued(s.QueueItems[position], string.IsNullOrEmpty(category) ? null : category, source, predicted);
     }
 
     private async Task<string?> VoteAsync(long itemId, short value, double weight, string message, CancellationToken ct)
