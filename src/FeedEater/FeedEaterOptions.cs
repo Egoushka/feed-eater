@@ -46,6 +46,7 @@ public sealed class FeedEaterOptions
     public QuietOptions Quiet { get; set; } = new();
     public DuelOptions Duel { get; set; } = new();
     public FollowOptions Follow { get; set; } = new();
+    public SwipeOptions Swipe { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -177,6 +178,38 @@ public sealed class FollowOptions
 
     [Description("Messages sent per followed story; the follow closes when it is reached.")]
     public int MaxMessages { get; set; } = 50;
+}
+
+public sealed class SwipeOptions
+{
+    [Description("Swipe mode: a phone page at /swipe showing one card per screen, with a hard cap per session. Off by default; needs Mcp:Token for the sign-in.")]
+    public bool Enabled { get; set; }
+
+    [Description("Cards in one session; the summary card follows the last one.")]
+    public int Cards { get; set; } = 40;
+
+    [Description("Minutes after which a session ends with the summary card, whatever the card count.")]
+    public int Minutes { get; set; } = 15;
+
+    [Description("Minutes after a session ends before the next one can start.")]
+    public int CooldownMinutes { get; set; } = 180;
+
+    [Description("Most sessions that can start per local day.")]
+    public int SessionsPerDay { get; set; } = 3;
+
+    [Description("Items published in the last this many days can be shown.")]
+    public int CandidateDays { get; set; } = 14;
+
+    [Description("An item shown in swipe mode is not shown again for this many days.")]
+    public int RepeatDays { get; set; } = 30;
+
+    [Description("Your categories (what counts as a good use of attention: shares, events, seed flag); shape in categories.example.json. A missing file means one category, everything.")]
+    public string CategoriesPath { get; set; } = "/config/categories.json";
+
+    [Description("Cosine similarity below which an item belongs to no category.")]
+    public double CategoryFloor { get; set; } = 0.2;
+
+    public TimeSpan Cap => TimeSpan.FromMinutes(Minutes);
 }
 
 public sealed class TasteOptions

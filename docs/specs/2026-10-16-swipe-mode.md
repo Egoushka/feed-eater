@@ -258,5 +258,14 @@ No score, no verdict. Read-only; deleting all `ig_*` rows is one button (`POST /
 Scraping Instagram or any logged-in session; showing Instagram content in the feed; push notifications; video or images; a second user; a native app;
 anything that rewards time in the app.
 
+## Built differently (PR A)
+- Migration is `0024_swipe.sql` (past the v0.9 reservation); tables `categories`, `swipe_sessions`, `swipe_events`. `swipe_events` has an `acts` array next to `action`
+  (all acts on a card; `action` is the strongest) and one row per card, created by the first act or the leave event.
+- The CSP on `/swipe` adds `img-src 'self'` for the icon; `/ui` is unchanged.
+- The session queue is fixed at start (`queue_items`, `queue_categories`), so the client names only a position and the server derives every item id.
+- A like or dislike by swipe is a vote of weight 0.5; a save is weight 1 plus the 📌 Karakeep bookmark when configured.
+- Not in PR A: the `doctor` swipe line (comes with PR B), recall cards, seeds, the yield model and epsilon exploration.
+- The `/ui` nav always lists Swipe.
+
 ## Appendix A: real export file list
 _Empty until G1. Paste the `--inspect` output here._

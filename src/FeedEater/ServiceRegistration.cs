@@ -22,6 +22,7 @@ using FeedEater.Setup;
 using FeedEater.Signals;
 using FeedEater.Sources;
 using FeedEater.Storage;
+using FeedEater.Swipe;
 using FeedEater.Telegram;
 using FeedEater.Ui;
 
@@ -146,6 +147,11 @@ public static class ServiceRegistration
         {
             services.AddHostedService<Ingestor>();
             services.AddHostedService<ProfileBuilder>();
+            if (settings.Swipe.Enabled)
+            {
+                services.AddHostedService<CategoryBuilder>();
+            }
+
             if (settings.Karakeep.Enabled || settings.GitHub.Enabled)
             {
                 services.AddHostedService<SignalJob>();
@@ -197,6 +203,10 @@ public static class ServiceRegistration
         services.AddSingleton<MapStore>();
         services.AddSingleton<TasteMap>();
         services.AddSingleton<MapHandler>();
+        services.AddSingleton<SwipeStore>();
+        services.AddSingleton<CategoryStore>();
+        services.AddSingleton<SwipeService>();
+        services.AddSingleton<SwipeReportHandler>();
 
         services.AddSetupChecks();
         services.AddFeedEaterMcp();

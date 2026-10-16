@@ -97,6 +97,7 @@ public static class UiEndpoints
         secured.MapGet("/ideas", h.IdeasAsync);
         secured.MapGet("/usage", h.UsageAsync);
         secured.MapGet("/map", app.ServiceProvider.GetRequiredService<MapHandler>().GetAsync);
+        secured.MapGet("/swipe", app.ServiceProvider.GetRequiredService<SwipeReportHandler>().GetAsync);
         secured.MapGet("/setup", app.ServiceProvider.GetRequiredService<SetupHandler>().GetAsync);
         secured.MapPost("/vote", h.VoteAsync);
         secured.MapPost("/feeds/mute", h.MuteFeedAsync);
