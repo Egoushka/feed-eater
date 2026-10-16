@@ -60,6 +60,13 @@ public sealed class SwipeYield(FeedDb db, CategoryStore categories, IOptions<Fee
             select i.embedding::real[] as embedding, e.acts, e.category
             from swipe_events e join items i on i.id = e.ref_id
             where i.embedding is not null and e.kind = 'item'
+            union all
+            select i.embedding::real[], array['idea'], s.category
+            from post_seeds s join items i on i.id = s.item_id where s.status = 'sent' and i.embedding is not null
+            union all
+            select i.embedding::real[], array['recall'], c.category
+            from recall_reviews r join recall_cards c on c.id = r.card_id join items i on i.id = c.item_id
+            where r.result = 'good' and r.step_before >= 1 and i.embedding is not null
             """, cancellationToken: ct));
         return rows.Select(r => new LabeledVector(
             r.Embedding, YieldLabels.Positive(r.Acts, r.Category is not null && narrowing.TryGetValue(r.Category, out var events) ? events : null))).ToList();

@@ -179,7 +179,15 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Swipe:Enabled` | `false` | Swipe mode: a phone page at /swipe showing one card per screen, with a hard cap per session. Off by default; needs Mcp:Token for the sign-in. |
 | `FeedEater:Swipe:Epsilon` | `0.2` | Share of cards chosen for exploration: a random item from outside the best-ranked part that is unlike the rest of the session. Its yield is the only honest test of the ranking. |
 | `FeedEater:Swipe:Minutes` | `15` | Minutes after which a session ends with the summary card, whatever the card count. |
+| `FeedEater:Swipe:Notes:BaseUrl` | (empty) | Server that lists your notes at GET /api/v1/notes (items with id, topic, points, createdAt), for recall cards. Empty means no notes. |
+| `FeedEater:Swipe:Notes:Token` | (empty) | Bearer token for the notes server. |
+| `FeedEater:Swipe:Recall:Enabled` | `true` | Recall cards: questions made from the items you liked or saved (and from your notes) come back at growing intervals. False turns generating and showing them off. |
+| `FeedEater:Swipe:Recall:PerDay` | `10` | Most liked or saved items turned into questions per local day (one small-model call each). |
+| `FeedEater:Swipe:Recall:PerSession` | `12` | Most recall cards in one session; due cards come first, so a backlog never takes the whole session. |
 | `FeedEater:Swipe:RepeatDays` | `30` | An item shown in swipe mode is not shown again for this many days. |
+| `FeedEater:Swipe:Seeds:Enabled` | `true` | Post seeds: a one-line angle for a post, drafted from an item you liked or saved, with a send button that files it as an idea. False turns generating and showing them off. |
+| `FeedEater:Swipe:Seeds:PerDay` | `3` | Most seeds drafted per local day (one small-model call each). |
+| `FeedEater:Swipe:Seeds:PerSession` | `2` | Most seeds in one session. |
 | `FeedEater:Swipe:SessionsPerDay` | `3` | Most sessions that can start per local day. |
 | `FeedEater:Swipe:Yield` | `1` | Weight of the yield model's (probability - 0.5) next to the taste score, once it has enough examples. |
 | `FeedEater:Swipe:YieldMinEvents` | `30` | Good and not-good examples (each) the yield model needs before it adds to the ranking. |

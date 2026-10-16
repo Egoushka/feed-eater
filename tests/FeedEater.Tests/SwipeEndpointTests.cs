@@ -304,6 +304,91 @@ public sealed partial class SwipeEndpointTests(PostgresFixture pg) : IAsyncLifet
         Assert.Equal(3, await ScalarAsync<int>("select cardinality(queue_sources) from swipe_sessions"));
     }
 
+    private async Task<(long Recall, long Seed, long SeedItem)> SeedSpecialAsync()
+    {
+        await SeedItemsAsync(2);
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        var recall = await c.ExecuteScalarAsync<long>(
+            "insert into recall_cards (source, ref, front, back, due_at) values ('note', 'note:x', 'What did you note?', 'The answer.', @due) returning id",
+            new { due = _time.GetUtcNow().UtcDateTime.AddHours(-1) });
+        var item = await c.ExecuteScalarAsync<long>("select min(id) from items");
+        var seed = await c.ExecuteScalarAsync<long>("insert into post_seeds (item_id, angle) values (@item, 'Argue that X.') returning id", new { item });
+        return (recall, seed, item);
+    }
+
+    private async Task<Dictionary<string, int>> PositionsAsync(int count)
+    {
+        var positions = new Dictionary<string, int>();
+        for (var i = 0; i < count; i++)
+        {
+            var card = (await NextAsync(i)).GetProperty("card");
+            positions[card.GetProperty("kind").GetString()!] = i;
+        }
+
+        return positions;
+    }
+
+    [Fact]
+    public async Task Due_recall_cards_and_new_seeds_take_places_in_the_queue_and_items_fill_the_rest()
+    {
+        await SeedSpecialAsync();
+
+        var positions = await PositionsAsync(3);
+
+        Assert.Equal(["item", "recall", "seed"], positions.Keys.Order());
+        var recall = (await NextAsync(positions["recall"])).GetProperty("card");
+        Assert.Equal("What did you note?", recall.GetProperty("title").GetString());
+        Assert.Equal("The answer.", recall.GetProperty("back").GetString());
+        Assert.Equal("Argue that X.", (await NextAsync(positions["seed"])).GetProperty("card").GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task A_recall_answer_reschedules_the_card_and_item_acts_are_refused_on_it()
+    {
+        var (card, _, _) = await SeedSpecialAsync();
+        var positions = await PositionsAsync(3);
+        var session = await ScalarAsync<long>("select max(id) from swipe_sessions");
+
+        Assert.False((await (await PostAsync("act", new { session, position = positions["recall"], act = "like" })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("ok").GetBoolean());
+        Assert.True((await (await PostAsync("act", new { session, position = positions["recall"], act = "good" })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("ok").GetBoolean());
+
+        Assert.Equal(1, await ScalarAsync<int>($"select step from recall_cards where id = {card}"));
+        Assert.Equal("good", await ScalarAsync<string>("select result from recall_reviews"));
+        Assert.Equal("good", await ScalarAsync<string>("select action from swipe_events where kind = 'recall'"));
+        Assert.Equal(0, await ScalarAsync<int>("select count(*)::int from votes"));
+    }
+
+    [Fact]
+    public async Task Sending_a_seed_files_an_idea_and_dismissing_one_files_nothing()
+    {
+        var (_, seed, item) = await SeedSpecialAsync();
+        var positions = await PositionsAsync(3);
+        var session = await ScalarAsync<long>("select max(id) from swipe_sessions");
+
+        Assert.True((await (await PostAsync("act", new { session, position = positions["seed"], act = "send" })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("ok").GetBoolean());
+
+        Assert.Equal("sent", await ScalarAsync<string>($"select status from post_seeds where id = {seed}"));
+        Assert.Equal("[post seed] Argue that X.", await ScalarAsync<string>($"select title from ideas where item_id = {item}"));
+        Assert.Equal(1, await ScalarAsync<int>($"select value::int from votes where item_id = {item}"));
+
+        // A second press does nothing more.
+        await PostAsync("act", new { session, position = positions["seed"], act = "dismiss" });
+        Assert.Equal("sent", await ScalarAsync<string>($"select status from post_seeds where id = {seed}"));
+    }
+
+    [Fact]
+    public async Task Dismissing_a_seed_leaves_no_idea()
+    {
+        var (_, seed, _) = await SeedSpecialAsync();
+        var positions = await PositionsAsync(3);
+        var session = await ScalarAsync<long>("select max(id) from swipe_sessions");
+
+        await PostAsync("act", new { session, position = positions["seed"], act = "dismiss" });
+
+        Assert.Equal("dismissed", await ScalarAsync<string>($"select status from post_seeds where id = {seed}"));
+        Assert.Equal(0, await ScalarAsync<int>("select count(*)::int from ideas"));
+    }
+
     [Fact]
     public async Task The_felt_tap_is_stored_once_and_only_for_an_ended_session()
     {
