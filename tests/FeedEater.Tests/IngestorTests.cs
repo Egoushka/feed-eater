@@ -14,6 +14,8 @@ public sealed class IngestorTests(PostgresFixture pg) : IAsyncLifetime
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
 
+    private static readonly DateTimeOffset Now = new(2026, 10, 6, 12, 0, 0, TimeSpan.Zero);
+
     private Ingestor Build(StubHandler miniflux, StubHandler llm, int pageSize = 100)
     {
         var options = Options.Create(new FeedEaterOptions { Miniflux = { PageSize = pageSize } });
@@ -25,7 +27,7 @@ public sealed class IngestorTests(PostgresFixture pg) : IAsyncLifetime
             new PageEnricher(new ItemStore(pg.Db), new FeedEater.Fetch.SafeFetcher(new HttpClient(new StubHandler((_, _) => StubHandler.Json("x"))), options, new CursorStore(pg.Db), TimeProvider.System, NullLogger<FeedEater.Fetch.SafeFetcher>.Instance),
                 new FeedEater.Fetch.HnClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://hn/")), options, TimeProvider.System, NullLogger<PageEnricher>.Instance),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
-            options, new LoopHealth(TimeProvider.System), TimeProvider.System, NullLogger<Ingestor>.Instance);
+            options, new LoopHealth(TimeProvider.System), new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now), NullLogger<Ingestor>.Instance);
     }
 
     private static StubHandler Miniflux() => new((request, _) => StubHandler.Json(
@@ -195,5 +197,28 @@ public sealed class IngestorTests(PostgresFixture pg) : IAsyncLifetime
         await using var c = await pg.Db.DataSource.OpenConnectionAsync();
         var rows = (await c.QueryAsync<(long Entry, string? Link, long? Hn)>("select miniflux_entry_id, link_url, hn_id from items order by 1")).ToList();
         Assert.Equal([(201L, "https://pingularity.dev/", (long?)null), (202L, "https://tool.example/", 777L)], rows);
+    }
+
+    [Fact]
+    public async Task Entries_older_than_BackfillDays_are_archived_but_never_embedded()
+    {
+        LiteLlmClient.RetryDelay = TimeSpan.Zero;
+        var entries = """
+            {"total":2,"entries":[
+              {"id":301,"feed_id":30,"title":"Old post","url":"https://blog.example/old","published_at":"2026-08-01T10:00:00Z","content":"<p>from the history</p>",
+               "feed":{"id":30,"title":"Blog","site_url":"https://blog.example","category":null}},
+              {"id":302,"feed_id":30,"title":"New post","url":"https://blog.example/new","published_at":"2026-10-05T10:00:00Z","content":"<p>fresh</p>",
+               "feed":{"id":30,"title":"Blog","site_url":"https://blog.example","category":null}}]}
+            """;
+        var miniflux = new StubHandler((request, _) => StubHandler.Json(request.RequestUri!.Query.Contains("after_entry_id=0", StringComparison.Ordinal) ? entries : """{"total":0,"entries":[]}"""));
+        var ingestor = Build(miniflux, Llm());
+
+        Assert.Equal(2, await ingestor.IngestAsync(default));
+        Assert.Equal(1, await ingestor.EmbedPendingAsync(default));
+
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        var rows = (await c.QueryAsync<(long Entry, bool Backfilled, bool Embedded)>("select miniflux_entry_id, backfilled, embedding is not null from items order by 1")).ToList();
+        Assert.Equal([(301L, true, false), (302L, false, true)], rows);
+        Assert.DoesNotContain(await new ItemStore(pg.Db).CandidatesAsync(DateTimeOffset.Parse("2026-01-01T00:00:00Z"), Now, default), x => x.Title == "Old post");
     }
 }

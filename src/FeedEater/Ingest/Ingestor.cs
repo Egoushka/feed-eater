@@ -56,6 +56,7 @@ public sealed class Ingestor(
     {
         var pageSize = options.Value.Miniflux.PageSize;
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(pageSize, 0);
+        var floor = Time.GetUtcNow().UtcDateTime.AddDays(-options.Value.Source.BackfillDays);
         var added = 0;
         while (true)
         {
@@ -63,7 +64,7 @@ public sealed class Ingestor(
             foreach (var e in page)
             {
                 await items.UpsertFeedAsync(new Feed(e.FeedId, e.FeedTitle, e.Category, e.SiteUrl, FeedUrl: e.FeedUrl), ct);
-                if (await items.InsertAsync(ToNewItem(e), ct) is not null)
+                if (await items.InsertAsync(ToNewItem(e, floor), ct) is not null)
                 {
                     added++;
                 }
@@ -149,10 +150,11 @@ public sealed class Ingestor(
         return text.Length > 0 ? text : url;
     }
 
-    private static NewItem ToNewItem(MinifluxEntry e)
+    /// <summary>An entry published before <paramref name="floor"/> stays searchable but is never embedded, so it cannot become a candidate.</summary>
+    private static NewItem ToNewItem(MinifluxEntry e, DateTime floor)
     {
         var (link, hn) = LinkExtractor.Find(e.Url, e.Content);
         return new(e.Id, e.FeedId, e.Url, UrlCanonicalizer.Canonical(e.Url), TitleHash.Of(e.Title), e.Title,
-            e.PublishedAt.UtcDateTime, HtmlText.ToPlain(e.Content), link, hn);
+            e.PublishedAt.UtcDateTime, HtmlText.ToPlain(e.Content), link, hn, Backfilled: e.PublishedAt.UtcDateTime < floor);
     }
 }

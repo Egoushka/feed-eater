@@ -342,7 +342,7 @@ public sealed class ModelPrice
 public sealed class CapsOptions
 {
     [Description("Candidates the small model triages per digest.")]
-    public int Triage { get; set; } = 60;
+    public int Triage { get; set; } = 400;
 
     [Description("Items the stronger model reads in full per digest.")]
     public int Read { get; set; } = 12;

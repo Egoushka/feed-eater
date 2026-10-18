@@ -22,8 +22,8 @@ public sealed class SourceOptions
     [Description("Exact host names a configured feed URL may point at although they are private (self-hosted RSSHub, Nitter); any port. Applies to feed URLs only, never to article or linked-page fetches.")]
     public string[] AllowedHosts { get; set; } = [];
 
-    /// <summary>The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories.</summary>
-    [Description("The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories.")]
+    /// <summary>The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories. With Miniflux, older entries are archived and searchable but not embedded, so they never become digest candidates.</summary>
+    [Description("The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories. With Miniflux, older entries are archived and searchable but not embedded, so they never become digest candidates.")]
     public int BackfillDays { get; set; } = 14;
 
     /// <summary>How often each feed is fetched; repeated failures double the wait up to <see cref="MaxBackoff"/>.</summary>

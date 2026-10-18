@@ -48,7 +48,7 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Caps:Read` | `12` | Items the stronger model reads in full per digest. |
 | `FeedEater:Caps:ReadChars` | `24000` | Characters of an item given to the read. |
 | `FeedEater:Caps:ShortContentChars` | `1500` | Items with less text than this many characters get their full text fetched before reading. |
-| `FeedEater:Caps:Triage` | `60` | Candidates the small model triages per digest. |
+| `FeedEater:Caps:Triage` | `400` | Candidates the small model triages per digest. |
 | `FeedEater:Caps:TriageChars` | `2000` | Characters of an item given to triage. |
 
 ## Cluster
@@ -162,7 +162,7 @@ An integration is off until its required settings are filled. An off integration
 | Key | Default | Description |
 |---|---|---|
 | `FeedEater:Source:AllowedHosts` | (empty) | Exact host names a configured feed URL may point at although they are private (self-hosted RSSHub, Nitter); any port. Applies to feed URLs only, never to article or linked-page fetches. |
-| `FeedEater:Source:BackfillDays` | `14` | The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories. |
+| `FeedEater:Source:BackfillDays` | `14` | The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories. With Miniflux, older entries are archived and searchable but not embedded, so they never become digest candidates. |
 | `FeedEater:Source:FeedInterval` | `00:30:00` | How often each feed is fetched; repeated failures double the wait up to MaxBackoff. |
 | `FeedEater:Source:Kind` | `builtin` | Where entries come from: builtin (feed-eater reads the feeds itself) or miniflux (copies entries from Miniflux). Switching on a populated database is unsupported. |
 | `FeedEater:Source:MaxBackoff` | `1.00:00:00` | The longest wait between fetches of a feed that keeps failing. |

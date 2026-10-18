@@ -10,7 +10,7 @@ public sealed record Feed(long Id, string Title, string? Category, string? SiteU
 
 public sealed record NewItem(
     long? EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
-    string? LinkUrl = null, long? HnId = null, string? SourceKey = null);
+    string? LinkUrl = null, long? HnId = null, string? SourceKey = null, bool Backfilled = false);
 
 public sealed record PendingLink(long Id, string? LinkUrl, long? HnId);
 
@@ -146,8 +146,8 @@ public sealed class ItemStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.ExecuteScalarAsync<long?>(new CommandDefinition(
             """
-            insert into items (miniflux_entry_id, source_key, feed_id, url, canonical_url, title_hash, title, published_at, content, link_url, hn_id, duplicate_of)
-            values (@EntryId, coalesce(@SourceKey, 'mf:' || @EntryId::text), @FeedId, @Url, @CanonicalUrl, @TitleHash, @Title, @PublishedAt, @Content, @LinkUrl, @HnId,
+            insert into items (miniflux_entry_id, source_key, feed_id, url, canonical_url, title_hash, title, published_at, content, link_url, hn_id, backfilled, duplicate_of)
+            values (@EntryId, coalesce(@SourceKey, 'mf:' || @EntryId::text), @FeedId, @Url, @CanonicalUrl, @TitleHash, @Title, @PublishedAt, @Content, @LinkUrl, @HnId, @Backfilled,
                     coalesce(
                         (select id from items where @CanonicalUrl <> '' and canonical_url = @CanonicalUrl order by id limit 1),
                         (select id from items
@@ -170,7 +170,7 @@ public sealed class ItemStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<PendingEmbed>(new CommandDefinition(
-            "select id, title, content, url from items where embedding is null and id <> all(@exclude) order by id limit @limit",
+            "select id, title, content, url from items where embedding is null and not backfilled and id <> all(@exclude) order by id limit @limit",
             new { limit, exclude }, cancellationToken: ct))).ToList();
     }
 
