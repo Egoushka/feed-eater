@@ -11,7 +11,7 @@ public sealed class OptionsTests
 
         Assert.Equal(new TimeSpan(7, 30, 0), o.DigestAt);
         Assert.Equal(new TimeSpan(12, 0, 0), o.DigestGiveUpAt);
-        Assert.Equal(60, o.Caps.Triage);
+        Assert.Equal(400, o.Caps.Triage);
         Assert.Equal(12, o.Caps.Read);
         Assert.Equal(3, o.Caps.CandidateDays);
         Assert.Equal(2, o.Caps.MinRelevance);
