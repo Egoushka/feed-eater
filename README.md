@@ -211,7 +211,7 @@ longer) and a reason. Every idea becomes a Plane Intake item in that project (`F
 top `TopInMessage` (3) go to Telegram. The model sees the latest 100 work items of each project, the ideas earlier runs filed and, with
 `FeedEater:WeeklyIdeas:BacklogUrl` (a GitHub contents API URL, token in `BacklogToken`), a backlog file, and leaves out whatever repeats
 them; a source URL that was filed once is never offered again (`weekly_ideas`). A configured backlog that cannot be read fails the run,
-which is retried with backoff, so nothing is filed without the check. Quiet hours hold it; a run missed while down happens at start.
+which is retried with backoff, so nothing is filed without the check. Quiet hours hold it; a run missed while down happens at start; `/ideas` on Telegram runs it now.
 There is no 💡 button on digest items: the machinery behind it (the `ideas` list, the web UI, the swipe page) is unchanged, and an old
 message's 💡 still works.
 
