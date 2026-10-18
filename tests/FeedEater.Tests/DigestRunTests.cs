@@ -33,6 +33,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private bool _llmDown;
     private bool _readsDown;
     private bool _vetoA;
+    private bool _marginalA;
+    private bool _vetoAll;
     private int _readCap = 12;
     private bool _learn;
     private string _profilePath = "Fixtures/profile.json";
@@ -78,6 +80,16 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         _readPrompts.Add(body);
+
+        if (_vetoAll)
+        {
+            return StubHandler.Json(Chat("""{"relevance":0,"summary":"A beginner question.","why":"Not relevant.","kind":"fyi","project":null,"suggestion":null}"""));
+        }
+
+        if (_marginalA && body.Contains("Title: Keep A", StringComparison.Ordinal))
+        {
+            return StubHandler.Json(Chat("""{"relevance":1,"summary":"A is a showcase.","why":"Loosely related.","kind":"new","project":"homelab","suggestion":"Turn A on."}"""));
+        }
 
         if (_vetoA && body.Contains("Title: Keep A", StringComparison.Ordinal))
         {
@@ -196,6 +208,34 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.DoesNotContain(_sent, s => s.Contains("Keep A", StringComparison.Ordinal));
         Assert.Contains(_sent, s => s.Contains("Keep B", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_item_the_reader_model_calls_marginal_is_kept_after_the_ones_worth_reading()
+    {
+        _marginalA = true;
+        await SeedAsync();
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Equal(3, _sent.Count);
+        Assert.Contains("Keep B", _sent[1], StringComparison.Ordinal);
+        Assert.Contains("Keep A", _sent[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task When_the_reader_model_vetoes_every_item_the_no_digest_message_says_so()
+    {
+        _vetoAll = true;
+        await SeedAsync();
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        var message = Assert.Single(_sent);
+        Assert.Contains("No digest today", message, StringComparison.Ordinal);
+        Assert.Contains("the reader model rated all 2 items it read below 1", message, StringComparison.Ordinal);
     }
 
     [Fact]
