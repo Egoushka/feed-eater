@@ -175,4 +175,21 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Single(plane.Calls, c => c.Method == HttpMethod.Post);
         Assert.Equal("2026-10-19", await new CursorStore(pg.Db).GetAsync("job:weekly-ideas", default));
     }
+
+    [Fact]
+    public async Task A_force_request_runs_again_once_and_is_cleared()
+    {
+        await SeedAsync();
+        _chatReply = """{"ideas":[{"lead":1,"idea":"X","project":"LAB"}]}""";
+        var (job, plane, _) = Build(new FakeTimeProvider(Monday));
+        var cursors = new CursorStore(pg.Db);
+
+        await job.TickAsync(default);
+        await cursors.SetAsync(WeeklyIdeasJob.ForceCursor, "1", default);
+        await job.TickAsync(default);
+        await job.TickAsync(default);
+
+        Assert.Equal(2, plane.Calls.Count(c => c.Method == HttpMethod.Post));
+        Assert.Null(await cursors.GetAsync(WeeklyIdeasJob.ForceCursor, default));
+    }
 }

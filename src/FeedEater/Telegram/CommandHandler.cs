@@ -8,18 +8,19 @@ using FeedEater.Loops;
 using FeedEater.Ranking;
 using FeedEater.Search;
 using FeedEater.Sources;
+using FeedEater.Storage;
 
 namespace FeedEater.Telegram;
 
 /// <summary>
-/// /digest and /digest resend, /search text, /ask question, /quiet, /learn, /feeds, /follows, /unfollow, plain text as a search (or, ending in "?", a question),
+/// /digest and /digest resend, /ideas, /search text, /ask question, /quiet, /learn, /feeds, /follows, /unfollow, plain text as a search (or, ending in "?", a question),
 /// and replies to an item, from the allowed user only; anyone else is ignored without a reply. While no user is allowed yet
 /// (<c>AllowedUserId</c> 0) only /start is answered, with the sender's own id. Each search hit is its own message so
 /// it carries its own 👍 👎 💡 buttons.
 /// </summary>
 public sealed class CommandHandler(
     TelegramClient telegram, DigestTrigger trigger, QuietHours quiet, ArchiveSearch search, ArchiveAnswer answers, ReplyHandler replies,
-    TasteSwitch taste, IOptions<FeedEaterOptions> options, FeedsCommand? feeds = null, StoryFollower? follower = null)
+    TasteSwitch taste, IOptions<FeedEaterOptions> options, FeedsCommand? feeds = null, StoryFollower? follower = null, CursorStore? cursors = null)
 {
     private const int MaxResults = 5;
     private const int MaxQuery = 300;
@@ -64,6 +65,10 @@ public sealed class CommandHandler(
         {
             case "/digest":
                 await DigestAsync(message, words.Length == 2 ? words[1] : null, ct);
+                break;
+            case "/ideas" when cursors is not null:
+                await cursors.SetAsync(FeedEater.WeeklyIdeas.WeeklyIdeasJob.ForceCursor, "1", ct);
+                await ReplyAsync(message, "Queued: the ideas shortlist runs within a minute.", ct);
                 break;
             case "/quiet":
                 await QuietAsync(message, words.Length == 2 ? words[1] : null, ct);

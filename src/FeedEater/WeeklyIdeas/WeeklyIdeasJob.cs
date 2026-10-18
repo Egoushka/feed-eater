@@ -25,8 +25,29 @@ public sealed class WeeklyIdeasJob(
     private const int MaxPlaneTitles = 100;
     private const int MaxTokens = 2000;
 
+    /// <summary>Set by /ideas: the next tick runs the shortlist now, window or not, once.</summary>
+    public const string ForceCursor = "weekly-ideas:force";
+
     protected override string Name => "weekly-ideas";
     protected override string? DueKey(DateTime localNow) => Schedule.LatestWeekly(localNow, DayOfWeek.Monday, Settings.WeeklyIdeas.At);
+
+    protected override async Task PollAsync(CancellationToken ct)
+    {
+        if (await Cursors.GetAsync(ForceCursor, ct) is null)
+        {
+            await base.PollAsync(ct);
+            return;
+        }
+
+        try
+        {
+            await RunAsync(Schedule.LatestWeekly(Schedule.Local(Time.GetUtcNow(), Settings.Zone), DayOfWeek.Monday, Settings.WeeklyIdeas.At), ct);
+        }
+        finally
+        {
+            await Cursors.DeleteAsync(ForceCursor, CancellationToken.None);
+        }
+    }
 
     protected override async Task<bool> HoldAsync(CancellationToken ct) => await quiet.IsQuietAsync(ct);
 
@@ -77,7 +98,7 @@ public sealed class WeeklyIdeasJob(
             .Take(settings.MaxFiled).ToList();
         if (entries.Count == 0)
         {
-            Logger.LogInformation("The model found no idea among {Count} leads", leads.Count);
+            Logger.LogInformation("The model found no idea among {Count} leads: {Reply}", leads.Count, reply.Content.Length <= 600 ? reply.Content : reply.Content[..600]);
             return;
         }
 
