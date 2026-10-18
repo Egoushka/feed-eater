@@ -271,6 +271,9 @@ public sealed class CapsOptions
     [Description("Lowest triage relevance (0 to 3) that can reach the digest.")]
     public int MinRelevance { get; set; } = 2;
 
+    [Description("Lowest relevance (0 to 3) the reader model can give an item after reading it and keep it in the digest. Items below MinRelevance but at or above this go last.")]
+    public int MinReadRelevance { get; set; } = 1;
+
     [Description("Items with less text than this many characters get their full text fetched before reading.")]
     public int ShortContentChars { get; set; } = 1500;
 

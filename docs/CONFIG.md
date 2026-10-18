@@ -43,6 +43,7 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Caps:CandidateDays` | `3` | Days back an item can still be a digest candidate. |
 | `FeedEater:Caps:Centroid` | `500` | Most recent liked and disliked items used for the taste centroids. |
 | `FeedEater:Caps:EmbedChars` | `8000` | Characters of an item embedded. |
+| `FeedEater:Caps:MinReadRelevance` | `1` | Lowest relevance (0 to 3) the reader model can give an item after reading it and keep it in the digest. Items below MinRelevance but at or above this go last. |
 | `FeedEater:Caps:MinRelevance` | `2` | Lowest triage relevance (0 to 3) that can reach the digest. |
 | `FeedEater:Caps:Read` | `12` | Items the stronger model reads in full per digest. |
 | `FeedEater:Caps:ReadChars` | `24000` | Characters of an item given to the read. |
