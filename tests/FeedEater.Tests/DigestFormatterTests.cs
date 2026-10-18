@@ -39,15 +39,15 @@ public sealed class DigestFormatterTests
     [Fact]
     public void Buttons_follow_vote_and_filing_state()
     {
-        var fresh = DigestFormatter.Buttons(42, true, null, null);
-        var voted = DigestFormatter.Buttons(42, true, 1, null);
-        var filed = DigestFormatter.Buttons(42, true, 1, "SKAR");
-        var plain = DigestFormatter.Buttons(42, false, null, null);
+        var fresh = DigestFormatter.Buttons(42, null, null);
+        var voted = DigestFormatter.Buttons(42, 1, null);
+        var filed = DigestFormatter.Buttons(42, 1, "SKAR");
+        var plain = DigestFormatter.Buttons(42, null, null);
 
         Assert.Equal(["👍", "👎", "📌 Save"], fresh[0].Select(b => b.Text));
         Assert.Equal(["v:42:u", "v:42:d", "s:42"], fresh[0].Select(b => b.Data));
-        Assert.Equal(("📌 Saved ✓", "n"), (DigestFormatter.Buttons(42, false, null, null, saved: true)[0][2].Text, DigestFormatter.Buttons(42, false, null, null, saved: true)[0][2].Data));
-        Assert.Equal("i:42", fresh[1].Single().Data);
+        Assert.Equal(("📌 Saved ✓", "n"), (DigestFormatter.Buttons(42, null, null, saved: true)[0][2].Text, DigestFormatter.Buttons(42, null, null, saved: true)[0][2].Data));
+        Assert.Single(fresh);
         Assert.Equal("👍 ✓", voted[0][0].Text);
         Assert.Equal(("✓ Filed in SKAR", "n"), (filed[1].Single().Text, filed[1].Single().Data));
         Assert.Single(plain);
@@ -56,31 +56,29 @@ public sealed class DigestFormatterTests
     [Fact]
     public void The_thread_button_is_added_only_when_asked_and_everything_else_stays_as_it_was()
     {
-        var before = DigestFormatter.Buttons(42, true, null, null).Select(row => row.Select(b => (b.Text, b.Data)).ToList()).ToList();
+        var before = DigestFormatter.Buttons(42, null, null).Select(row => row.Select(b => (b.Text, b.Data)).ToList()).ToList();
         var item = DigestFormatter.Item(Item(), null, null).Keyboard!.Select(row => row.Select(b => b.Data)).ToList();
-        var withThread = DigestFormatter.Buttons(42, true, null, null, follow: true);
+        var withThread = DigestFormatter.Buttons(42, null, null, follow: true);
 
-        Assert.Equal([[("👍", "v:42:u"), ("👎", "v:42:d"), ("📌 Save", "s:42")], [("💡 To Plane", "i:42")]], before);
-        Assert.Equal([["v:42:u", "v:42:d", "s:42"], ["i:42"]], item);
+        Assert.Equal([[("👍", "v:42:u"), ("👎", "v:42:d"), ("📌 Save", "s:42")]], before);
+        Assert.Equal([["v:42:u", "v:42:d", "s:42"]], item);
         Assert.Equal(("🧵", "f:42"), (withThread[0][3].Text, withThread[0][3].Data));
-        Assert.Equal(before[1], withThread[1].Select(b => (b.Text, b.Data)).ToList());
         Assert.Equal("f:42", DigestFormatter.Item(Item(), null, null, follow: true).Keyboard![0][3].Data);
         Assert.Equal("f:42", DigestFormatter.Result(new SearchHit { Id = 42, Title = "T", Url = "https://u" }, "1 Oct", follow: true).Keyboard![0][3].Data);
         Assert.DoesNotContain("f:42", DigestFormatter.Result(new SearchHit { Id = 42, Title = "T", Url = "https://u" }, "1 Oct").Keyboard![0].Select(b => b.Data));
     }
 
     [Fact]
-    public void Optional_buttons_follow_the_style_Karakeep_adds_save_and_Plane_names_the_idea_button()
+    public void Optional_buttons_follow_the_style_Karakeep_adds_save_and_Plane_names_the_filed_label()
     {
         var local = new ButtonStyle(CanSave: false, ToPlane: false);
 
-        var fresh = DigestFormatter.Buttons(42, true, null, null, style: local);
-        var filed = DigestFormatter.Buttons(42, true, 1, "inbox", style: local);
+        var fresh = DigestFormatter.Buttons(42, null, null, style: local);
+        var filed = DigestFormatter.Buttons(42, 1, "inbox", style: local);
 
         Assert.Equal(["👍", "👎"], fresh[0].Select(b => b.Text));
-        Assert.Equal(("💡 Save idea", "i:42"), (fresh[1].Single().Text, fresh[1].Single().Data));
+        Assert.Single(fresh);   // no 💡 button: the weekly shortlist files ideas
         Assert.Equal("✓ Saved as an idea", filed[1].Single().Text);
-        Assert.Equal("💡 To Plane", DigestFormatter.Buttons(42, true, null, null)[1].Single().Text);   // default: as before
         Assert.Equal(new ButtonStyle(false, false), ButtonStyle.From(new FeedEaterOptions()));
         Assert.Equal(new ButtonStyle(true, true), ButtonStyle.From(new FeedEaterOptions
         {

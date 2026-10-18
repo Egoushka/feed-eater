@@ -60,7 +60,7 @@ public sealed class CallbackKindsTests
     [Fact]
     public void A_button_row_built_for_the_longest_ids_stays_under_the_limit_with_every_button_on()
     {
-        var rows = DigestFormatter.Buttons(Big, true, null, null, false, ButtonStyle.Default with { CanSave = true, ToPlane = true }, follow: true);
+        var rows = DigestFormatter.Buttons(Big, null, null, false, ButtonStyle.Default with { CanSave = true, ToPlane = true }, follow: true);
 
         Assert.All(rows.SelectMany(r => r), b => Assert.True(Encoding.UTF8.GetByteCount(b.Data) <= 64, b.Data));
         Assert.Contains(rows.SelectMany(r => r), b => b.Data == CallbackData.Follow(Big));
@@ -78,8 +78,8 @@ public sealed class CallbackKindsTests
     {
         var duel = DuelFormatter.Message(9, new DuelItem { Id = 1, Title = "a", Url = "https://a.example/", Feed = "f" }, new DuelItem { Id = 2, Title = "b", Url = "https://b.example/", Feed = "f" });
         var root = FollowFormatter.Root("Story", "https://s.example/", 14, 5);
-        var item = DigestFormatter.Buttons(6, true, 1, "proj", true, null, follow: true);
-        var follow = DigestFormatter.Buttons(7, false, null, null, false, null, follow: false);
+        var item = DigestFormatter.Buttons(6, 1, "proj", true, null, follow: true);
+        var follow = DigestFormatter.Buttons(7, null, null, false, null, follow: false);
         var list = FollowFormatter.List([new ActiveFollow { Id = 8, Title = "One", EndsAt = DateTime.UtcNow }, new ActiveFollow { Id = 9, Title = "Two", EndsAt = DateTime.UtcNow }], TimeZoneInfo.Utc);
         var body = "{\"ok\":true,\"result\":[" + string.Join(',', new[] { Update(1, duel.Keyboard), Update(2, root.Keyboard), Update(3, item), Update(4, follow), Update(5, list.Keyboard), Update(6, null) }) + "]}";
         var client = new TelegramClient(new StubHandler((_, _) => StubHandler.Json(body)).Client("http://tg/botT/"));

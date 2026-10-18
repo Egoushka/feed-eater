@@ -1,8 +1,8 @@
 # feed-eater
 
 Reads your feeds, keeps every entry in a searchable archive, and each morning sends the few that
-matter to Telegram with a concrete suggestion where one exists. Button presses teach the ranking; 💡 saves the
-suggestion as an idea (into Plane Intake when Plane is configured, else into a local list). Any MCP client can search the archive.
+matter to Telegram with a concrete suggestion where one exists. Button presses teach the ranking; a weekly job turns
+the suggestions into ideas (into Plane Intake when Plane is configured, else into a local list). Any MCP client can search the archive.
 One user, one instance: you run it yourself.
 
 ## Quick start
@@ -34,7 +34,7 @@ Design: [docs/specs/2026-10-05-feed-eater-design.md](docs/specs/2026-10-05-feed-
    `profile.json`, similarity to what was liked or disliked, and the feed's 👍 rate.
 3. The top 60 get a one-line verdict from a small model; the top 12 of those that matter are read in full by a
    stronger one, which writes a summary, why it matters, and a suggestion.
-4. Telegram gets a header and one message per item with 👍 👎 and 💡.
+4. Telegram gets a header and one message per item with 👍 👎 and 📌.
 
 ## Configuration
 
@@ -121,7 +121,7 @@ vote kind and per profile for use without the picture. It needs at least 3 embed
 - **Mute a feed.** `/ui/sources` has Mute/Unmute per feed and a posts/week column. A muted feed is still ingested, archived and
   searchable; it stays out of digest candidates and the Today brief, and `/ui/posts` hides it unless "Show muted feeds" is ticked.
 - **Telegram search.** `/search words`, or any plain message from the allowed user, returns up to 5 results, one message each,
-  with 👍 👎 💡.
+  with 👍 👎 📌.
 - **Weekly review.** Sundays 18:30 in `FeedEater:TimeZone` (only with a Telegram token): counts, top 5 👍, ratings per project, ideas filed, the 3
   feeds that earned most 👍 and 3 mute candidates. Stored in `weekly` and shown at `/ui/weekly`. No model call.
 
@@ -201,6 +201,19 @@ latest release). On the 1st of each month (09:00) the autopsy scores each snapsh
 and by feed, shows it at `/ui/autopsy` and sends it to Telegram; it calls no model, and quiet hours hold the message. Without
 `FeedEater:GitHub:Token` the snapshot job stops at 40 requests a run and the next day carries on. A duel pick is a 👍 too, so it is
 snapshotted like any other.
+
+## Weekly ideas
+
+With Plane and a Telegram token set, Mondays at `FeedEater:WeeklyIdeas:At` (09:00 in `FeedEater:TimeZone`) a job collects the week's items
+the model marked `improve`, the items you 👍 or 📌 saved, and your new Karakeep bookmarks. One model call ranks them into at most
+`MaxFiled` (5) ideas, each with the project it belongs to, the repo or workflow it changes, an effort (S under an hour, M up to a day, L
+longer) and a reason. Every idea becomes a Plane Intake item in that project (`FeedEater:Plane:FallbackProject` when none fits), and the
+top `TopInMessage` (3) go to Telegram. The model sees the latest 100 work items of each project, the ideas earlier runs filed and, with
+`FeedEater:WeeklyIdeas:BacklogUrl` (a GitHub contents API URL, token in `BacklogToken`), a backlog file, and leaves out whatever repeats
+them; a source URL that was filed once is never offered again (`weekly_ideas`). A configured backlog that cannot be read fails the run,
+which is retried with backoff, so nothing is filed without the check. Quiet hours hold it; a run missed while down happens at start.
+There is no 💡 button on digest items: the machinery behind it (the `ideas` list, the web UI, the swipe page) is unchanged, and an old
+message's 💡 still works.
 
 ## Running a digest on demand
 

@@ -368,7 +368,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("homelab", html, StringComparison.Ordinal);
         Assert.Contains($"v:{id}:u", markup, StringComparison.Ordinal);
         Assert.Contains($"v:{id}:d", markup, StringComparison.Ordinal);
-        Assert.Contains($"i:{id}", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain($"i:{id}", markup, StringComparison.Ordinal);
         Assert.Contains("s", html[(html.IndexOf("\n\n", StringComparison.Ordinal) + 2)..], StringComparison.Ordinal);   // the one-line summary follows
     }
 
