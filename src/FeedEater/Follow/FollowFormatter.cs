@@ -25,7 +25,7 @@ public static class FollowFormatter
             html.Append("\n\n").Append(E(DigestFormatter.Clip(news, 200)));
         }
 
-        return new OutMessage(html.ToString(), DigestFormatter.Buttons(item.Id, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved, style));
+        return new OutMessage(html.ToString(), DigestFormatter.Buttons(item.Id, (short?)item.Vote, item.FiledIn, item.Saved, style));
     }
 
     /// <summary>The close: the model's summary when there is one, then the links, then why it ended early when it did.</summary>

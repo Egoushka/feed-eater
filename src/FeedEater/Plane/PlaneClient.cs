@@ -31,6 +31,22 @@ public sealed class PlaneClient(HttpClient http, IOptions<FeedEaterOptions> opti
             .Select(s => s.GetProperty("id").GetString())
             .ToHashSet(StringComparer.Ordinal);
 
+        return (await ItemsAsync(project, ct))
+            .Where(i => open.Contains(i.GetProperty("state").GetString()))
+            .Select(i => i.GetProperty("name").GetString() ?? "")
+            .Where(name => name.Length > 0)
+            .ToList();
+    }
+
+    /// <summary>Titles of the project's latest 100 work items in any state, done and cancelled included: what an idea must not repeat.</summary>
+    public async Task<IReadOnlyList<string>> RecentItemTitlesAsync(string identifier, CancellationToken ct) =>
+        (await ItemsAsync(await ProjectIdAsync(identifier, ct), ct))
+            .Select(i => i.GetProperty("name").GetString() ?? "")
+            .Where(name => name.Length > 0)
+            .ToList();
+
+    private async Task<IReadOnlyList<JsonElement>> ItemsAsync(string project, CancellationToken ct)
+    {
         JsonElement page;
         try
         {
@@ -42,11 +58,7 @@ public sealed class PlaneClient(HttpClient http, IOptions<FeedEaterOptions> opti
             page = await GetAsync($"{Workspace}/projects/{project}/issues/?per_page=100", ct);
         }
 
-        return page.GetProperty("results").EnumerateArray()
-            .Where(i => open.Contains(i.GetProperty("state").GetString()))
-            .Select(i => i.GetProperty("name").GetString() ?? "")
-            .Where(name => name.Length > 0)
-            .ToList();
+        return page.GetProperty("results").EnumerateArray().ToList();
     }
 
     public async Task<string> CreateIntakeAsync(string identifier, string name, string descriptionHtml, CancellationToken ct)

@@ -60,7 +60,7 @@ public sealed class CallbackKindsTests
     [Fact]
     public void A_button_row_built_for_the_longest_ids_stays_under_the_limit_with_every_button_on()
     {
-        var rows = DigestFormatter.Buttons(Big, true, null, null, false, ButtonStyle.Default with { CanSave = true, ToPlane = true }, follow: true);
+        var rows = DigestFormatter.Buttons(Big, null, null, false, ButtonStyle.Default with { CanSave = true, ToPlane = true }, follow: true);
 
         Assert.All(rows.SelectMany(r => r), b => Assert.True(Encoding.UTF8.GetByteCount(b.Data) <= 64, b.Data));
         Assert.Contains(rows.SelectMany(r => r), b => b.Data == CallbackData.Follow(Big));
@@ -78,8 +78,8 @@ public sealed class CallbackKindsTests
     {
         var duel = DuelFormatter.Message(9, new DuelItem { Id = 1, Title = "a", Url = "https://a.example/", Feed = "f" }, new DuelItem { Id = 2, Title = "b", Url = "https://b.example/", Feed = "f" });
         var root = FollowFormatter.Root("Story", "https://s.example/", 14, 5);
-        var item = DigestFormatter.Buttons(6, true, 1, "proj", true, null, follow: true);
-        var follow = DigestFormatter.Buttons(7, false, null, null, false, null, follow: false);
+        var item = DigestFormatter.Buttons(6, 1, "proj", true, null, follow: true);
+        var follow = DigestFormatter.Buttons(7, null, null, false, null, follow: false);
         var list = FollowFormatter.List([new ActiveFollow { Id = 8, Title = "One", EndsAt = DateTime.UtcNow }, new ActiveFollow { Id = 9, Title = "Two", EndsAt = DateTime.UtcNow }], TimeZoneInfo.Utc);
         var body = "{\"ok\":true,\"result\":[" + string.Join(',', new[] { Update(1, duel.Keyboard), Update(2, root.Keyboard), Update(3, item), Update(4, follow), Update(5, list.Keyboard), Update(6, null) }) + "]}";
         var client = new TelegramClient(new StubHandler((_, _) => StubHandler.Json(body)).Client("http://tg/botT/"));
@@ -204,7 +204,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
     {
         var numbers = ScriptsUpTo(9999).Select(n => n.Split(".Migrations.")[1][..4]).Order(StringComparer.Ordinal).ToList();
 
-        Assert.Equal(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0014", "0015", "0016", "0018", "0019", "0020", "0024", "0025", "0026", "0027"], numbers);
+        Assert.Equal(["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0014", "0015", "0016", "0018", "0019", "0020", "0024", "0025", "0026", "0027", "0028"], numbers);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_database_with_0001_to_0011_applied_takes_0012_and_0014_to_0027_and_keeps_its_rows()
+    public async Task A_database_with_0001_to_0011_applied_takes_0012_and_0014_to_0028_and_keeps_its_rows()
     {
         var name = await CreateAsync();
         var connection = Database(name, pg);
@@ -260,7 +260,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
             Assert.All(new[] { "duels", "follows", "follow_items", "repo_snapshots", "snapshot_failures", "autopsy" }, t => Assert.Contains(t, tables));
             await after.ExecuteAsync("insert into duels (a, b) values (1, 2)");
             await after.ExecuteAsync("insert into follows (root_item_id, started_at, ends_at) values (1, now(), now())");
-            Assert.Equal(["0012", "0014", "0015", "0016", "0018", "0019", "0020", "0024", "0025", "0026", "0027"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
+            Assert.Equal(["0012", "0014", "0015", "0016", "0018", "0019", "0020", "0024", "0025", "0026", "0027", "0028"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
                 .Select(s => s.Split(".Migrations.")[1][..4]).Where(n => string.CompareOrdinal(n, "0011") > 0));
         }
         finally
@@ -270,7 +270,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_database_with_0001_to_0016_applied_takes_0018_to_0027_and_keeps_its_duels_and_snapshots()
+    public async Task A_database_with_0001_to_0016_applied_takes_0018_to_0028_and_keeps_its_duels_and_snapshots()
     {
         var name = await CreateAsync();
         var connection = Database(name, pg);
@@ -304,7 +304,7 @@ public sealed class CombinationStorageTests(PostgresFixture pg) : IAsyncLifetime
             Assert.Null(await after.ExecuteScalarAsync<DateTime?>("select send_failed_at from duels where a = 1"));
             Assert.Equal(1, await after.ExecuteScalarAsync<int>("select count(*)::int from repo_snapshots"));
             await after.ExecuteAsync("insert into snapshot_failures (item_id, failures) values (2, 1)");
-            Assert.Equal(["0018", "0019", "0020", "0024", "0025", "0026", "0027"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
+            Assert.Equal(["0018", "0019", "0020", "0024", "0025", "0026", "0027", "0028"], (await after.QueryAsync<string>("select scriptname from schemaversions order by scriptname"))
                 .Select(s => s.Split(".Migrations.")[1][..4]).Where(n => string.CompareOrdinal(n, "0016") > 0));
         }
         finally

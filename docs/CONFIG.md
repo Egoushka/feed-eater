@@ -217,6 +217,17 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Watch:Source` | (empty) | Release watch: what you run, as a PINS.md file path or an https URL (for a private GitHub repo, the contents API URL plus Watch:Token). Empty uses FallbackPath. |
 | `FeedEater:Watch:Token` | (empty) | Bearer token for Watch:Source; empty for a public URL. |
 
+## WeeklyIdeas
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:WeeklyIdeas:At` | `09:00:00` | Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start. |
+| `FeedEater:WeeklyIdeas:BacklogToken` | (empty) | GitHub token that can read the backlog file; empty for a public repository. |
+| `FeedEater:WeeklyIdeas:BacklogUrl` | (empty) | GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; Plane items and earlier shortlists still are. |
+| `FeedEater:WeeklyIdeas:Enabled` | `true` | Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Needs Plane and the Telegram bot. False turns the job off. |
+| `FeedEater:WeeklyIdeas:MaxFiled` | `5` | Most ideas filed in Plane per week. |
+| `FeedEater:WeeklyIdeas:TopInMessage` | `3` | Ideas listed in the Telegram message, best first. |
+
 ## Weights
 
 | Key | Default | Description |

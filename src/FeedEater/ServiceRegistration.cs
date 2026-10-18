@@ -25,6 +25,7 @@ using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Telegram;
 using FeedEater.Ui;
+using FeedEater.WeeklyIdeas;
 
 namespace FeedEater;
 
@@ -139,6 +140,8 @@ public static class ServiceRegistration
             ? sp.GetRequiredService<PlaneIdeaSink>()
             : sp.GetRequiredService<LocalIdeaSink>());
         services.AddSingleton<IdeaFiler>();
+        services.AddSingleton<WeeklyIdeaStore>();
+        services.AddHttpClient<BacklogClient>();
         services.AddSingleton<CallbackHandler>();
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ArchiveAnswer>();
@@ -187,6 +190,11 @@ public static class ServiceRegistration
             if (telegram)
             {
                 services.AddHostedService<WeeklyReview>();
+                if (settings.WeeklyIdeas.Enabled && settings.Plane.Enabled)
+                {
+                    services.AddHostedService<WeeklyIdeasJob>();
+                }
+
                 if (settings.Duel.Enabled)
                 {
                     services.AddHostedService<DuelJob>();

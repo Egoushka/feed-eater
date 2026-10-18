@@ -35,6 +35,7 @@ public sealed class FeedEaterOptions
     public WeightsOptions Weights { get; set; } = new();
     public TelegramOptions Telegram { get; set; } = new();
     public IdeasOptions Ideas { get; set; } = new();
+    public WeeklyIdeasOptions WeeklyIdeas { get; set; } = new();
     public PlaneOptions Plane { get; set; } = new();
     public KarakeepOptions Karakeep { get; set; } = new();
     public GitHubOptions GitHub { get; set; } = new();
@@ -403,6 +404,28 @@ public sealed class TelegramOptions
     /// <summary>The owner's Telegram user id: the only sender whose button presses count, and the chat digests go to.</summary>
     [Description("Your numeric Telegram user id: the only sender the bot answers, and the chat digests go to.")]
     public long AllowedUserId { get; set; }
+}
+
+public sealed class WeeklyIdeasOptions
+{
+    [Description("Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Needs Plane and the Telegram bot. False turns the job off.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start.")]
+    public TimeSpan At { get; set; } = new(9, 0, 0);
+
+    [Description("Most ideas filed in Plane per week.")]
+    public int MaxFiled { get; set; } = 5;
+
+    [Description("Ideas listed in the Telegram message, best first.")]
+    public int TopInMessage { get; set; } = 3;
+
+    [Description("GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; Plane items and earlier shortlists still are.")]
+    public string BacklogUrl { get; set; } = "";
+
+    [Secret]
+    [Description("GitHub token that can read the backlog file; empty for a public repository.")]
+    public string BacklogToken { get; set; } = "";
 }
 
 public sealed class PlaneOptions
