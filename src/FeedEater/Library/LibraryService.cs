@@ -29,12 +29,13 @@ public sealed class LibraryService(LibraryStore library, ItemStore items, Feedba
             return new SaveResult(SaveStatus.AlreadySaved, itemId);
         }
 
+        // An import comes from Karakeep: no vote (bookmarks already count as likes) and no mirroring back.
         if (source != ImportSource)
         {
             await feedback.SetVoteAsync(itemId, 1, ct);
+            await MirrorAsync(itemId, item.Url, item.Title, ct);
         }
 
-        await MirrorAsync(itemId, item.Url, item.Title, ct);
         return new SaveResult(SaveStatus.Saved, itemId);
     }
 

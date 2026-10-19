@@ -21,13 +21,13 @@ public sealed class ImportKarakeepTests(PostgresFixture pg) : IAsyncLifetime
         ],"nextCursor":null}
         """;
 
-    private (ImportKarakeepCommand Command, LibraryService Service) Build()
+    private (ImportKarakeepCommand Command, LibraryService Service) Build(bool mirror = false, StubHandler? stub = null)
     {
-        var stub = new StubHandler((_, _) => StubHandler.Json(Page));
+        stub ??= new StubHandler((_, _) => StubHandler.Json(Page));
         var client = new KarakeepClient(stub.Client("http://k/"));
         var store = new LibraryStore(pg.Db);
         var service = new LibraryService(store, new ItemStore(pg.Db), new FeedbackStore(pg.Db), client,
-            Options.Create(new FeedEaterOptions()), TimeProvider.System, NullLogger<LibraryService>.Instance);
+            Options.Create(new FeedEaterOptions { Karakeep = new KarakeepOptions { BaseUrl = "http://k/", Token = "t", Mirror = mirror } }), TimeProvider.System, NullLogger<LibraryService>.Instance);
         return (new ImportKarakeepCommand(client, service, store), service);
     }
 
@@ -52,6 +52,18 @@ public sealed class ImportKarakeepTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal("import", await QueryAsync<string>("select source from saved where karakeep_id = 'bm-new'"));
         Assert.Equal("bm-old", await QueryAsync<string>("select karakeep_id from saved where item_id = @existing", new { existing }));
         Assert.Equal(1, await QueryAsync<int>("select count(*) from votes"));
+    }
+
+    [Fact]
+    public async Task With_Mirror_on_an_import_never_posts_back_and_keeps_the_real_bookmark_id()
+    {
+        var stub = new StubHandler((request, _) => StubHandler.Json(request.Method == HttpMethod.Post ? """{"id":"mirror-id"}""" : Page));
+        var (command, _) = Build(mirror: true, stub);
+
+        await command.ImportAsync(default);
+
+        Assert.DoesNotContain(stub.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Equal("bm-new", await QueryAsync<string>("select karakeep_id from saved where item_id = (select id from items where canonical_url like 'https://new.example/a%')"));
     }
 
     [Fact]
