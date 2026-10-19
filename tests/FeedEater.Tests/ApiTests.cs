@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Dapper;
+using FeedEater.Inbox;
+using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Api;
 using Microsoft.AspNetCore.Http;
@@ -210,6 +212,57 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal("closed", r.Type);
         Assert.Equal("not-started", r.Closed!.Why);
         Assert.Equal(0, await ScalarAsync<int>("select count(*) from swipe_sessions"));
+    }
+
+    [Fact]
+    public async Task Peeked_inbox_cards_are_counted_shown_by_their_own_events_in_any_order()
+    {
+        var inbox = App.Services.GetRequiredService<InboxStore>();
+        for (var i = 0; i < 4; i++)
+        {
+            await inbox.AddAsync(new InboxEntry("n" + i, InboxKinds.Notice, ExpiresAt: DateTimeOffset.UtcNow.AddDays(1)), DateTimeOffset.UtcNow.AddHours(-4 + i), default);
+        }
+
+        var s = (await PostAsync<NextResult>("/api/v1/swipe/next", new { })).Card!.Session;
+        await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 2, peek = true });
+        await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 3, peek = true });
+        Assert.Equal(new[] { 1, 0, 0, 0 }, await ShownCountsAsync());
+
+        await PostAsync<JsonElement>("/api/v1/swipe/event", new { session = s, position = 3, direction = "up" });
+        await PostAsync<JsonElement>("/api/v1/swipe/event", new { session = s, position = 2, direction = "up" });
+
+        Assert.Equal(new[] { 1, 0, 1, 1 }, await ShownCountsAsync());
+    }
+
+    private async Task<int[]> ShownCountsAsync()
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return (await c.QueryAsync<int>("select shown_count from inbox order by created_at, id")).ToArray();
+    }
+
+    [Fact]
+    public async Task Peek_past_the_cap_returns_the_summary_and_leaves_the_session_open()
+    {
+        await RankedItemsAsync(3);
+        var s = (await PostAsync<NextResult>("/api/v1/swipe/next", new { })).Card!.Session;
+        var r = await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 99, peek = true });
+
+        Assert.Equal("summary", r.Type);
+        Assert.Equal(0, await ScalarAsync<int>("select count(*) from swipe_sessions where id = @s and ended_at is not null", new { s }));
+    }
+
+    [Fact]
+    public async Task An_event_on_a_peeked_card_of_a_session_past_its_time_cap_does_not_count_it()
+    {
+        await RankedItemsAsync(5);
+        var s = (await PostAsync<NextResult>("/api/v1/swipe/next", new { })).Card!.Session;
+        await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 2, peek = true });
+        await SqlAsync("update swipe_sessions set started_at = now() - interval '1 day'");
+
+        var r = await PostAsync<OkResponse>("/api/v1/swipe/event", new { session = s, position = 2, direction = "up" });
+
+        Assert.False(r.Ok);
+        Assert.Equal(1, await ScalarAsync<int>("select cards_shown from swipe_sessions where id = @s", new { s }));
     }
 
     [Fact]

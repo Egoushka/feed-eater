@@ -520,19 +520,22 @@ public sealed class SwipeService(
             return false;
         }
 
+        var now = time.GetUtcNow();
         if (position >= session!.CardsShown)
         {
-            // A card fetched ahead with a peek counts as shown from its first event.
-            if (session.EndedAt is not null)
+            // A card fetched ahead with a peek counts as shown from its first event, unless the session is over.
+            if (session.EndedAt is not null || now - SessionPolicy.Utc(session.StartedAt) >= TimeSpan.FromSeconds(session.TimeCapS))
             {
                 return false;
             }
 
             await store.RaiseShownAsync(session.Id, position + 1, ct);
-            if (queued.Kind is not ("item" or "digest" or "recall" or "seed") && await inbox.GetAsync(queued.RefId, ct) is { DoneAt: null } row && InboxCards.ActsFor(row.Kind).Length > 0)
-            {
-                await inbox.MarkShownAsync(row.Id, session.Id, ct);
-            }
+        }
+
+        // Events can arrive out of order after a peek, so an inbox showing is counted on every event; it counts once per session.
+        if (queued.Kind is not ("item" or "digest" or "recall" or "seed") && await inbox.GetAsync(queued.RefId, ct) is { } entry)
+        {
+            await inboxCards.ViewAsync(entry, session, position, Math.Min(session.CardCap, session.QueueItems.Length), now, true, ct);
         }
 
         var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
