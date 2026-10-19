@@ -1,0 +1,23 @@
+{
+  "type": "card",
+  "card": {
+    "session": 1,
+    "position": 0,
+    "total": 8,
+    "title": "Notice",
+    "feed": "feed-eater",
+    "category": null,
+    "why": "Telegram is down.",
+    "url": null,
+    "age": "2 h ago",
+    "hasSuggestion": false,
+    "kind": "notice",
+    "back": null,
+    "detail": null,
+    "acts": [
+      "open"
+    ]
+  },
+  "summary": null,
+  "closed": null
+}

@@ -58,6 +58,7 @@ public static class ServiceRegistration
         services.AddSingleton<ReleaseStore>();
         services.AddSingleton<DuelStore>();
         services.AddSingleton<QuietHours>();
+        services.AddSingleton<FeedEater.Api.ApiTokenStore>();
         services.AddSingleton<UsageStore>();
         services.AddSingleton<IUsageSink>(sp => sp.GetRequiredService<UsageStore>());
         services.AddSingleton<LoopHealth>();
@@ -146,6 +147,8 @@ public static class ServiceRegistration
         services.AddSingleton<CallbackHandler>();
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ArchiveAnswer>();
+        services.AddSingleton<ItemAnswer>();
+        services.AddSingleton<ItemText>();
         services.AddSingleton<StoryFollower>();
         services.AddSingleton<InboxStore>();
         services.AddSingleton<IInbox, InboxService>();

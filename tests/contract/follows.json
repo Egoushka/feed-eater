@@ -1,0 +1,11 @@
+[
+  {
+    "id": 1,
+    "rootItemId": 1,
+    "title": "Quokka backups",
+    "url": "https://example.com/item",
+    "startedAt": "2026-01-01T00:00:00\u002B00:00",
+    "endsAt": "2026-01-01T00:00:00\u002B00:00",
+    "sent": 0
+  }
+]

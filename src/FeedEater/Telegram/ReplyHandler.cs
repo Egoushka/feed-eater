@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using FeedEater.Digest;
 using FeedEater.Llm;
 using FeedEater.Plane;
+using FeedEater.Search;
 using FeedEater.Storage;
 
 namespace FeedEater.Telegram;
@@ -12,12 +13,10 @@ namespace FeedEater.Telegram;
 /// (vote, file an idea, save), or mutes the item's feed, or answers a question about the item from its text.
 /// </summary>
 public sealed class ReplyHandler(
-    TelegramClient telegram, CallbackHandler callbacks, ItemStore items, ProfileStore profiles, LiteLlmClient llm, IIdeaSink sink,
+    TelegramClient telegram, CallbackHandler callbacks, ItemStore items, ProfileStore profiles, LiteLlmClient llm, ItemAnswer answers, IIdeaSink sink,
     IOptions<FeedEaterOptions> options, ILogger<ReplyHandler> logger)
 {
     private const int IntentMaxTokens = 200;
-    private const int AnswerMaxTokens = 400;
-    private const int MaxAnswer = 1500;
 
     public const string Help = "Reply to an item with 👍 or 👎, “file this” (or “idea for &lt;project&gt;: …”), “save”, “mute this feed”, or a question about it.";
 
@@ -103,11 +102,7 @@ public sealed class ReplyHandler(
                 return $"🔇 Muted {E(item.Feed)}. It is still archived and searchable; unmute it on /ui/sources.";
 
             case "ask" when intent.Question is { } question:
-                var o = options.Value;
-                var (system, user) = Prompts.AboutItem(question, item.Title, item.Url, item.Feed, item.Content, o.Caps.ReadChars);
-                var reply = await llm.ChatAsync(o.Llm.ReadModel, system, user, AnswerMaxTokens, "reply", ct);
-                var text = reply.Content.Trim();
-                return E(text.Length <= MaxAnswer ? text : text[..(MaxAnswer - 1)] + "…");
+                return E(await answers.AskAsync(item, question, ct));
 
             default:
                 return Help;

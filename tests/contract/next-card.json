@@ -1,0 +1,28 @@
+{
+  "type": "card",
+  "card": {
+    "session": 1,
+    "position": 1,
+    "total": 4,
+    "title": "Quokka backups",
+    "feed": "Feed 1",
+    "category": "tech",
+    "why": "w",
+    "url": "https://example.com/item",
+    "age": "2 h ago",
+    "hasSuggestion": true,
+    "kind": "item",
+    "back": null,
+    "detail": null,
+    "acts": [
+      "idea",
+      "save",
+      "share",
+      "like",
+      "dislike",
+      "open"
+    ]
+  },
+  "summary": null,
+  "closed": null
+}

@@ -133,7 +133,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var run = new DigestRun(
             new ItemStore(pg.Db), new ReleaseStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), digests, new UsageStore(pg.Db),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
-            new MinifluxClient(miniflux.Client("http://miniflux/")),
+            new FeedEater.Sources.ItemText(new ItemStore(pg.Db), options, new MinifluxClient(miniflux.Client("http://miniflux/")), NullLogger<FeedEater.Sources.ItemText>.Instance),
             new GitHubStarsClient(new StubHandler((request, _) => GitHub(request)).Client("http://github/"), options),
             new TelegramClient(telegram.Client("http://tg/botT/")),
             new InboxService(new InboxStore(pg.Db), new TelegramClient(telegram.Client("http://tg/botT/")), options, time), new InboxStore(pg.Db),

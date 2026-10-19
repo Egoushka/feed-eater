@@ -30,7 +30,7 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
     };
 
     /// <summary>Null when the entry is gone, done or points at an item that no longer exists; the caller skips it.</summary>
-    public async Task<CardView?> ViewAsync(InboxRow row, SessionRow s, int position, int total, DateTimeOffset now, CancellationToken ct)
+    public async Task<CardView?> ViewAsync(InboxRow row, SessionRow s, int position, int total, DateTimeOffset now, bool markShown, CancellationToken ct)
     {
         var view = row.DoneAt is not null ? null : row.Kind switch
         {
@@ -43,7 +43,7 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
             InboxKinds.Notice => Plain(row, s, position, total, now, "Notice", "feed-eater", null, Str(row.Payload, "text") ?? ""),
             _ => null,
         };
-        if (view is not null)
+        if (view is not null && markShown)
         {
             await inbox.MarkShownAsync(row.Id, s.Id, ct);
         }

@@ -26,6 +26,7 @@ public static class SetupServices
         services.AddSingleton<IIntegrationCheck, SwipeCheck>();
         services.AddSingleton<CheckRunner>();
         services.AddSingleton<SetupHandler>();
+        services.AddSingleton<PairingHandler>();
         return services;
     }
 }

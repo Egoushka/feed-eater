@@ -149,7 +149,7 @@ public sealed class FeedsCommandTests(PostgresFixture pg) : IAsyncLifetime
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
         var callbacks = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://k/")), options, NullLogger<CallbackHandler>.Instance);
         var search = new FeedEater.Search.ArchiveSearch(items, llm);
-        var replies = new ReplyHandler(telegram, callbacks, items, new ProfileStore(pg.Db), llm, sink, options, NullLogger<ReplyHandler>.Instance);
+        var replies = new ReplyHandler(telegram, callbacks, items, new ProfileStore(pg.Db), llm, new FeedEater.Search.ItemAnswer(items, llm, options), sink, options, NullLogger<ReplyHandler>.Instance);
         return new CommandHandler(
             telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new QuietHours(new CursorStore(pg.Db), options, TimeProvider.System),
             search, new FeedEater.Search.ArchiveAnswer(search, items, llm, options), replies,

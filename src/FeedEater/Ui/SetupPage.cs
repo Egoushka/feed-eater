@@ -8,20 +8,20 @@ using static FeedEater.Ui.Html;
 namespace FeedEater.Ui;
 
 /// <summary><c>/ui/setup</c>: what <c>doctor</c> prints, as a read-only table. The checks run on every load.</summary>
-public sealed class SetupHandler(CheckRunner runner, UiSession session, IOptions<FeedEaterOptions> options)
+public sealed class SetupHandler(CheckRunner runner, UiSession session, Api.ApiTokenStore tokens, IOptions<FeedEaterOptions> options)
 {
     public async Task<IResult> GetAsync(HttpContext ctx, CancellationToken ct)
     {
         var settings = options.Value;
         var page = new PageContext(session.AntiForgery(ctx.Request.Cookies[UiSession.CookieName] ?? ""), settings.Zone, null,
             ButtonStyle.From(settings), File.Exists(settings.ProfilePath) ? null : settings.ProfilePath);
-        return UiHandlers.Html(UiPages.Setup(page, await runner.RunAsync(ct)));
+        return UiHandlers.Html(UiPages.Setup(page, await runner.RunAsync(ct), await tokens.ListAsync(ct)));
     }
 }
 
 public static partial class UiPages
 {
-    public static string Setup(PageContext p, IReadOnlyList<CheckRow> rows)
+    public static string Setup(PageContext p, IReadOnlyList<CheckRow> rows, IReadOnlyList<Api.ApiTokenRow> tokens)
     {
         var failing = rows.Count(r => r.Required && r.Result.Status == CheckStatus.Fail);
         var h = new StringBuilder("<h1>Setup</h1>");
@@ -39,6 +39,7 @@ public static partial class UiPages
 
         h.Append("</tbody></table></div>");
         h.Append("<p class=\"muted\">The same checks as <code>docker compose run --rm feed-eater doctor</code>, run again each time this page loads.</p>");
+        h.Append(Pairing(p, tokens));
         return Layout(p, "Setup", "/ui/setup", h.ToString());
     }
 }

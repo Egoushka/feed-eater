@@ -1,4 +1,5 @@
 using FeedEater;
+using FeedEater.Api;
 using FeedEater.Eval;
 using FeedEater.Mcp;
 using FeedEater.Setup;
@@ -7,6 +8,7 @@ using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Ui;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -35,11 +37,34 @@ if (args.FirstOrDefault() == "import-opml")
     return await ImportOpmlCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "token")
+{
+    return await ApiTokenCommand.RunAsync(args[1..]);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, logging) => logging
     .ReadFrom.Configuration(context.Configuration)
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddFeedEater(builder.Configuration);
+builder.Services.AddProblemDetails();
+builder.Services.AddOpenApi("v1", o =>
+{
+    // The document is public: list the API only, not /ui, /swipe or /healthz.
+    o.ShouldInclude = d => d.RelativePath?.StartsWith("api/v1/", StringComparison.Ordinal) == true;
+    o.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Components ??= new OpenApiComponents();
+        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes["bearer"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer" };
+        document.Security ??= [];
+        document.Security.Add(new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("bearer", document)] = [] });
+        return Task.CompletedTask;
+    });
+});
+builder.Services.AddSingleton<ApiRateLimiter>();
+builder.Services.AddTransient<ApiAuth>();
+builder.Services.AddTransient<ApiErrors>();
 
 var app = builder.Build();
 var feedEater = app.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
@@ -66,9 +91,13 @@ if (feedEater.Telegram.Token.Length > 0 && feedEater.Telegram.AllowedUserId == 0
     app.Logger.LogWarning("FeedEater:Telegram:AllowedUserId is 0: the bot only answers /start, with your Telegram id; set it and restart");
 }
 
+// Inside the API a bare status (404, 405, a body that does not bind) gets a problem body too.
+app.UseWhen(c => c.Request.Path.StartsWithSegments(ApiEndpoints.Prefix), api => api.UseStatusCodePages());
+
 app.MapGet("/healthz", async (FeedDb db, CancellationToken ct) => await db.PingAsync(ct) ? Results.Ok() : Results.StatusCode(503));
 app.MapFeedEaterMcp(token);
 app.MapFeedEaterUi();
+app.MapFeedEaterApi();
 if (feedEater.Swipe.Enabled)
 {
     app.MapFeedEaterSwipe();

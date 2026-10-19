@@ -10,6 +10,12 @@ using FeedEater.Telegram;
 
 namespace FeedEater.Search;
 
+/// <summary>A cited hit with the number of its [n] marker in the answer.</summary>
+public sealed record Citation(int Number, SearchHit Hit);
+
+/// <summary>The answer and the items it cites, in source-number order.</summary>
+public sealed record AskResult(string Answer, IReadOnlyList<Citation> Citations);
+
 /// <summary>
 /// A question answered from the archive: the top hits go to the read model as numbered sources, every [n] in the answer must name
 /// one of them, and the reply lists the cited items as links.
@@ -21,12 +27,16 @@ public sealed partial class ArchiveAnswer(ArchiveSearch search, ItemStore items,
     private const int MaxAnswer = 1500;
     private const int MaxTokens = 400;
 
-    public async Task<OutMessage> AskAsync(string question, CancellationToken ct)
+    /// <summary>The Telegram reply: the answer and its cited items as HTML.</summary>
+    public async Task<OutMessage> AskAsync(string question, CancellationToken ct) => new(Render(await AnswerAsync(question, ct)));
+
+    /// <summary>The answer and the cited hits, ordered by their source number.</summary>
+    public async Task<AskResult> AnswerAsync(string question, CancellationToken ct)
     {
         var hits = await search.SearchAsync(question, null, null, null, null, Sources, ct);
         if (hits.Count == 0)
         {
-            return new OutMessage(WebUtility.HtmlEncode(Prompts.NothingFound));
+            return new AskResult(Prompts.NothingFound, []);
         }
 
         var zone = options.Value.Zone;
@@ -41,7 +51,8 @@ public sealed partial class ArchiveAnswer(ArchiveSearch search, ItemStore items,
         var (system, user) = Prompts.Ask(question, sources);
         var reply = await llm.ChatAsync(options.Value.Llm.ReadModel, system, user, MaxTokens, "ask", ct);
         var (answer, cited) = Check(reply.Content, hits.Count);
-        return new OutMessage(Render(answer, cited, hits, zone));
+        var numbers = cited.Order().ToList();
+        return new AskResult(answer, numbers.Select(n => new Citation(n, hits[n - 1])).ToList());
     }
 
     /// <summary>Drops [n] markers that name no source; returns the cleaned answer and the cited source numbers in order.</summary>
@@ -66,18 +77,18 @@ public sealed partial class ArchiveAnswer(ArchiveSearch search, ItemStore items,
         return (Clip(cleaned, MaxAnswer), cited);
     }
 
-    private static string Render(string answer, IReadOnlyList<int> cited, IReadOnlyList<SearchHit> hits, TimeZoneInfo zone)
+    private string Render(AskResult result)
     {
-        var html = new StringBuilder(WebUtility.HtmlEncode(answer));
-        if (cited.Count == 0)
+        var html = new StringBuilder(WebUtility.HtmlEncode(result.Answer));
+        if (result.Citations.Count == 0)
         {
             return html.ToString();
         }
 
+        var zone = options.Value.Zone;
         html.Append("\n\n");
-        foreach (var n in cited.Order())
+        foreach (var (n, h) in result.Citations)
         {
-            var h = hits[n - 1];
             var title = WebUtility.HtmlEncode(Clip(h.Title, 120));
             var link = DigestFormatter.IsLinkable(h.Url) ? $"<a href=\"{WebUtility.HtmlEncode(h.Url)}\">{title}</a>" : title;
             html.Append(CultureInfo.InvariantCulture, $"[{n}] {link} · <i>{WebUtility.HtmlEncode(Clip(h.Feed, 60))}, {Local(h.PublishedAt, zone)}</i>\n");

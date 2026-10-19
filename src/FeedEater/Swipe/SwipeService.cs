@@ -10,7 +10,11 @@ namespace FeedEater.Swipe;
 
 public sealed record CardView(
     long Session, int Position, int Total, string Title, string Feed, string? Category, string Why, string? Url, string Age, bool HasSuggestion,
-    string Kind = "item", string? Back = null, IReadOnlyDictionary<string, string?>? Detail = null);
+    string Kind = "item", string? Back = null, IReadOnlyDictionary<string, string?>? Detail = null)
+{
+    /// <summary>The acts the card takes, so a client need not know them per kind.</summary>
+    public IReadOnlyList<string> Acts { get; init; } = [];
+}
 
 public sealed record SummaryView(long Session, string Reason, int Cards, int Minutes, IReadOnlyDictionary<string, int> Acts, IReadOnlyList<string> Categories, bool Rated);
 
@@ -38,6 +42,13 @@ public sealed class SwipeService(
     private const double SwipeVoteWeight = 0.5;
 
     private FeedEaterOptions Settings => options.Value;
+
+    /// <summary>What <see cref="NextAsync"/> would decide right now, without expiring or starting anything.</summary>
+    public async Task<Decision> GateAsync(CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        return SessionPolicy.Decide(Settings.Swipe, now, Settings.Zone, await store.LatestAsync(ct), await store.StartedSinceAsync(DayStart(now), ct));
+    }
 
     public async Task<NextResult> NextAsync(int? position, CancellationToken ct)
     {
@@ -68,10 +79,37 @@ public sealed class SwipeService(
                 break;
         }
 
-        return await CardAsync(latest!, position ?? Math.Max(latest!.CardsShown - 1, 0), now, ct);
+        return await CardAsync(latest!, position ?? Math.Max(latest!.CardsShown - 1, 0), now, true, ct);
     }
 
-    private async Task<NextResult> CardAsync(SessionRow s, int position, DateTimeOffset now, CancellationToken ct)
+    /// <summary>
+    /// A look at the card at <paramref name="position"/> for fetching ahead (ruling R-j). Decides the gate like <see cref="NextAsync"/> but never starts, expires
+    /// or ends a session, and does not count the card as shown: the first event for its position does.
+    /// </summary>
+    public async Task<NextResult> PeekAsync(int position, CancellationToken ct)
+    {
+        var o = Settings.Swipe;
+        var now = time.GetUtcNow();
+        var latest = await store.LatestAsync(ct);
+        var startedToday = await store.StartedSinceAsync(DayStart(now), ct);
+        var decision = SessionPolicy.Decide(o, now, Settings.Zone, latest, startedToday);
+        if (decision.Gate == Gate.Expire)
+        {
+            latest = latest! with { EndedAt = SessionPolicy.EndOfExpired(latest).UtcDateTime, EndReason = "time" };
+            decision = SessionPolicy.Decide(o, now, Settings.Zone, latest, startedToday);
+        }
+
+        return decision.Gate switch
+        {
+            Gate.Summary => await SummaryResultAsync(latest!, ct),
+            Gate.Closed => new NextResult("closed", Closed: new ClosedView(decision.Until, decision.Why ?? "cooldown")),
+            Gate.Start => new NextResult("closed", Closed: new ClosedView(null, "not-started")),
+            _ => await CardAsync(latest!, position, now, false, ct),
+        };
+    }
+
+    /// <summary>With <paramref name="markShown"/> the card counts as shown and a position past the end ends the session; without it the session is left as it is.</summary>
+    private async Task<NextResult> CardAsync(SessionRow s, int position, DateTimeOffset now, bool markShown, CancellationToken ct)
     {
         if (position < 0)
         {
@@ -80,34 +118,41 @@ public sealed class SwipeService(
 
         if (position >= s.CardCap || position >= s.QueueItems.Length)
         {
-            await store.EndAsync(s.Id, s.QueueItems.Length >= s.CardCap ? "cards" : "exhausted", now, ct);
+            var reason = s.QueueItems.Length >= s.CardCap ? "cards" : "exhausted";
+            if (!markShown)
+            {
+                return await SummaryResultAsync(s.EndedAt is null ? s with { EndReason = reason } : s, ct);
+            }
+
+            await store.EndAsync(s.Id, reason, now, ct);
             return await SummaryResultAsync((await store.GetAsync(s.Id, ct))!, ct);
         }
 
         var kind = s.QueueKinds.ElementAtOrDefault(position) ?? "item";
         if (kind is not ("item" or "digest"))
         {
-            return await SpecialCardAsync(s, position, kind, now, ct);
+            return await SpecialCardAsync(s, position, kind, now, markShown, ct);
         }
 
         var item = await items.GetAsync(s.QueueItems[position], ct);
         if (item is null)
         {
             // The item was deleted since the queue was built: say nothing, move on.
-            await store.RaiseShownAsync(s.Id, position + 1, ct);
-            return await CardAsync(s, position + 1, now, ct);
+            await RaiseShownAsync(s, position, markShown, ct);
+            return await CardAsync(s, position + 1, now, markShown, ct);
         }
 
-        await store.RaiseShownAsync(s.Id, position + 1, ct);
+        await RaiseShownAsync(s, position, markShown, ct);
         var category = s.QueueCategories.ElementAtOrDefault(position);
         return new NextResult("card", Card: new CardView(
             s.Id, position, Math.Min(s.CardCap, s.QueueItems.Length), item.Title, item.Feed, string.IsNullOrEmpty(category) ? null : category,
             Why(item), Html.SafeUrl(item.Url), Age(item.PublishedAt, now), item.Suggestion is not null, kind,
-            Detail: kind == "digest" ? new Dictionary<string, string?> { ["summary"] = item.Summary, ["suggestion"] = item.Suggestion } : null));
+            Detail: kind == "digest" ? new Dictionary<string, string?> { ["summary"] = item.Summary, ["suggestion"] = item.Suggestion } : null)
+        { Acts = ActsFor(kind) });
     }
 
     /// <summary>A recall question, a post seed or an inbox entry. One that no longer exists is skipped like a deleted item.</summary>
-    private async Task<NextResult> SpecialCardAsync(SessionRow s, int position, string kind, DateTimeOffset now, CancellationToken ct)
+    private async Task<NextResult> SpecialCardAsync(SessionRow s, int position, string kind, DateTimeOffset now, bool markShown, CancellationToken ct)
     {
         var category = s.QueueCategories.ElementAtOrDefault(position);
         var total = Math.Min(s.CardCap, s.QueueItems.Length);
@@ -120,14 +165,17 @@ public sealed class SwipeService(
         {
             view = new CardView(s.Id, position, total, seed.Angle, "post seed", Blank(category), "From: " + source.Title, Html.SafeUrl(source.Url), Age(source.PublishedAt, now), false, "seed");
         }
-        else if (kind is not ("recall" or "seed") && await inbox.GetAsync(s.QueueItems[position], ct) is { } row)
+        else if (IsInbox(kind) && await inbox.GetAsync(s.QueueItems[position], ct) is { } row)
         {
-            view = await inboxCards.ViewAsync(row, s, position, total, now, ct);
+            view = await inboxCards.ViewAsync(row, s, position, total, now, markShown, ct);
         }
 
-        await store.RaiseShownAsync(s.Id, position + 1, ct);
-        return view is null ? await CardAsync(s, position + 1, now, ct) : new NextResult("card", Card: view);
+        await RaiseShownAsync(s, position, markShown, ct);
+        return view is null ? await CardAsync(s, position + 1, now, markShown, ct) : new NextResult("card", Card: view with { Acts = ActsFor(kind) });
     }
+
+    private Task RaiseShownAsync(SessionRow s, int position, bool markShown, CancellationToken ct) =>
+        markShown ? store.RaiseShownAsync(s.Id, position + 1, ct) : Task.CompletedTask;
 
     private static string? Blank(string? category) => string.IsNullOrEmpty(category) ? null : category;
 
@@ -255,7 +303,7 @@ public sealed class SwipeService(
 
     private async Task<ActResult> RunActAsync(Queued queued, long sessionId, int position, string act, CancellationToken ct)
     {
-        if (queued.Kind is not ("item" or "digest" or "recall" or "seed"))
+        if (IsInbox(queued.Kind))
         {
             return await InboxActAsync(queued, sessionId, position, act, ct);
         }
@@ -305,7 +353,7 @@ public sealed class SwipeService(
             return new ActResult(false, "Can't undo that: it was more than a day ago.");
         }
 
-        var row = queued.Kind is "item" or "digest" or "recall" or "seed" ? null : await inbox.GetAsync(queued.RefId, ct);
+        var row = IsInbox(queued.Kind) ? await inbox.GetAsync(queued.RefId, ct) : null;
         if (record is { Act: "stop", Message: InboxCards.AlreadyStopped })
         {
             return new ActResult(false, "Can't undo that: the follow was already stopped.");
@@ -415,6 +463,9 @@ public sealed class SwipeService(
         await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
     }
 
+    /// <summary>Every queue kind but these names an inbox entry.</summary>
+    private static bool IsInbox(string kind) => kind is not ("item" or "digest" or "recall" or "seed");
+
     private static string[] ActsFor(string kind) => kind switch
     {
         "item" or "digest" => Acts,
@@ -471,18 +522,45 @@ public sealed class SwipeService(
     /// <summary>What happened to a card when it was left (or the page was hidden): the direction, the dwell and the time it was shown. Idempotent; the last call wins.</summary>
     public async Task<bool> EventAsync(long sessionId, int position, long? shownAtMs, long? dwellMs, string? direction, CancellationToken ct)
     {
-        if (await QueuedAsync(sessionId, position, ct) is not { } queued)
+        var session = await store.GetAsync(sessionId, ct);
+        if (QueuedIn(session, position, true) is not { } queued)
         {
             return false;
         }
 
+        var now = time.GetUtcNow();
+        var shown = shownAtMs is > 0 && DateTimeOffset.FromUnixTimeMilliseconds(shownAtMs.Value) is var at && Math.Abs((at - now).TotalDays) < 1 ? at : (DateTimeOffset?)null;
+        if (position >= session!.CardsShown)
+        {
+            // A card fetched ahead with a peek counts as shown from its first event. Once the session is over (ended or past its time cap) only
+            // an event saying the card was shown while it ran counts: the phone may send what it swiped offline later, within the act window.
+            var started = SessionPolicy.Utc(session.StartedAt);
+            var over = started + TimeSpan.FromSeconds(session.TimeCapS);
+            if (session.EndedAt is { } ended && SessionPolicy.Utc(ended) < over)
+            {
+                over = SessionPolicy.Utc(ended);
+            }
+
+            if (now >= over && (shown is not { } seen || seen < started || seen > over))
+            {
+                return false;
+            }
+
+            await store.RaiseShownAsync(session.Id, position + 1, ct);
+        }
+
+        // Events can arrive out of order after a peek, so an inbox showing is counted on every event; it counts once per session.
+        if (IsInbox(queued.Kind) && await inbox.GetAsync(queued.RefId, ct) is { } entry)
+        {
+            await inboxCards.ViewAsync(entry, session, position, Math.Min(session.CardCap, session.QueueItems.Length), now, true, ct);
+        }
+
         var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
         var dir = direction is not null && Directions.Contains(direction, StringComparer.Ordinal) ? direction : "none";
-        var shown = shownAtMs is > 0 && DateTimeOffset.FromUnixTimeMilliseconds(shownAtMs.Value) is var at && Math.Abs((at - time.GetUtcNow()).TotalDays) < 1 ? at.UtcDateTime : (DateTime?)null;
         await store.SaveEventAsync(existing with
         {
             Direction = dir,
-            ShownAt = shown,
+            ShownAt = shown?.UtcDateTime,
             DwellMs = dwellMs is null ? null : (int)Math.Clamp(dwellMs.Value, 0, MaxDwellMs),
             Action = Primary(existing.Acts, dir),
         }, ct);
@@ -508,10 +586,13 @@ public sealed class SwipeService(
         return await SummaryResultAsync((await store.GetAsync(sessionId, ct))!, ct);
     }
 
-    private async Task<Queued?> QueuedAsync(long sessionId, int position, CancellationToken ct)
+    private async Task<Queued?> QueuedAsync(long sessionId, int position, CancellationToken ct) => QueuedIn(await store.GetAsync(sessionId, ct), position, false);
+
+    /// <summary>The queue entry at a shown position, or with <paramref name="peeked"/> at any position inside the queue and the cap.</summary>
+    private Queued? QueuedIn(SessionRow? s, int position, bool peeked)
     {
-        var s = await store.GetAsync(sessionId, ct);
-        if (s is null || (s.EndedAt is { } ended && time.GetUtcNow() - SessionPolicy.Utc(ended) > UndoWindow) || position < 0 || position >= s.CardsShown || position >= s.QueueItems.Length)
+        var limit = peeked ? Math.Min(s?.CardCap ?? 0, s?.QueueItems.Length ?? 0) : s?.CardsShown ?? 0;
+        if (s is null || (s.EndedAt is { } ended && time.GetUtcNow() - SessionPolicy.Utc(ended) > UndoWindow) || position < 0 || position >= limit || position >= s.QueueItems.Length)
         {
             return null;
         }

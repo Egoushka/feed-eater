@@ -297,6 +297,18 @@ public sealed class ItemStore(FeedDb db)
             "update items set content = @content where id = @id", new { id, content }, cancellationToken: ct));
     }
 
+    /// <summary>The fields the full-text step needs for one item; the embedding is not loaded.</summary>
+    public async Task<Candidate?> GetCandidateAsync(long id, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.QuerySingleOrDefaultAsync<Candidate>(new CommandDefinition(
+            """
+            select i.id, i.miniflux_entry_id, i.feed_id, i.title, i.url, coalesce(f.title, '') as feed_title, i.content, i.extra_text
+            from items i left join feeds f on f.id = i.feed_id
+            where i.id = @id
+            """, new { id }, cancellationToken: ct));
+    }
+
     public async Task<ItemView?> GetAsync(long id, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);

@@ -1,0 +1,9 @@
+{
+  "type": "closed",
+  "card": null,
+  "summary": null,
+  "closed": {
+    "until": "2026-01-01T00:00:00\u002B00:00",
+    "why": "cooldown"
+  }
+}

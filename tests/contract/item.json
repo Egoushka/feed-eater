@@ -1,0 +1,16 @@
+{
+  "id": 1,
+  "title": "Quokka backups",
+  "url": "https://example.com/item",
+  "feed": "Feed 1",
+  "publishedAt": "2026-01-01T00:00:00\u002B00:00",
+  "text": "Quokka backups run nightly.",
+  "fullText": false,
+  "summary": "s",
+  "why": "w",
+  "suggestion": "Upgrade the box.",
+  "vote": 1,
+  "saved": false,
+  "project": "homelab",
+  "kind": "improve"
+}

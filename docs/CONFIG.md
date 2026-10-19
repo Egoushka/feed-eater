@@ -36,6 +36,12 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:RunJobs` | `true` | False stops every background job (ingest, digest, polling); the web UI and /mcp still run. |
 | `FeedEater:TimeZone` | `UTC` | IANA time zone for the digest time, quiet hours and the dates shown in the UI and Telegram, e.g. Europe/Berlin. |
 
+## Api
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Api:BaseUrl` | (empty) | The address the phone app uses; the pairing QR carries it. Empty: the address the setup page was opened on. |
+
 ## Caps
 
 | Key | Default | Description |

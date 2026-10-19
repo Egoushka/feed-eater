@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "gate": "closed",
+  "gateUntil": "2026-01-01T00:00:00\u002B00:00",
+  "gateWhy": "cooldown",
+  "digest": {
+    "date": "2026-01-01",
+    "status": "sent",
+    "items": 1,
+    "sentAt": "2026-01-01T00:00:00\u002B00:00"
+  },
+  "telegram": false,
+  "swipe": true
+}
