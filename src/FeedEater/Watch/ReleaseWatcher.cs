@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Net;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
+using FeedEater.Inbox;
 using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Storage;
@@ -16,7 +18,7 @@ namespace FeedEater.Watch;
 /// own; the rest ride in the next digest header. Each release is recorded and announced once. Nothing is ever applied.
 /// </summary>
 public sealed partial class ReleaseWatcher(
-    WatchSource source, ItemStore items, ReleaseStore releases, LiteLlmClient llm, TelegramClient telegram, QuietHours quiet,
+    WatchSource source, ItemStore items, ReleaseStore releases, LiteLlmClient llm, IInbox inbox, QuietHours quiet,
     IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<ReleaseWatcher> logger)
     : PollingLoop(health, time, logger)
 {
@@ -107,14 +109,26 @@ public sealed partial class ReleaseWatcher(
 
     private async Task AnnounceAsync(WatchedProduct product, ReleaseRow row, CancellationToken ct)
     {
-        if (options.Value.Telegram.Token.Length == 0 || await quiet.IsQuietAsync(ct))
+        var o = options.Value;
+        if ((o.Telegram.Token.Length == 0 && !o.Swipe.Enabled) || await quiet.IsQuietAsync(ct))
         {
             return;   // left for the next digest
         }
 
         try
         {
-            await telegram.SendAsync(options.Value.Telegram.AllowedUserId, Message(product, row), ct);
+            await inbox.AddAsync(new InboxEntry($"release:{row.Repo}:{row.Tag}", InboxKinds.Release,
+                Payload: new JsonObject
+                {
+                    ["services"] = string.Join(", ", product.Services),
+                    ["running"] = product.RunningText,
+                    ["version"] = row.Version,
+                    ["url"] = row.Url,
+                    ["summary"] = row.Summary,
+                    ["breaking"] = row.Breaking,
+                    ["urgent"] = row.Urgent,
+                },
+                ExpiresAt: Time.GetUtcNow().AddDays(14)), Message(product, row), ct);
             await releases.MarkAnnouncedAsync(row.Repo, row.Tag, Time.GetUtcNow(), ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or TelegramException or System.Text.Json.JsonException)
