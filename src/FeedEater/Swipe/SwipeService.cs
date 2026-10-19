@@ -214,31 +214,82 @@ public sealed class SwipeService(
             return new ActResult(false, "Nothing to do.");
         }
 
+        if (queued.Kind is not ("item" or "digest" or "recall" or "seed"))
+        {
+            return await InboxActAsync(queued, sessionId, position, act, ct);
+        }
+
         var message = queued.Kind switch
         {
             "recall" => await RecallActAsync(queued.RefId, sessionId, act, ct),
             "seed" => await SeedActAsync(queued.RefId, act, ct),
-            _ => act switch
-            {
-                "like" => await VoteAsync(queued.RefId, 1, SwipeVoteWeight, "Liked", ct),
-                "dislike" => await VoteAsync(queued.RefId, -1, SwipeVoteWeight, "Not for me", ct),
-                "save" => await SaveAsync(queued.RefId, ct),
-                "idea" => await IdeaAsync(queued.RefId, ct),
-                _ => "",
-            },
+            _ => await ItemActAsync(queued.RefId, act, ct),
         };
         if (message is null)
         {
             return new ActResult(false, "Could not do that.");
         }
 
-        var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
-        var acts = existing.Acts.Append(act).Distinct(StringComparer.Ordinal).ToArray();
-        await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
+        await RecordActAsync(sessionId, position, queued, act, ct);
         return new ActResult(true, message);
     }
 
-    private static string[] ActsFor(string kind) => kind switch { "recall" => RecallActs, "seed" => SeedActs, _ => Acts };
+    private async Task<string?> ItemActAsync(long itemId, string act, CancellationToken ct) => act switch
+    {
+        "like" => await VoteAsync(itemId, 1, SwipeVoteWeight, "Liked", ct),
+        "dislike" => await VoteAsync(itemId, -1, SwipeVoteWeight, "Not for me", ct),
+        "save" => await SaveAsync(itemId, ct),
+        "idea" => await IdeaAsync(itemId, ct),
+        _ => "",
+    };
+
+    /// <summary>An inbox card. Whatever it did, the entry is done afterwards, except for <c>open</c> and for ideas (<see cref="IdeaDecisions"/> sets that itself).</summary>
+    private async Task<ActResult> InboxActAsync(Queued queued, long sessionId, int position, string act, CancellationToken ct)
+    {
+        if (await inbox.GetAsync(queued.RefId, ct) is not { } row)
+        {
+            return new ActResult(false, "Could not do that.");
+        }
+
+        ActResult result;
+        if (row.Kind == InboxKinds.Follow && act is "save" or "like" or "dislike")
+        {
+            var message = row.ItemId is { } itemId ? await ItemActAsync(itemId, act, ct) : null;
+            result = message is null ? new ActResult(false, "Could not do that.") : new ActResult(true, message);
+        }
+        else
+        {
+            result = await inboxCards.ActAsync(row, act, ct);
+        }
+
+        if (!result.Ok)
+        {
+            return result;
+        }
+
+        if (act != "open" && row.Kind is InboxKinds.Follow or InboxKinds.Duel)
+        {
+            await inboxCards.DoneAsync(row.Id, ct);
+        }
+
+        await RecordActAsync(sessionId, position, queued, act, ct);
+        return result;
+    }
+
+    private async Task RecordActAsync(long sessionId, int position, Queued queued, string act, CancellationToken ct)
+    {
+        var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
+        var acts = existing.Acts.Append(act).Distinct(StringComparer.Ordinal).ToArray();
+        await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
+    }
+
+    private static string[] ActsFor(string kind) => kind switch
+    {
+        "item" or "digest" => Acts,
+        "recall" => RecallActs,
+        "seed" => SeedActs,
+        _ => InboxCards.ActsFor(kind),
+    };
 
     private static EventRow NewEvent(long sessionId, int position, Queued q) =>
         new() { SessionId = sessionId, Position = position, Kind = q.Kind, RefId = q.RefId, Category = q.Category, RankSource = q.Source, Predicted = q.Predicted };

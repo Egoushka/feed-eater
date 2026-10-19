@@ -6,7 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using System.Net;
 using FeedEater.Inbox;
+using FeedEater.Plane;
+using FeedEater.WeeklyIdeas;
 using FeedEater.Storage;
 using FeedEater.Swipe;
 
@@ -315,5 +318,213 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal("<script>alert(1)</script>", card.Why);           // JSON carries the text; the page sets textContent
         Assert.Equal(1, await ScalarAsync<int>("select shown_count from inbox"));
+    }
+
+    private async Task<CardView> ShowAsync(SwipeService svc)
+    {
+        var next = await svc.NextAsync(null, default);
+        Assert.Equal("card", next.Type);
+        return next.Card!;
+    }
+
+    private static Task<ActResult> ActAsync(SwipeService svc, CardView card, string act) => svc.ActAsync(card.Session, card.Position, act, default);
+
+    private async Task<long> DoneCountAsync() => await ScalarAsync<long>("select count(*) from inbox where done_at is not null");
+
+    [Theory]
+    [InlineData("like", 1)]
+    [InlineData("dislike", -1)]
+    [InlineData("save", 1)]
+    public async Task A_follow_card_votes_on_its_item_and_is_done(string act, int value)
+    {
+        var item = await ItemAsync(1);
+        await AddAsync("follow", new JsonObject { ["story"] = "S" }, item, null);
+        var svc = Service();
+        var card = await ShowAsync(svc);
+
+        var result = await ActAsync(svc, card, act);
+
+        Assert.True(result.Ok);
+        Assert.Equal(value, await ScalarAsync<int>("select value::int from votes where item_id = @item", new { item }));
+        Assert.Equal(1, await DoneCountAsync());
+        Assert.Equal(("follow", await ScalarAsync<long>("select id from inbox")), (await ScalarAsync<string>("select kind from swipe_events"), await ScalarAsync<long>("select ref_id from swipe_events")));
+        Assert.Equal(act, await ScalarAsync<string>("select action from swipe_events"));
+    }
+
+    [Fact]
+    public async Task Stop_closes_the_follow_and_the_entry()
+    {
+        var item = await ItemAsync(1);
+        var follow = await ScalarAsync<long>("insert into follows (root_item_id, started_at, ends_at) values (@item, now(), now() + interval '7 days') returning id", new { item });
+        await AddAsync("follow", new JsonObject { ["story"] = "S" }, item, follow);
+        var svc = Service();
+        var card = await ShowAsync(svc);
+
+        var result = await ActAsync(svc, card, "stop");
+
+        Assert.True(result.Ok);
+        Assert.Equal("closed", await ScalarAsync<string>("select status from follows where id = @follow", new { follow }));
+        Assert.Equal(1, await DoneCountAsync());
+    }
+
+    [Fact]
+    public async Task Open_on_a_follow_card_leaves_the_entry_open()
+    {
+        await AddAsync("follow", new JsonObject { ["story"] = "S" }, await ItemAsync(1), null);
+        var svc = Service();
+        var card = await ShowAsync(svc);
+
+        Assert.True((await ActAsync(svc, card, "open")).Ok);
+
+        Assert.Equal(0, await DoneCountAsync());
+        Assert.Equal("open", await ScalarAsync<string>("select action from swipe_events"));
+    }
+
+    [Theory]
+    [InlineData("pick_a", true)]
+    [InlineData("pick_b", false)]
+    public async Task A_duel_pick_answers_it_and_is_done(string act, bool firstWins)
+    {
+        var (a, b) = (await ItemAsync(1), await ItemAsync(2));
+        var duel = await new DuelStore(pg.Db).CreateAsync(a, b, DateTimeOffset.UtcNow, default);
+        await AddAsync("duel", new JsonObject { ["a"] = a, ["b"] = b }, refId: duel);
+        var svc = Service();
+        var card = await ShowAsync(svc);
+
+        var result = await ActAsync(svc, card, act);
+        var again = await ActAsync(svc, card, act == "pick_a" ? "pick_b" : "pick_a");
+
+        Assert.True(result.Ok);
+        Assert.Equal(firstWins ? a : b, await ScalarAsync<long>("select winner from duels where id = @duel", new { duel }));
+        Assert.Equal(1, await DoneCountAsync());
+        Assert.Equal(new ActResult(true, "Already answered"), again);
+    }
+
+    [Theory]
+    [InlineData("release")]
+    [InlineData("review")]
+    [InlineData("autopsy")]
+    [InlineData("notice")]
+    public async Task Info_cards_only_open_and_stay_open(string kind)
+    {
+        await AddAsync(kind, new JsonObject { ["text"] = "t", ["html"] = "h", ["services"] = "s", ["running"] = "r", ["version"] = "v" });
+        var svc = Service();
+        var card = await ShowAsync(svc);
+
+        var nothing = await ActAsync(svc, card, "like");
+        var opened = await ActAsync(svc, card, "open");
+
+        Assert.Equal(new ActResult(false, "Nothing to do."), nothing);
+        Assert.True(opened.Ok);
+        Assert.Equal(0, await DoneCountAsync());
+        Assert.Equal(0, await ScalarAsync<long>("select count(*) from votes"));
+    }
+
+    [Fact]
+    public async Task A_digest_card_acts_like_an_item_and_logs_the_digest_kind()
+    {
+        var item = await ItemAsync(1);
+        await SqlAsync("insert into digests (local_date, status, item_ids, sent_at) values ('2026-10-19', 'sent', @ids, @at)", new { ids = new[] { item }, at = DateTime.UtcNow.AddHours(-1) });
+        var svc = Service();
+        var card = await ShowAsync(svc);
+
+        var result = await ActAsync(svc, card, "like");
+
+        Assert.Equal("digest", card.Kind);
+        Assert.True(result.Ok);
+        Assert.Equal(1, await ScalarAsync<int>("select value::int from votes where item_id = @item", new { item }));
+        Assert.Equal(("digest", item), (await ScalarAsync<string>("select kind from swipe_events"), await ScalarAsync<long>("select ref_id from swipe_events")));
+    }
+
+    private SwipeService IdeaService(bool planeDown, out StubHandler plane)
+    {
+        var options = Options.Create(new FeedEaterOptions { Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "t", Workspace = "w", FallbackProject = "FEED" } });
+        plane = new StubHandler((request, _) => request.RequestUri!.AbsolutePath switch
+        {
+            "/api/v1/workspaces/w/projects/" => StubHandler.Json("""{"results":[{"id":"p-lab","identifier":"LAB"}]}"""),
+            var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) => planeDown
+                ? StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable)
+                : StubHandler.Json("""{"issue":"issue-1"}""", HttpStatusCode.Created),
+            _ => StubHandler.Json("{}", HttpStatusCode.NotFound),
+        });
+        var sp = app!.Services;
+        var decisions = new IdeaDecisions(new InboxStore(pg.Db), new WeeklyIdeaStore(pg.Db), new PlaneClient(plane.Client("http://plane/"), options), TimeProvider.System);
+        var cards = new InboxCards(new InboxStore(pg.Db), sp.GetRequiredService<ItemStore>(), new DuelStore(pg.Db), sp.GetRequiredService<FeedEater.Follow.StoryFollower>(), TimeProvider.System, decisions);
+        return ActivatorUtilities.CreateInstance<SwipeService>(sp, cards);
+    }
+
+    private Task<long> IdeaAsync() => AddAsync("idea", new JsonObject
+    {
+        ["week"] = "2026-W43",
+        ["title"] = "Cache it",
+        ["project"] = "LAB",
+        ["html"] = "<p>x</p>",
+        ["url"] = "https://example.com/i",
+        ["sourceTitle"] = "S",
+        ["signal"] = "s",
+        ["why"] = "w",
+        ["where"] = "src",
+        ["effort"] = "S",
+    });
+
+    [Fact]
+    public async Task Keep_files_the_idea_and_Drop_remembers_it()
+    {
+        Service();
+        await IdeaAsync();
+        var svc = IdeaService(false, out var plane);
+        var card = await ShowAsync(svc);
+
+        var kept = await ActAsync(svc, card, "keep");
+        var again = await ActAsync(svc, card, "drop");
+
+        Assert.Equal(new ActResult(true, "Filed in LAB"), kept);
+        Assert.Equal(new ActResult(true, "Already decided"), again);
+        Assert.Contains(plane.Calls, c => c.Uri.EndsWith("/intake-issues/", StringComparison.Ordinal));
+        Assert.Equal("issue-1", await ScalarAsync<string>("select plane_issue_id from weekly_ideas"));
+        Assert.Equal(1, await DoneCountAsync());
+    }
+
+    [Fact]
+    public async Task Drop_marks_the_idea_dropped_without_calling_Plane()
+    {
+        Service();
+        await IdeaAsync();
+        var svc = IdeaService(false, out var plane);
+        var card = await ShowAsync(svc);
+
+        var result = await ActAsync(svc, card, "drop");
+
+        Assert.Equal(new ActResult(true, "Dropped"), result);
+        Assert.Equal("dropped", await ScalarAsync<string>("select outcome from weekly_ideas"));
+        Assert.DoesNotContain(plane.Calls, c => c.Uri.EndsWith("/intake-issues/", StringComparison.Ordinal));
+        Assert.Equal(1, await DoneCountAsync());
+    }
+
+    [Fact]
+    public async Task Keep_while_Plane_is_down_fails_and_leaves_the_idea_open()
+    {
+        Service();
+        await IdeaAsync();
+        var svc = IdeaService(true, out _);
+        var card = await ShowAsync(svc);
+
+        var result = await ActAsync(svc, card, "keep");
+
+        Assert.False(result.Ok);
+        Assert.StartsWith("Not filed: ", result.Message, StringComparison.Ordinal);
+        Assert.Equal(0, await DoneCountAsync());
+        Assert.Equal(0, await ScalarAsync<long>("select count(*) from swipe_events"));
+    }
+
+    [Fact]
+    public async Task Keep_without_ideas_registered_says_so()
+    {
+        await IdeaAsync();
+        var svc = Service();
+        var card = await ShowAsync(svc);
+
+        Assert.Equal(new ActResult(false, "Ideas are off"), await ActAsync(svc, card, "keep"));
+        Assert.Equal(0, await DoneCountAsync());
     }
 }
