@@ -1,4 +1,5 @@
 using System.Buffers.Text;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
@@ -17,6 +18,10 @@ public sealed record ApiTokenRow(long Id, string Name, string[] Scopes, DateTime
 public sealed class ApiTokenStore(FeedDb db, TimeProvider time)
 {
     private static readonly TimeSpan LastUsedEvery = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan RememberFor = TimeSpan.FromMinutes(10);
+
+    // Hashes of tokens that verified lately, so the owner is not locked out with the guessers (ApiAuth). A revoke here forgets them.
+    private readonly ConcurrentDictionary<string, (long Id, DateTimeOffset Until)> verified = new(StringComparer.Ordinal);
 
     public async Task<(long Id, string Token)> CreateAsync(string name, string[] scopes, CancellationToken ct)
     {
@@ -40,6 +45,7 @@ public sealed class ApiTokenStore(FeedDb db, TimeProvider time)
         }
 
         var found = row.ToRecord();
+        verified[Convert.ToHexString(Hash(token))] = (row.Id, time.GetUtcNow() + RememberFor);
 
         var now = time.GetUtcNow().UtcDateTime;
         await c.ExecuteAsync(new CommandDefinition(
@@ -47,6 +53,10 @@ public sealed class ApiTokenStore(FeedDb db, TimeProvider time)
             new { now, id = row.Id, minuteAgo = now - LastUsedEvery }, cancellationToken: ct));
         return found;
     }
+
+    /// <summary>True when the token verified in the last 10 minutes and was not revoked here since. Not a check of the token itself.</summary>
+    public bool VerifiedLately(string token) =>
+        verified.TryGetValue(Convert.ToHexString(Hash(token)), out var entry) && entry.Until > time.GetUtcNow();
 
     public async Task<IReadOnlyList<ApiTokenRow>> ListAsync(CancellationToken ct)
     {
@@ -59,8 +69,14 @@ public sealed class ApiTokenStore(FeedDb db, TimeProvider time)
     public async Task<bool> RevokeAsync(long id, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
-        return await c.ExecuteAsync(new CommandDefinition(
+        var revoked = await c.ExecuteAsync(new CommandDefinition(
             "update api_tokens set revoked_at = now() where id = @id and revoked_at is null", new { id }, cancellationToken: ct)) > 0;
+        foreach (var (hash, _) in verified.Where(e => e.Value.Id == id))
+        {
+            verified.TryRemove(hash, out _);
+        }
+
+        return revoked;
     }
 
     private sealed class Row

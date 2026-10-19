@@ -10,7 +10,11 @@ namespace FeedEater.Swipe;
 
 public sealed record CardView(
     long Session, int Position, int Total, string Title, string Feed, string? Category, string Why, string? Url, string Age, bool HasSuggestion,
-    string Kind = "item", string? Back = null, IReadOnlyDictionary<string, string?>? Detail = null);
+    string Kind = "item", string? Back = null, IReadOnlyDictionary<string, string?>? Detail = null)
+{
+    /// <summary>The acts the card takes, so a client need not know them per kind.</summary>
+    public IReadOnlyList<string> Acts { get; init; } = [];
+}
 
 public sealed record SummaryView(long Session, string Reason, int Cards, int Minutes, IReadOnlyDictionary<string, int> Acts, IReadOnlyList<string> Categories, bool Rated);
 
@@ -143,7 +147,8 @@ public sealed class SwipeService(
         return new NextResult("card", Card: new CardView(
             s.Id, position, Math.Min(s.CardCap, s.QueueItems.Length), item.Title, item.Feed, string.IsNullOrEmpty(category) ? null : category,
             Why(item), Html.SafeUrl(item.Url), Age(item.PublishedAt, now), item.Suggestion is not null, kind,
-            Detail: kind == "digest" ? new Dictionary<string, string?> { ["summary"] = item.Summary, ["suggestion"] = item.Suggestion } : null));
+            Detail: kind == "digest" ? new Dictionary<string, string?> { ["summary"] = item.Summary, ["suggestion"] = item.Suggestion } : null)
+        { Acts = ActsFor(kind) });
     }
 
     /// <summary>A recall question, a post seed or an inbox entry. One that no longer exists is skipped like a deleted item.</summary>
@@ -160,13 +165,13 @@ public sealed class SwipeService(
         {
             view = new CardView(s.Id, position, total, seed.Angle, "post seed", Blank(category), "From: " + source.Title, Html.SafeUrl(source.Url), Age(source.PublishedAt, now), false, "seed");
         }
-        else if (kind is not ("recall" or "seed") && await inbox.GetAsync(s.QueueItems[position], ct) is { } row)
+        else if (IsInbox(kind) && await inbox.GetAsync(s.QueueItems[position], ct) is { } row)
         {
             view = await inboxCards.ViewAsync(row, s, position, total, now, markShown, ct);
         }
 
         await RaiseShownAsync(s, position, markShown, ct);
-        return view is null ? await CardAsync(s, position + 1, now, markShown, ct) : new NextResult("card", Card: view);
+        return view is null ? await CardAsync(s, position + 1, now, markShown, ct) : new NextResult("card", Card: view with { Acts = ActsFor(kind) });
     }
 
     private Task RaiseShownAsync(SessionRow s, int position, bool markShown, CancellationToken ct) =>
@@ -298,7 +303,7 @@ public sealed class SwipeService(
 
     private async Task<ActResult> RunActAsync(Queued queued, long sessionId, int position, string act, CancellationToken ct)
     {
-        if (queued.Kind is not ("item" or "digest" or "recall" or "seed"))
+        if (IsInbox(queued.Kind))
         {
             return await InboxActAsync(queued, sessionId, position, act, ct);
         }
@@ -348,7 +353,7 @@ public sealed class SwipeService(
             return new ActResult(false, "Can't undo that: it was more than a day ago.");
         }
 
-        var row = queued.Kind is "item" or "digest" or "recall" or "seed" ? null : await inbox.GetAsync(queued.RefId, ct);
+        var row = IsInbox(queued.Kind) ? await inbox.GetAsync(queued.RefId, ct) : null;
         if (record is { Act: "stop", Message: InboxCards.AlreadyStopped })
         {
             return new ActResult(false, "Can't undo that: the follow was already stopped.");
@@ -458,6 +463,9 @@ public sealed class SwipeService(
         await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
     }
 
+    /// <summary>Every queue kind but these names an inbox entry.</summary>
+    private static bool IsInbox(string kind) => kind is not ("item" or "digest" or "recall" or "seed");
+
     private static string[] ActsFor(string kind) => kind switch
     {
         "item" or "digest" => Acts,
@@ -521,10 +529,19 @@ public sealed class SwipeService(
         }
 
         var now = time.GetUtcNow();
+        var shown = shownAtMs is > 0 && DateTimeOffset.FromUnixTimeMilliseconds(shownAtMs.Value) is var at && Math.Abs((at - now).TotalDays) < 1 ? at : (DateTimeOffset?)null;
         if (position >= session!.CardsShown)
         {
-            // A card fetched ahead with a peek counts as shown from its first event, unless the session is over.
-            if (session.EndedAt is not null || now - SessionPolicy.Utc(session.StartedAt) >= TimeSpan.FromSeconds(session.TimeCapS))
+            // A card fetched ahead with a peek counts as shown from its first event. Once the session is over (ended or past its time cap) only
+            // an event saying the card was shown while it ran counts: the phone may send what it swiped offline later, within the act window.
+            var started = SessionPolicy.Utc(session.StartedAt);
+            var over = started + TimeSpan.FromSeconds(session.TimeCapS);
+            if (session.EndedAt is { } ended && SessionPolicy.Utc(ended) < over)
+            {
+                over = SessionPolicy.Utc(ended);
+            }
+
+            if (now >= over && (shown is not { } seen || seen < started || seen > over))
             {
                 return false;
             }
@@ -533,18 +550,17 @@ public sealed class SwipeService(
         }
 
         // Events can arrive out of order after a peek, so an inbox showing is counted on every event; it counts once per session.
-        if (queued.Kind is not ("item" or "digest" or "recall" or "seed") && await inbox.GetAsync(queued.RefId, ct) is { } entry)
+        if (IsInbox(queued.Kind) && await inbox.GetAsync(queued.RefId, ct) is { } entry)
         {
             await inboxCards.ViewAsync(entry, session, position, Math.Min(session.CardCap, session.QueueItems.Length), now, true, ct);
         }
 
         var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
         var dir = direction is not null && Directions.Contains(direction, StringComparer.Ordinal) ? direction : "none";
-        var shown = shownAtMs is > 0 && DateTimeOffset.FromUnixTimeMilliseconds(shownAtMs.Value) is var at && Math.Abs((at - time.GetUtcNow()).TotalDays) < 1 ? at.UtcDateTime : (DateTime?)null;
         await store.SaveEventAsync(existing with
         {
             Direction = dir,
-            ShownAt = shown,
+            ShownAt = shown?.UtcDateTime,
             DwellMs = dwellMs is null ? null : (int)Math.Clamp(dwellMs.Value, 0, MaxDwellMs),
             Action = Primary(existing.Acts, dir),
         }, ct);

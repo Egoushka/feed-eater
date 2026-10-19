@@ -23,8 +23,8 @@ public sealed class ApiRateLimiter : IDisposable
 
 /// <summary>
 /// Browsers are refused, the bearer token is checked, then the per-token rate limit. No problem body repeats the token.
-/// Only refusals spend the anonymous budget. Once it is spent every request gets 429 before any database lookup, valid tokens
-/// included: guessing stays slow and Postgres is shielded, at the price of locking the owner out for the rest of the minute.
+/// Only 401 refusals spend the anonymous budget. Once it is spent a request gets 429 before any database lookup, unless its token
+/// verified in the last 10 minutes: guessing stays slow and Postgres is shielded, and the owner's phone keeps working.
 /// </summary>
 public sealed class ApiAuth(ApiTokenStore tokens, ApiRateLimiter limits) : IEndpointFilter
 {
@@ -33,18 +33,19 @@ public sealed class ApiAuth(ApiTokenStore tokens, ApiRateLimiter limits) : IEndp
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var http = context.HttpContext;
-        if (limits.AnonymousExhausted)
+        if (http.Request.Headers.ContainsKey("Origin"))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Browsers may not call the API");
+        }
+
+        var header = http.Request.Headers.Authorization.ToString();
+        var wellFormed = header.StartsWith(Scheme, StringComparison.Ordinal) && header.Length > Scheme.Length && header[Scheme.Length] != ' ';
+        if (limits.AnonymousExhausted && !(wellFormed && tokens.VerifiedLately(header[Scheme.Length..])))
         {
             return TooMany();
         }
 
-        if (http.Request.Headers.ContainsKey("Origin"))
-        {
-            return Refuse(StatusCodes.Status403Forbidden, "Browsers may not call the API");
-        }
-
-        var header = http.Request.Headers.Authorization.ToString();
-        if (!header.StartsWith(Scheme, StringComparison.Ordinal) || header.Length == Scheme.Length || header[Scheme.Length] == ' ')
+        if (!wellFormed)
         {
             return Refuse(StatusCodes.Status401Unauthorized, "A bearer token is required");
         }
@@ -69,6 +70,15 @@ public sealed class ApiAuth(ApiTokenStore tokens, ApiRateLimiter limits) : IEndp
 
         static IResult TooMany() => Results.Problem(statusCode: StatusCodes.Status429TooManyRequests, title: "Too many requests");
     }
+}
+
+/// <summary>Endpoint metadata saying the route is behind <see cref="ApiAuth"/>; only <see cref="ApiAuthExtensions.RequireApiToken"/> adds it, with the filter.</summary>
+public sealed class ApiTokenRequired;
+
+public static class ApiAuthExtensions
+{
+    public static RouteGroupBuilder RequireApiToken(this RouteGroupBuilder group) =>
+        group.AddEndpointFilter<RouteGroupBuilder, ApiAuth>().WithMetadata(new ApiTokenRequired());
 }
 
 /// <summary>An unhandled exception becomes a 500 problem without the exception text. A body over 64 KB is a 413 whatever the server enforces.</summary>

@@ -7,6 +7,7 @@ using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Api;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -281,6 +282,68 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(1, await ScalarAsync<int>("select cards_shown from swipe_sessions where id = @s", new { s }));
     }
 
+    [Theory]
+    [InlineData(150, true)]
+    [InlineData(60, false)]
+    public async Task An_offline_event_after_the_time_cap_counts_only_when_the_card_was_shown_before_it(int shownSecondsAgo, bool counts)
+    {
+        await RankedItemsAsync(5);
+        var s = (await PostAsync<NextResult>("/api/v1/swipe/next", new { })).Card!.Session;
+        await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 2, peek = true });
+        // The cap ran out two minutes ago; the session is not ended.
+        await SqlAsync("update swipe_sessions set started_at = now() - make_interval(secs => time_cap_s + 120)");
+        var shownAt = DateTimeOffset.UtcNow.AddSeconds(-shownSecondsAgo).ToUnixTimeMilliseconds();
+
+        var r = await PostAsync<OkResponse>("/api/v1/swipe/event", new { session = s, position = 2, shownAt, direction = "up" });
+        var act = await PostAsync<ActResult>("/api/v1/swipe/act", new { session = s, position = 2, act = "like", clientId = Guid.NewGuid() });
+
+        Assert.Equal(counts, r.Ok);
+        Assert.Equal(counts, act.Ok);
+        Assert.Equal(counts ? 3 : 1, await ScalarAsync<int>("select cards_shown from swipe_sessions where id = @s", new { s }));
+    }
+
+    [Fact]
+    public async Task A_card_lists_the_acts_its_kind_takes()
+    {
+        await App.Services.GetRequiredService<InboxStore>().AddAsync(
+            new InboxEntry("n", InboxKinds.Notice, ExpiresAt: DateTimeOffset.UtcNow.AddDays(1)), DateTimeOffset.UtcNow, default);
+        await RankedItemsAsync(1);
+
+        var notice = (await PostAsync<NextResult>("/api/v1/swipe/next", new { })).Card!;
+        var item = (await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 1, peek = true })).Card!;
+
+        Assert.Equal(("notice", "item"), (notice.Kind, item.Kind));
+        Assert.Equal(["open"], notice.Acts);
+        Assert.Equal(SwipeService.Acts, item.Acts);
+    }
+
+    [Fact]
+    public async Task Unknown_routes_wrong_methods_and_bodies_that_do_not_bind_are_problems()
+    {
+        var auth = "Bearer " + await TokenAsync();
+        var missing = await RawAsync(HttpMethod.Get, "/api/v1/nope", auth);
+        var method = await RawAsync(HttpMethod.Get, "/api/v1/swipe/next", auth);
+        var malformed = await RawAsync(HttpMethod.Post, "/api/v1/swipe/event", auth, body: "{\"session\":");
+
+        Assert.Equal(
+            (HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed, HttpStatusCode.BadRequest),
+            (missing.StatusCode, method.StatusCode, malformed.StatusCode));
+        Assert.All([missing, method, malformed], r => Assert.Equal("application/problem+json", r.Content.Headers.ContentType?.MediaType));
+        Assert.Equal(HttpStatusCode.NotFound, (await RawAsync(HttpMethod.Get, "/ui/nope", null)).StatusCode);
+    }
+
+    [Fact]
+    public void Every_API_route_but_the_OpenAPI_document_requires_a_token()
+    {
+        var routes = App.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
+            .Where(e => e.RoutePattern.RawText?.TrimStart('/').StartsWith("api/v1/", StringComparison.Ordinal) == true)
+            .ToList();
+
+        Assert.True(routes.Count > 20, "found only " + routes.Count + " API routes");
+        Assert.All(routes.Where(e => !e.RoutePattern.RawText!.EndsWith("/openapi.json", StringComparison.Ordinal)),
+            e => Assert.True(e.Metadata.GetMetadata<ApiTokenRequired>() is not null, e.RoutePattern.RawText + " has no ApiAuth"));
+    }
+
     [Fact]
     public async Task The_same_act_twice_over_the_API_votes_once()
     {
@@ -528,11 +591,14 @@ public sealed class ApiAnonymousLimitTests(PostgresFixture pg) : IAsyncLifetime
     private static WebApplicationFactory<Program>? app;
 
     [Fact]
-    public async Task Unknown_tokens_share_20_a_minute_and_then_even_a_valid_token_gets_429()
+    public async Task Unknown_tokens_share_20_a_minute_and_then_only_a_token_that_verified_lately_gets_through()
     {
         app ??= ApiHost.Create(pg.ConnectionString);
         var http = app.CreateClient();
+        var store = app.Services.GetRequiredService<ApiTokenStore>();
         var token = await ApiHost.TokenAsync(app);
+        var (id, phone) = await store.CreateAsync("phone", [ApiScopes.App], default);
+        Assert.Equal(HttpStatusCode.OK, (await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer " + phone)).StatusCode);
         for (var i = 0; i < 20; i++)
         {
             var refused = await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer fe_guess" + i);
@@ -541,5 +607,27 @@ public sealed class ApiAnonymousLimitTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.TooManyRequests, (await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer fe_guess")).StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, (await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer " + token)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer " + phone)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer " + phone, origin: "https://evil.example")).StatusCode);
+
+        await store.RevokeAsync(id, default);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer " + phone)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Requests_with_an_Origin_do_not_spend_the_anonymous_budget()
+    {
+        // Its own limiter, so the budget the other tests in this class spend does not matter.
+        var limits = new ApiRateLimiter();
+        var auth = new ApiAuth(null!, limits);
+        for (var i = 0; i < 25; i++)
+        {
+            var context = new DefaultHttpContext();
+            context.Request.Headers.Origin = "https://evil.example";
+            await auth.InvokeAsync(new DefaultEndpointFilterInvocationContext(context), _ => ValueTask.FromResult<object?>(null));
+        }
+
+        Assert.False(limits.AnonymousExhausted);
+        limits.Dispose();
     }
 }

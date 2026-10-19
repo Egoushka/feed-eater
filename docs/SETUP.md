@@ -130,6 +130,25 @@ Without a browser, use the CLI: `docker compose run --rm feed-eater token create
 The API refuses browsers: any request with an `Origin` header gets 403, so a web page cannot call it even with a stolen token.
 Anonymous requests are rate limited. The machine-readable description is at `/api/v1/openapi.json`.
 
+### Rules for an API client
+
+- **Event before act.** Send `POST /api/v1/swipe/event` for a card before acting on it. A card fetched ahead with
+  `{"peek": true}` is not counted as shown until its first event, and an act on it before that answers "Nothing to do."
+- **Offline swipes.** Events and acts for fetched-ahead cards may arrive later, within 24 hours of the session's end. Once the
+  session is over (ended or past its time cap), an event counts only when its `shownAt` (Unix milliseconds) falls inside the
+  session; send the time the card was really on screen.
+- **One `clientId` per act.** Give every act a fresh UUID `clientId` and resend the same one on retry: a repeat does nothing
+  and returns the first answer. An act without one cannot be undone.
+- **Undo the latest act only.** `POST /api/v1/swipe/undo` with the act's `clientId`, within 24 hours. Plane filings, duel
+  answers, recall reviews and post seeds cannot be taken back.
+- **What a card takes.** Each card lists its `acts`; offer only those.
+- **Rate limits.** 120 requests a minute per token, then 429. Requests refused with 401 (no token, a malformed or unknown
+  one) share an anonymous budget of 20 a minute; once it is spent, every request gets 429 except one whose token was accepted
+  in the last 10 minutes, so a paired phone keeps working while someone guesses. Back off on 429.
+- **No `Origin` header.** Any request carrying one gets 403 and does not touch the budget.
+- **Errors are problems.** Every error inside `/api/v1`, including an unknown route (404), a wrong method (405), a body over
+  64 KB (413) and JSON that does not parse (400), is `application/problem+json` with a `title`.
+
 ## Optional integrations
 
 Each one is off until its settings are filled: no background work, no button, no call. Add the keys to `.env`, run

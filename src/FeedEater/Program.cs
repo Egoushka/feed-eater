@@ -91,6 +91,9 @@ if (feedEater.Telegram.Token.Length > 0 && feedEater.Telegram.AllowedUserId == 0
     app.Logger.LogWarning("FeedEater:Telegram:AllowedUserId is 0: the bot only answers /start, with your Telegram id; set it and restart");
 }
 
+// Inside the API a bare status (404, 405, a body that does not bind) gets a problem body too.
+app.UseWhen(c => c.Request.Path.StartsWithSegments(ApiEndpoints.Prefix), api => api.UseStatusCodePages());
+
 app.MapGet("/healthz", async (FeedDb db, CancellationToken ct) => await db.PingAsync(ct) ? Results.Ok() : Results.StatusCode(503));
 app.MapFeedEaterMcp(token);
 app.MapFeedEaterUi();

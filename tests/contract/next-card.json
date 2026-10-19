@@ -13,7 +13,15 @@
     "hasSuggestion": true,
     "kind": "item",
     "back": null,
-    "detail": null
+    "detail": null,
+    "acts": [
+      "idea",
+      "save",
+      "share",
+      "like",
+      "dislike",
+      "open"
+    ]
   },
   "summary": null,
   "closed": null

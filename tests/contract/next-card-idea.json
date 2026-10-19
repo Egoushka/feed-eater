@@ -1,0 +1,29 @@
+{
+  "type": "card",
+  "card": {
+    "session": 1,
+    "position": 3,
+    "total": 8,
+    "title": "Cache it",
+    "feed": "LAB",
+    "category": null,
+    "why": "Faster",
+    "url": "https://example.com/i",
+    "age": "2 h ago",
+    "hasSuggestion": false,
+    "kind": "idea",
+    "back": null,
+    "detail": {
+      "where": "src",
+      "effort": "S",
+      "sourceTitle": "Quokka backups"
+    },
+    "acts": [
+      "keep",
+      "drop",
+      "open"
+    ]
+  },
+  "summary": null,
+  "closed": null
+}

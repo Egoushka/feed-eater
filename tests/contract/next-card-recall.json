@@ -13,7 +13,11 @@
     "hasSuggestion": false,
     "kind": "recall",
     "back": "The answer.",
-    "detail": null
+    "detail": null,
+    "acts": [
+      "good",
+      "again"
+    ]
   },
   "summary": null,
   "closed": null

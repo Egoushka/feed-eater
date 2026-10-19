@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Dapper;
+using FeedEater.Inbox;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -29,7 +30,19 @@ public sealed partial class ContractTests(PostgresFixture pg) : IAsyncLifetime
         s.AddHttpClient<FeedEater.Llm.LiteLlmClient>().ConfigurePrimaryHttpMessageHandler(() => model);
         s.AddHttpClient(FeedEater.Fetch.SafeFetcher.ClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.NotFound)));
+        s.AddHttpClient(FeedEater.Fetch.SafeFetcher.FeedClientName).ConfigurePrimaryHttpMessageHandler(() => new StubHandler((_, _) =>
+            SourceKit.Xml(SourceKit.Rss(("g1", "Entry", DateTimeOffset.UtcNow.AddHours(-1), "text")))));
     }, ("FeedEater:Quiet:From", "22:00"), ("FeedEater:Quiet:To", "07:00"));
+
+    private readonly List<(string File, JsonNode Body)> samples = [];
+
+    private async Task<JsonNode> SampleAsync(string file, HttpMethod method, string path, object? body = null, HttpStatusCode expected = HttpStatusCode.OK, string? authorization = null)
+    {
+        var (json, status) = await CallAsync(method, path, body, authorization);
+        Assert.Equal(expected, status);
+        samples.Add((file, json));
+        return json;
+    }
 
     private async Task<(JsonNode Body, HttpStatusCode Status)> CallAsync(HttpMethod method, string path, object? body = null, string? authorization = null)
     {
@@ -59,15 +72,6 @@ public sealed partial class ContractTests(PostgresFixture pg) : IAsyncLifetime
 
         await App.Services.GetRequiredService<FeedEater.Swipe.CategoryStore>().ReplaceAllAsync(
             [new FeedEater.Swipe.CategoryRow { Key = "tech", Description = "Tech", Embedding = TestVectors.OneHot(1) }], DateTimeOffset.UtcNow, default);
-
-        var samples = new List<(string File, JsonNode Body)>();
-        async Task<JsonNode> SampleAsync(string file, HttpMethod method, string path, object? body = null, HttpStatusCode expected = HttpStatusCode.OK, string? authorization = null)
-        {
-            var (json, status) = await CallAsync(method, path, body, authorization);
-            Assert.Equal(expected, status);
-            samples.Add((file, json));
-            return json;
-        }
 
         await SampleAsync("status-open", HttpMethod.Get, "/api/v1/status");
         await SampleAsync("next-closed-not-started", HttpMethod.Post, "/api/v1/swipe/next", new { position = 0, peek = true });
@@ -115,7 +119,69 @@ public sealed partial class ContractTests(PostgresFixture pg) : IAsyncLifetime
         await SampleAsync("status", HttpMethod.Get, "/api/v1/status");
         await SampleAsync("next-closed", HttpMethod.Post, "/api/v1/swipe/next", new { });
         await SampleAsync("problem", HttpMethod.Get, "/api/v1/status", expected: HttpStatusCode.Unauthorized, authorization: "Bearer fe_unknown");
+        MatchFixtures();
+    }
 
+    [Fact]
+    public async Task Every_card_kind_and_write_response_matches_its_fixture()
+    {
+        var a = await Seed.ItemAsync(pg, 1, "Quokka backups", TestVectors.OneHot(1), DateTime.UtcNow.AddHours(-2), content: "Quokka backups run nightly.");
+        var b = await Seed.ItemAsync(pg, 1, "Quokka habitat", TestVectors.OneHot(2), DateTime.UtcNow.AddHours(-3));
+        var inbox = App.Services.GetRequiredService<FeedEater.Storage.InboxStore>();
+        var now = DateTimeOffset.UtcNow;
+        var expires = now.AddDays(7);
+        await inbox.AddAsync(new InboxEntry("notice:x", InboxKinds.Notice, Payload: new JsonObject { ["text"] = "Telegram is down." }, ExpiresAt: expires), now.AddMinutes(-5), default);
+        await inbox.AddAsync(new InboxEntry("follow:x", InboxKinds.Follow, ItemId: a, Payload: new JsonObject { ["story"] = "Quokkas" }, ExpiresAt: expires), now.AddMinutes(-4), default);
+        await inbox.AddAsync(new InboxEntry("duel:x", InboxKinds.Duel, Payload: new JsonObject { ["a"] = a, ["b"] = b }, ExpiresAt: expires), now.AddMinutes(-3), default);
+        await inbox.AddAsync(new InboxEntry("idea:x", InboxKinds.Idea, Payload: new JsonObject
+        {
+            ["title"] = "Cache it",
+            ["project"] = "LAB",
+            ["url"] = "https://example.com/i",
+            ["sourceTitle"] = "Quokka backups",
+            ["why"] = "Faster",
+            ["where"] = "src",
+            ["effort"] = "S",
+        }, ExpiresAt: expires), now.AddMinutes(-2), default);
+        await inbox.AddAsync(new InboxEntry("release:x", InboxKinds.Release, Payload: new JsonObject
+        {
+            ["services"] = "grafana",
+            ["running"] = "11.0",
+            ["version"] = "12.0",
+            ["summary"] = "A new major.",
+            ["url"] = "https://example.com/r",
+            ["breaking"] = true,
+            ["urgent"] = true,
+        }, ExpiresAt: expires), now.AddMinutes(-1), default);
+        await App.Services.GetRequiredService<FeedEater.Swipe.RecallStore>().AddSeedAsync(a, "Why quokkas back up nightly", "tech", default);
+
+        var first = (await CallAsync(HttpMethod.Post, "/api/v1/swipe/next", new { })).Body["card"]!;
+        var session = first["session"]!.GetValue<long>();
+        var positions = new Dictionary<string, int> { [first["kind"]!.GetValue<string>()] = 0 };
+        for (var position = 1; position < first["total"]!.GetValue<int>(); position++)
+        {
+            positions.TryAdd((await CallAsync(HttpMethod.Post, "/api/v1/swipe/next", new { position, peek = true })).Body["card"]!["kind"]!.GetValue<string>(), position);
+        }
+
+        foreach (var kind in new[] { "notice", "follow", "duel", "idea", "release", "seed" })
+        {
+            Assert.True(positions.ContainsKey(kind), kind + " card not in the queue");
+            await SampleAsync("next-card-" + kind, HttpMethod.Post, "/api/v1/swipe/next", new { position = positions[kind], peek = true });
+        }
+
+        var follow = positions["follow"];
+        var clientId = Guid.NewGuid();
+        Assert.Equal(HttpStatusCode.OK, (await CallAsync(HttpMethod.Post, "/api/v1/swipe/event", new { session, position = follow, direction = "up" })).Status);
+        Assert.Equal(HttpStatusCode.OK, (await CallAsync(HttpMethod.Post, "/api/v1/swipe/act", new { session, position = follow, act = "like", clientId })).Status);
+        await SampleAsync("undo", HttpMethod.Post, "/api/v1/swipe/undo", new { session, position = follow, clientId });
+        await SampleAsync("item-ask", HttpMethod.Post, $"/api/v1/items/{a}/ask", new { question = "How often?" });
+        await SampleAsync("start-follow", HttpMethod.Post, "/api/v1/follows", new { itemId = b });
+        await SampleAsync("add-feed", HttpMethod.Post, "/api/v1/feeds", new { url = "https://good.example/feed" }, HttpStatusCode.Created);
+        MatchFixtures();
+    }
+
+    private void MatchFixtures()
+    {
         var update = Environment.GetEnvironmentVariable("UPDATE_CONTRACT") == "1";
         var dir = RepoRoot.File("tests/contract");
         if (update)

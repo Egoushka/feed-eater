@@ -1,0 +1,29 @@
+{
+  "type": "card",
+  "card": {
+    "session": 1,
+    "position": 2,
+    "total": 8,
+    "title": "Which was more useful?",
+    "feed": "duel",
+    "category": null,
+    "why": "",
+    "url": null,
+    "age": "2 h ago",
+    "hasSuggestion": false,
+    "kind": "duel",
+    "back": null,
+    "detail": {
+      "aTitle": "Quokka backups",
+      "aUrl": "https://example.com/item",
+      "bTitle": "Quokka habitat",
+      "bUrl": "https://example.com/item"
+    },
+    "acts": [
+      "pick_a",
+      "pick_b"
+    ]
+  },
+  "summary": null,
+  "closed": null
+}

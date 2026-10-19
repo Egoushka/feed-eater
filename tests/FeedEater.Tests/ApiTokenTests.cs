@@ -60,6 +60,29 @@ public sealed class ApiTokenTests(PostgresFixture pg)
     }
 
     [Fact]
+    public async Task A_verified_token_is_remembered_for_ten_minutes_and_forgotten_on_revoke()
+    {
+        await pg.ResetAsync();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero));
+        var store = new ApiTokenStore(pg.Db, time);
+        var (id, token) = await store.CreateAsync("phone", [ApiScopes.App], default);
+        var (_, other) = await store.CreateAsync("tablet", [ApiScopes.App], default);
+        Assert.False(store.VerifiedLately(token));
+
+        await store.VerifyAsync(token, default);
+        await store.VerifyAsync(other, default);
+        Assert.True(store.VerifiedLately(token));
+        time.Advance(TimeSpan.FromMinutes(11));
+        Assert.False(store.VerifiedLately(token));
+
+        await store.VerifyAsync(token, default);
+        await store.VerifyAsync(other, default);
+        await store.RevokeAsync(id, default);
+        Assert.False(store.VerifiedLately(token));
+        Assert.True(store.VerifiedLately(other));
+    }
+
+    [Fact]
     public async Task The_list_shows_every_token_with_its_scopes_and_never_the_secret()
     {
         await pg.ResetAsync();

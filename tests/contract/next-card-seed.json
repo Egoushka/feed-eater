@@ -1,0 +1,24 @@
+{
+  "type": "card",
+  "card": {
+    "session": 1,
+    "position": 5,
+    "total": 8,
+    "title": "Why quokkas back up nightly",
+    "feed": "post seed",
+    "category": "tech",
+    "why": "From: Quokka backups",
+    "url": "https://example.com/item",
+    "age": "2 h ago",
+    "hasSuggestion": false,
+    "kind": "seed",
+    "back": null,
+    "detail": null,
+    "acts": [
+      "send",
+      "dismiss"
+    ]
+  },
+  "summary": null,
+  "closed": null
+}

@@ -1,0 +1,29 @@
+{
+  "type": "card",
+  "card": {
+    "session": 1,
+    "position": 1,
+    "total": 8,
+    "title": "Quokka backups",
+    "feed": "Feed 1",
+    "category": null,
+    "why": "New in a story you follow: Quokkas",
+    "url": "https://example.com/item",
+    "age": "2 h ago",
+    "hasSuggestion": false,
+    "kind": "follow",
+    "back": null,
+    "detail": {
+      "story": "Quokkas"
+    },
+    "acts": [
+      "save",
+      "like",
+      "dislike",
+      "open",
+      "stop"
+    ]
+  },
+  "summary": null,
+  "closed": null
+}

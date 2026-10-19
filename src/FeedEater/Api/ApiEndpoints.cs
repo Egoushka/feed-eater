@@ -26,7 +26,7 @@ public static class ApiEndpoints
 
         var group = app.MapGroup(Prefix);
         group.AddEndpointFilter<ApiErrors>();
-        group.AddEndpointFilter<ApiAuth>();
+        group.RequireApiToken();
         group.WithMetadata(new RequestSizeLimitAttribute(ApiErrors.MaxBodyBytes));
 
         group.MapGet("/status", StatusAsync)
