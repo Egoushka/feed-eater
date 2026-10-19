@@ -112,7 +112,7 @@ public sealed class WeeklyIdeasJob(
             var lead = leads[entry.Lead];
             var title = entry.Idea.Length <= 80 ? entry.Idea : entry.Idea[..79] + "…";
             var url = UrlCanonicalizer.Canonical(lead.Url);
-            var id = await inboxStore.AddAsync(new InboxEntry($"idea:{week}:{url}", InboxKinds.Idea,
+            var id = await inboxStore.AddAsync(new InboxEntry($"idea:{url}", InboxKinds.Idea,
                 Payload: new JsonObject
                 {
                     ["week"] = week,

@@ -55,6 +55,8 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     private string? _backlog = "| AIS-1 | Existing row |";
     private readonly List<string> _chatBodies = [];
     private bool _planeDown;
+    private ManualResetEventSlim? _planeGate;
+    private readonly ManualResetEventSlim _planeEntered = new();
 
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
@@ -73,7 +75,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
             "/api/v1/workspaces/w/projects/" => StubHandler.Json("""{"results":[{"id":"p-lab","identifier":"LAB"},{"id":"p-feed","identifier":"FEED"}]}"""),
             var p when p.EndsWith("/work-items/", StringComparison.Ordinal) => StubHandler.Json("""{"results":[{"name":"Existing plane item","state":"s"}]}"""),
             var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) && _planeDown => StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable),
-            var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) => StubHandler.Json("""{"issue":"issue-1"}""", HttpStatusCode.Created),
+            var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) && Gate() => StubHandler.Json("""{"issue":"issue-1"}""", HttpStatusCode.Created),
             _ => StubHandler.Json("{}", HttpStatusCode.NotFound),
         });
         var llm = new StubHandler((_, body) =>
@@ -91,6 +93,13 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
             new TelegramClient(telegram.Client("http://tg/botT/")), new InboxStore(pg.Db), new QuietHours(cursors, options, time),
             cursors, options, new LoopHealth(time), time, NullLogger<WeeklyIdeasJob>.Instance);
         return (job, plane, telegram);
+    }
+
+    private bool Gate()
+    {
+        _planeEntered.Set();
+        _planeGate?.Wait();
+        return true;
     }
 
     private IdeaDecisions Decisions(StubHandler plane, TimeProvider time)
@@ -166,6 +175,47 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(IdeaOutcome.AlreadyDecided, second.Outcome);
         Assert.Single(plane.Calls, c => c.Method == HttpMethod.Post);
         Assert.Equal("filed", await ScalarAsync<string>("select outcome from weekly_ideas"));
+    }
+
+    [Fact]
+    public async Task Concurrent_presses_while_a_Keep_is_in_Plane_are_already_decided_and_one_item_is_filed()
+    {
+        var (decisions, plane, inboxId) = await StagedAsync();
+        _planeGate = new ManualResetEventSlim();
+        var first = Task.Run(() => decisions.KeepAsync(inboxId, default));
+        Assert.True(_planeEntered.Wait(TimeSpan.FromSeconds(10)));
+
+        Assert.Equal(IdeaOutcome.AlreadyDecided, (await decisions.KeepAsync(inboxId, default)).Outcome);
+        Assert.Equal(IdeaOutcome.AlreadyDecided, (await decisions.DropAsync(inboxId, default)).Outcome);
+        _planeGate.Set();
+
+        Assert.Equal(IdeaOutcome.Filed, (await first).Outcome);
+        Assert.Single(plane.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Equal(1, await ScalarAsync<int>("select count(*) from weekly_ideas where outcome = 'filed'"));
+        Assert.Equal(1, await ScalarAsync<int>("select count(*) from weekly_ideas"));
+    }
+
+    [Fact]
+    public async Task An_open_idea_staged_again_next_Monday_stays_one_row()
+    {
+        await SeedAsync();
+        _chatReply = """{"ideas":[{"lead":3,"idea":"Try the bookmarked tool","project":"LAB"}]}""";   // lead 3 is the bookmark
+        var time = new FakeTimeProvider(Monday);
+        var (job, _, _) = Build(time);
+
+        await job.TickAsync(default);
+        time.Advance(TimeSpan.FromDays(7));
+        _chatReply = """{"ideas":[{"lead":1,"idea":"Try the bookmarked tool","project":"LAB"}]}""";   // the week-old items are out of the window; the bookmark is lead 1
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update signals set at = @at where source = 'karakeep'", new { at = time.GetUtcNow().UtcDateTime });
+        }
+
+        await job.TickAsync(default);
+
+        Assert.Equal(2, _chatBodies.Count);   // both Mondays ran
+        Assert.Equal(1, await ScalarAsync<int>("select count(*) from inbox where kind = 'idea'"));
+        Assert.Equal("2026-W43", await ScalarAsync<string>("select payload->>'week' from inbox where kind = 'idea'"));
     }
 
     [Fact]

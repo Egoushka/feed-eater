@@ -13,9 +13,10 @@ public sealed class IdeaDecisions(InboxStore inbox, WeeklyIdeaStore ideas, Plane
 {
     public async Task<IdeaDecision> KeepAsync(long inboxId, CancellationToken ct)
     {
-        if (await OpenIdeaAsync(inboxId, ct) is not { } row)
+        // Claim first: a concurrent Keep or Drop then sees the row as decided and files nothing.
+        if (await ClaimAsync(inboxId, ct) is not { } row)
         {
-            return await inbox.GetAsync(inboxId, ct) is null ? new(IdeaOutcome.NotFound) : new(IdeaOutcome.AlreadyDecided);
+            return await MissAsync(inboxId, ct);
         }
 
         var p = row.Payload;
@@ -27,12 +28,13 @@ public sealed class IdeaDecisions(InboxStore inbox, WeeklyIdeaStore ideas, Plane
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Text.Json.JsonException
             || (ex is TaskCanceledException && !ct.IsCancellationRequested))
         {
+            await inbox.ReopenAsync(inboxId, CancellationToken.None);
             return new(IdeaOutcome.Failed, Error: ex.Message);
         }
-
-        if (!await inbox.DoneAsync(inboxId, time.GetUtcNow(), ct))
+        catch
         {
-            return new(IdeaOutcome.AlreadyDecided);   // a concurrent press won; its Plane item stands
+            await inbox.ReopenAsync(inboxId, CancellationToken.None);
+            throw;
         }
 
         await ideas.AddAsync(new FiledIdea(Str(p, "url"), Str(p, "week"), Str(p, "title"), Str(p, "project"), issue), ct);
@@ -41,9 +43,9 @@ public sealed class IdeaDecisions(InboxStore inbox, WeeklyIdeaStore ideas, Plane
 
     public async Task<IdeaDecision> DropAsync(long inboxId, CancellationToken ct)
     {
-        if (await OpenIdeaAsync(inboxId, ct) is not { } row || !await inbox.DoneAsync(inboxId, time.GetUtcNow(), ct))
+        if (await ClaimAsync(inboxId, ct) is not { } row)
         {
-            return await inbox.GetAsync(inboxId, ct) is null ? new(IdeaOutcome.NotFound) : new(IdeaOutcome.AlreadyDecided);
+            return await MissAsync(inboxId, ct);
         }
 
         var p = row.Payload;
@@ -51,8 +53,12 @@ public sealed class IdeaDecisions(InboxStore inbox, WeeklyIdeaStore ideas, Plane
         return new(IdeaOutcome.Dropped);
     }
 
-    private async Task<InboxRow?> OpenIdeaAsync(long id, CancellationToken ct) =>
-        await inbox.GetAsync(id, ct) is { Kind: InboxKinds.Idea, DoneAt: null } row ? row : null;
+    /// <summary>The open idea row, marked done so no second press gets it; null when it is missing, not an idea or already decided.</summary>
+    private async Task<InboxRow?> ClaimAsync(long id, CancellationToken ct) =>
+        await inbox.GetAsync(id, ct) is { Kind: InboxKinds.Idea, DoneAt: null } row && await inbox.DoneAsync(id, time.GetUtcNow(), ct) ? row : null;
+
+    private async Task<IdeaDecision> MissAsync(long id, CancellationToken ct) =>
+        await inbox.GetAsync(id, ct) is { Kind: InboxKinds.Idea } ? new(IdeaOutcome.AlreadyDecided) : new(IdeaOutcome.NotFound);
 
     private static string Str(System.Text.Json.Nodes.JsonObject p, string key) => p[key]?.GetValue<string>() ?? "";
 }

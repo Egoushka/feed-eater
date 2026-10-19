@@ -47,6 +47,13 @@ public sealed class InboxStore(FeedDb db)
             "update inbox set done_at = @at where id = @id and done_at is null", new { id, at = at.UtcDateTime }, cancellationToken: ct)) == 1;
     }
 
+    /// <summary>Releases a claim made with <see cref="DoneAsync"/> whose work failed, so the row can be decided again.</summary>
+    public async Task ReopenAsync(long id, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        await c.ExecuteAsync(new CommandDefinition("update inbox set done_at = null where id = @id", new { id }, cancellationToken: ct));
+    }
+
     private sealed record Raw(long Id, string Key, string Kind, long? ItemId, long? RefId, string Payload, DateTime CreatedAt, DateTime? ExpiresAt,
         long? ShownSession, DateTime? DoneAt)
     {
