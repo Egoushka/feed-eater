@@ -124,6 +124,26 @@ public static class SwipeEndpoints
             <button type="button" class="wide" data-do="send">Send as an idea</button>
             <button type="button" data-do="open" aria-label="Open the source">↗</button>
           </div>
+          <div data-for="follow">
+            <button type="button" data-do="dislike" aria-label="Not for me">👎</button>
+            <button type="button" data-do="like" aria-label="Like">👍</button>
+            <button type="button" data-do="save" aria-label="Save">📌</button>
+            <button type="button" data-do="stop" aria-label="Stop following">✋</button>
+            <button type="button" data-do="open" aria-label="Open the link">↗</button>
+          </div>
+          <div data-for="duel">
+            <button type="button" class="wide" data-do="pick_a">A</button>
+            <button type="button" class="wide" data-do="pick_b">B</button>
+          </div>
+          <div data-for="idea">
+            <button type="button" data-do="drop" aria-label="Drop the idea">✖</button>
+            <button type="button" data-do="keep" aria-label="Keep the idea">✅</button>
+            <button type="button" data-do="open" aria-label="Open the link">↗</button>
+          </div>
+          <div data-for="info">
+            <button type="button" data-do="open" aria-label="Open the link">↗</button>
+          </div>
+          <button type="button" data-do="undo" aria-label="Undo the last action" hidden>↶ Undo</button>
           <button type="button" data-do="end" aria-label="I am done">✕</button>
         </nav>
         <div id="toast" role="status"></div>

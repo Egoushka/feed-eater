@@ -161,6 +161,19 @@ public sealed partial class SwipeEndpointTests(PostgresFixture pg) : IAsyncLifet
     }
 
     [Fact]
+    public async Task The_shell_has_a_button_set_for_every_card_kind_and_the_script_sends_client_ids_and_undoes()
+    {
+        var shell = await (await _http.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/swipe") { Headers = { { "Cookie", _cookie } } })).Content.ReadAsStringAsync();
+        foreach (var marker in new[] { "data-for=\"follow\"", "data-for=\"duel\"", "data-for=\"idea\"", "data-for=\"info\"", "data-do=\"undo\"", "data-do=\"stop\"", "data-do=\"keep\"" })
+            Assert.Contains(marker, shell);
+
+        var script = await _http.GetStringAsync("/swipe/app.js");
+        Assert.Contains("randomUUID", script);
+        Assert.Contains("post('undo'", script);
+        Assert.DoesNotContain("innerHTML", script);
+    }
+
+    [Fact]
     public async Task Cards_come_from_the_session_queue_and_the_cap_ends_it_with_a_summary_then_closes()
     {
         await SeedItemsAsync(5);

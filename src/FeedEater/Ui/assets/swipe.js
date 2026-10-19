@@ -15,6 +15,7 @@
   let busy = false;
   let lastTap = 0;
   let toastTimer = 0;
+  let lastAct = null;    // {session, position, clientId} of the latest successful act: the only one Undo may reverse
 
   async function post(path, body) {
     const response = await fetch('/swipe/' + path, {
@@ -83,14 +84,44 @@
     const box = el('article', 'card');
     box.append(el('p', 'meta', meta), el('h1', '', c.title));
     if (c.why) box.append(el('p', '', c.why));
+    for (const value of Object.values(c.detail || {})) if (value) box.append(el('p', 'meta', value));
     if (c.kind === 'recall') box.append(Object.assign(el('p', 'answer', c.back), { id: 'answer', hidden: true }));
     stage.append(box, el('p', 'count', (c.position + 1) + ' / ' + c.total));
     bar.hidden = false;
-    for (const set of bar.querySelectorAll('[data-for]')) set.hidden = set.dataset.for !== c.kind;
+    const set = setFor(c.kind);
+    for (const s of bar.querySelectorAll('[data-for]')) s.hidden = s.dataset.for !== set;
+    if (c.kind === 'duel') {
+      bar.querySelector('[data-do=pick_a]').textContent = c.detail?.aTitle || 'A';
+      bar.querySelector('[data-do=pick_b]').textContent = c.detail?.bTitle || 'B';
+    }
+    syncUndo();
     for (const b of bar.querySelectorAll('[data-for=recall] button')) b.hidden = b.dataset.do === 'reveal' ? false : true;
     const idea = bar.querySelector('[data-for=item] [data-do=idea]');
     if (idea) idea.hidden = !c.hasSuggestion;
     for (const b of bar.querySelectorAll('[data-do=open]')) b.hidden = !c.url;
+  }
+
+  function setFor(kind) {
+    if (kind === 'digest') return 'item';
+    if (kind === 'release' || kind === 'review' || kind === 'autopsy' || kind === 'notice') return 'info';
+    return kind;
+  }
+
+  function syncUndo() {
+    const b = bar.querySelector('[data-do=undo]');
+    b.hidden = !(lastAct && card && lastAct.session === card.session && lastAct.position === card.position);
+  }
+
+  async function undo() {
+    if (!lastAct) return;
+    const last = lastAct;
+    lastAct = null;
+    syncUndo();
+    try {
+      toast((await post('undo', last)).message);
+    } catch (e) {
+      toast('Could not undo');
+    }
   }
 
   function reveal() {
@@ -142,11 +173,16 @@
   async function act(name) {
     if (!card) return false;
     try {
-      const result = await post('act', { session: card.session, position: card.position, act: name });
+      const clientId = crypto.randomUUID();
+      const result = await post('act', { session: card.session, position: card.position, act: name, clientId });
       toast(result.message);
+      lastAct = result.ok ? { session: card.session, position: card.position, clientId } : null;
+      syncUndo();
       return result.ok;
     } catch (e) {
       toast('Not saved');
+      lastAct = null;
+      syncUndo();
       return false;
     }
   }
@@ -178,6 +214,12 @@
       await act(right ? 'good' : 'again');
     } else if (card.kind === 'seed') {
       await act(right ? 'send' : 'dismiss');
+    } else if (card.kind === 'follow') {
+      await act(right ? 'save' : 'stop');
+    } else if (card.kind === 'idea') {
+      await act(right ? 'keep' : 'drop');
+    } else if (card.kind === 'duel' || setFor(card.kind) === 'info') {
+      // no vote on a swipe: it only moves on
     } else {
       await act(right ? 'save' : 'dislike');
     }
@@ -186,6 +228,7 @@
 
   async function doAction(name) {
     if (!card) return;
+    if (name === 'undo') return undo();
     if (name === 'share') return share();
     if (name === 'reveal') return reveal();
     if (name === 'good' || name === 'send') return swipeAction(true);
@@ -217,7 +260,7 @@
     if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) {
       const now = Date.now();
       if (card.kind === 'recall') return reveal();
-      if (card.kind === 'item' && now - lastTap < DOUBLE_TAP_MS) { lastTap = 0; act('like'); } else { lastTap = now; }
+      if (['item', 'digest', 'follow'].includes(card.kind) && now - lastTap < DOUBLE_TAP_MS) { lastTap = 0; act('like'); } else { lastTap = now; }
       return;
     }
     if (Math.abs(dy) >= Math.abs(dx)) return advance(dy < 0 ? 'up' : 'down');
