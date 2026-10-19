@@ -196,6 +196,7 @@ public static class ServiceRegistration
                 if (settings.WeeklyIdeas.Enabled && settings.Plane.Enabled)
                 {
                     services.AddHostedService<WeeklyIdeasJob>();
+                    services.AddSingleton<IdeaDecisions>();
                 }
 
                 if (settings.Duel.Enabled)

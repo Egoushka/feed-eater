@@ -59,4 +59,15 @@ public sealed class CallbackDataTests
     [Fact]
     public void Follow_buttons_fit_telegrams_64_byte_limit_for_the_largest_id() =>
         Assert.True(Encoding.UTF8.GetByteCount(CallbackData.Follow(long.MaxValue)) <= 64 && Encoding.UTF8.GetByteCount(CallbackData.Unfollow(long.MaxValue)) <= 64);
+
+    [Theory]
+    [InlineData("ik:12", true)]
+    [InlineData("id:12", false)]
+    public void Idea_decisions_round_trip(string data, bool keep)
+    {
+        var parsed = Assert.IsType<IdeaDecisionCallback>(CallbackData.Parse(data));
+        Assert.Equal(12, parsed.InboxId);
+        Assert.Equal(keep, parsed.Keep);
+        Assert.Equal(data, keep ? CallbackData.KeepIdea(12) : CallbackData.DropIdea(12));
+    }
 }

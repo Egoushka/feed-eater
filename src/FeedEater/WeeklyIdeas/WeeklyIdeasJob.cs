@@ -1,9 +1,11 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using FeedEater.Llm;
 using FeedEater.Loops;
+using FeedEater.Inbox;
 using FeedEater.Plane;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -13,11 +15,11 @@ namespace FeedEater.WeeklyIdeas;
 
 /// <summary>
 /// Mondays at <c>WeeklyIdeas:At</c>: the week's improve items and what was liked, saved or bookmarked become a ranked shortlist.
-/// Each idea goes to Plane Intake in the project it belongs to; the top few go to Telegram. An idea whose source was filed before,
+/// Each idea waits in the inbox for Keep or Drop (Keep files it in Plane Intake in its project); the top few go to Telegram. An idea whose source was filed before,
 /// or that repeats a Plane item or a backlog row, is left out. Quiet hours hold it.
 /// </summary>
 public sealed class WeeklyIdeasJob(
-    WeeklyIdeaStore store, ProfileStore profiles, PlaneClient plane, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, QuietHours quiet,
+    WeeklyIdeaStore store, ProfileStore profiles, PlaneClient plane, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, InboxStore inboxStore, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<WeeklyIdeasJob> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -104,18 +106,35 @@ public sealed class WeeklyIdeasJob(
 
         var monday = DateTime.ParseExact(key, "yyyy-MM-dd", CultureInfo.InvariantCulture);
         var week = string.Create(CultureInfo.InvariantCulture, $"{ISOWeek.GetYear(monday)}-W{ISOWeek.GetWeekOfYear(monday):00}");
-        var made = new List<(ShortlistEntry Entry, Lead Lead)>();
+        var staged = new List<(ShortlistEntry Entry, Lead Lead, long InboxId)>();
         foreach (var entry in entries)
         {
             var lead = leads[entry.Lead];
             var title = entry.Idea.Length <= 80 ? entry.Idea : entry.Idea[..79] + "…";
-            var id = await plane.CreateIntakeAsync(entry.Project, title, Html(entry, lead, week), ct);
-            await store.AddAsync(new FiledIdea(UrlCanonicalizer.Canonical(lead.Url), week, title, entry.Project, id), ct);
-            made.Add((entry, lead));
+            var url = UrlCanonicalizer.Canonical(lead.Url);
+            var id = await inboxStore.AddAsync(new InboxEntry($"idea:{week}:{url}", InboxKinds.Idea,
+                Payload: new JsonObject
+                {
+                    ["week"] = week,
+                    ["title"] = title,
+                    ["project"] = entry.Project,
+                    ["html"] = Html(entry, lead, week),
+                    ["url"] = url,
+                    ["sourceTitle"] = lead.Title,
+                    ["signal"] = lead.Signal,
+                    ["why"] = entry.Why,
+                    ["where"] = entry.Where,
+                    ["effort"] = entry.Effort.ToString(),
+                },
+                ExpiresAt: Time.GetUtcNow().AddDays(14)), Time.GetUtcNow(), ct);
+            staged.Add((entry, lead, id));
         }
 
-        Logger.LogInformation("Filed {Count} ideas for {Week}", made.Count, week);
-        await telegram.SendAsync(Settings.Telegram.AllowedUserId, Message(week, made.Take(settings.TopInMessage).ToList(), made.Count), ct);
+        Logger.LogInformation("Staged {Count} ideas for {Week}", staged.Count, week);
+        if (Settings.Telegram.Token.Length > 0)
+        {
+            await telegram.SendAsync(Settings.Telegram.AllowedUserId, Message(week, staged.Take(settings.TopInMessage).ToList(), staged.Count), ct);
+        }
     }
 
     private async Task<List<Lead>> LeadsAsync(DateTimeOffset since, IReadOnlySet<string> filed, CancellationToken ct)
@@ -148,12 +167,12 @@ public sealed class WeeklyIdeasJob(
         return html.ToString();
     }
 
-    internal static OutMessage Message(string week, IReadOnlyList<(ShortlistEntry Entry, Lead Lead)> top, int total)
+    internal static OutMessage Message(string week, IReadOnlyList<(ShortlistEntry Entry, Lead Lead, long InboxId)> top, int total)
     {
-        var html = new StringBuilder($"💡 <b>Ideas for {week}</b> ({total} filed in Plane Intake)\n");
+        var html = new StringBuilder($"💡 <b>Ideas for {week}</b> ({total} waiting for Keep or Drop)\n");
         for (var i = 0; i < top.Count; i++)
         {
-            var (e, lead) = top[i];
+            var (e, lead, _) = top[i];
             html.Append($"\n{i + 1}. <b>{E(e.Idea)}</b>\n   {E(e.Project)} · {E(e.Where)} · {e.Effort}");
             if (e.Why.Length > 0)
             {
@@ -163,7 +182,9 @@ public sealed class WeeklyIdeasJob(
             html.Append($"\n   <a href=\"{E(lead.Url)}\">{E(lead.Title)}</a>\n");
         }
 
-        return new OutMessage(html.ToString());
+        var keyboard = top.Select((t, i) => (IReadOnlyList<Button>)
+            [new Button($"✅ {i + 1}", CallbackData.KeepIdea(t.InboxId)), new Button($"✖ {i + 1}", CallbackData.DropIdea(t.InboxId))]).ToList();
+        return new OutMessage(html.ToString(), keyboard);
     }
 
     private static string E(string text) => WebUtility.HtmlEncode(text);
