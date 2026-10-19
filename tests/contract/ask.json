@@ -6,9 +6,9 @@
       "hit": {
         "id": 1,
         "title": "Quokka backups",
-        "url": "https://example.com/639f35d382c44de6942b584655119b46",
+        "url": "https://example.com/item",
         "feed": "Feed 1",
-        "publishedAt": "2026-10-19T09:03:04.506535\u002B00:00",
+        "publishedAt": "2026-01-01T00:00:00\u002B00:00",
         "summary": "s",
         "project": "homelab",
         "kind": "improve",

@@ -1,0 +1,20 @@
+{
+  "type": "card",
+  "card": {
+    "session": 1,
+    "position": 2,
+    "total": 4,
+    "title": "What did you note?",
+    "feed": "recall",
+    "category": null,
+    "why": "",
+    "url": null,
+    "age": "2 h ago",
+    "hasSuggestion": false,
+    "kind": "recall",
+    "back": "The answer.",
+    "detail": null
+  },
+  "summary": null,
+  "closed": null
+}

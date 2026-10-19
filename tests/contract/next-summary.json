@@ -4,12 +4,14 @@
   "summary": {
     "session": 1,
     "reason": "exhausted",
-    "cards": 1,
+    "cards": 2,
     "minutes": 0,
     "acts": {
       "like": 1
     },
-    "categories": [],
+    "categories": [
+      "tech"
+    ],
     "rated": false
   },
   "closed": null

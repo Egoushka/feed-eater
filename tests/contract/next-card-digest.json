@@ -1,0 +1,23 @@
+{
+  "type": "card",
+  "card": {
+    "session": 1,
+    "position": 0,
+    "total": 4,
+    "title": "Digest story",
+    "feed": "Feed 1",
+    "category": null,
+    "why": "w",
+    "url": "https://example.com/item",
+    "age": "2 h ago",
+    "hasSuggestion": true,
+    "kind": "digest",
+    "back": null,
+    "detail": {
+      "summary": "s",
+      "suggestion": "Try it."
+    }
+  },
+  "summary": null,
+  "closed": null
+}

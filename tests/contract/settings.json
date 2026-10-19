@@ -1,9 +1,9 @@
 {
   "quietNow": false,
-  "quietText": "Quiet mode is off.",
-  "quietWindow": false,
-  "quietFrom": null,
-  "quietTo": null,
+  "quietText": "Quiet hours are 22:00 to 07:00; not in effect now.",
+  "quietWindow": true,
+  "quietFrom": "22:00",
+  "quietTo": "07:00",
   "learn": false,
   "learnText": "Learned ranking is off. It needs 100 votes with at least 10 of each kind; there are 1 (1 up, 0 down), so the current ranking is used.",
   "digestAt": "07:30"

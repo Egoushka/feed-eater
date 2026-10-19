@@ -2,16 +2,16 @@
   {
     "id": 1,
     "title": "Feed 1",
-    "category": null,
-    "siteUrl": null,
-    "feedUrl": null,
+    "category": "tech",
+    "siteUrl": "https://example.com/",
+    "feedUrl": "https://example.com/feed.xml",
     "muted": false,
     "items30d": 3,
-    "shown30d": 0,
+    "shown30d": 1,
     "up30d": 1,
     "down30d": 0,
     "upRate": 1,
-    "failCount": null,
-    "lastError": null
+    "failCount": 2,
+    "lastError": "HTTP 404"
   }
 ]

@@ -81,7 +81,7 @@ public static partial class UiPages
         var svg = new SvgQRCode(data).GetGraphic(new Size(280, 280), Color.Black, Color.White, true, SvgQRCode.SizingMode.ViewBoxAttribute);
 
         var h = new StringBuilder($"<h1>Pair {E(name)}</h1>");
-        h.Append("<p class=\"notice warn\" role=\"status\">Shown once — scan it now. This token is not shown again; revoke it on the setup page if it is lost.</p>");
+        h.Append("<p class=\"notice warn\" role=\"status\">Shown once — scan it now. This token is not shown again; revoke it on the setup page if it is lost. Reloading this page creates another token.</p>");
         h.Append($"<div role=\"img\" aria-label=\"QR code with the address and token\">{svg}</div>");
         h.Append($"<p>Address: <code>{E(baseUrl)}</code></p><p>Token: <code>{E(token)}</code></p>");
         h.Append("<p><a href=\"/ui/setup\">Back to setup</a></p>");
