@@ -20,10 +20,11 @@ public sealed class LibraryEnricher(
     public const string LoopName = "library";
     private static readonly TimeSpan BusyInterval = TimeSpan.FromSeconds(30);
 
-    private TimeSpan interval = TimeSpan.Zero;
+    private TimeSpan interval = BusyInterval;   // never zero: the failure backoff multiplies it
 
     protected override string Name => LoopName;
     protected override TimeSpan Interval => interval;
+    internal TimeSpan Wait => interval;
 
     protected override async Task PollAsync(CancellationToken ct)
     {
@@ -42,22 +43,51 @@ public sealed class LibraryEnricher(
 
         foreach (var id in pending)
         {
-            await library.RecordAttemptAsync(id, await EnrichAsync(id, ct), ct);
+            try
+            {
+                await library.RecordAttemptAsync(id, await EnrichAsync(id, ct), ct);
+            }
+            catch (Exception ex) when (IsOutage(ex, ct))
+            {
+                // The model or its budget, not the item, is the problem: no attempt is spent, and the loop waits.
+                logger.LogWarning(ex, "Enrichment paused: the model is unavailable");
+                return 0;
+            }
         }
 
         return pending.Count;
     }
 
-    /// <summary>Runs the three steps independently so one failing step does not starve the others; true when all are in place.</summary>
+    private static bool IsOutage(Exception ex, CancellationToken ct) =>
+        ex is BudgetExceededException or HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested);
+
+    /// <summary>Runs the steps independently so one failing step does not starve the others; true when all are in place.</summary>
     private async Task<bool> EnrichAsync(long itemId, CancellationToken ct)
     {
         string? text = null;
-        var ok = await StepAsync(itemId, "full text", async () => text = await itemText.FullTextAsync(itemId, ct), ct);
+        var fetched = true;
+        var ok = await StepAsync(itemId, "full text", async () =>
+        {
+            var full = await itemText.FetchFullTextAsync(itemId, ct);
+            text = full?.Text;
+            fetched = full?.Fetched ?? true;
+        }, outageStops: false, ct);
         if (ok && text is null)
         {
             return true;   // the item is gone; nothing to enrich
         }
 
+        // A read or embedding made on the feed's snippet would be stored for good, so they wait for the page,
+        // except on the last attempt: an unfetchable page still gets a summary of what exists.
+        if (!ok || !fetched)
+        {
+            if (await library.EnrichAttemptsAsync(itemId, ct) + 1 < LibraryStore.MaxEnrichAttempts)
+            {
+                return false;
+            }
+        }
+
+        ok &= fetched;
         ok &= await StepAsync(itemId, "read", async () =>
         {
             if (await analysis.GetReadAsync(itemId, ct) is null
@@ -66,7 +96,7 @@ public sealed class LibraryEnricher(
             {
                 throw new InvalidOperationException("the model returned no usable read");
             }
-        }, ct);
+        }, outageStops: true, ct);
 
         ok &= await StepAsync(itemId, "embedding", async () =>
         {
@@ -75,19 +105,19 @@ public sealed class LibraryEnricher(
                 var vectors = await llm.EmbedAsync([Ingestor.EmbedText(p.Title, p.Content, p.Url, options.Value.Caps.EmbedChars)], "embed", ct);
                 await items.SetEmbeddingsAsync([(itemId, vectors[0])], ct);
             }
-        }, ct);
+        }, outageStops: true, ct);
 
         return ok;
     }
 
-    private async Task<bool> StepAsync(long itemId, string step, Func<Task> run, CancellationToken ct)
+    private async Task<bool> StepAsync(long itemId, string step, Func<Task> run, bool outageStops, CancellationToken ct)
     {
         try
         {
             await run();
             return true;
         }
-        catch (Exception ex) when (!ct.IsCancellationRequested)
+        catch (Exception ex) when (!ct.IsCancellationRequested && !(outageStops && IsOutage(ex, ct)))
         {
             logger.LogWarning(ex, "Enriching saved item {Item}: {Step} failed; it is retried on a later pass", itemId, step);
             return false;

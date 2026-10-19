@@ -25,6 +25,9 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
     private int _embedCalls;
     private bool _modelDown;
     private bool _embedderDown;
+    private bool _budgetSpent;
+    private bool _garbage;
+    private bool _fetcherDown;
     private static long _entry = 300;
 
     public async Task InitializeAsync()
@@ -49,7 +52,12 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
             return StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable);
         }
 
-        var content = """{"relevance":2,"summary":"It is about Postgres.","why":"Box runs it.","kind":"fyi","project":null,"suggestion":null}""";
+        if (_budgetSpent)
+        {
+            return StubHandler.Json("""{"error":{"message":"ExceededTokenBudget"}}""", HttpStatusCode.Unauthorized);
+        }
+
+        var content = _garbage ? "no json here" : """{"relevance":2,"summary":"It is about Postgres.","why":"Box runs it.","kind":"fyi","project":null,"suggestion":null}""";
         return StubHandler.Json(JsonSerializer.Serialize(new
         {
             choices = new[] { new { message = new { content } } },
@@ -65,7 +73,9 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
             Miniflux = new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" },
         });
         var time = new FakeTimeProvider(Now);
-        var miniflux = new StubHandler((_, _) => StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{Page}</p>" })));
+        var miniflux = new StubHandler((_, _) => _fetcherDown
+            ? StubHandler.Json("{}", HttpStatusCode.BadGateway)
+            : StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{Page}</p>" })));
         var llm = new LiteLlmClient(new StubHandler((_, body) => Llm(body)).Client("http://llm/"), new UsageStore(pg.Db), options);
         var items = new ItemStore(pg.Db);
         var analysis = new AnalysisStore(pg.Db);
@@ -115,9 +125,9 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_failing_model_leaves_the_item_saved_counts_an_attempt_and_still_embeds()
+    public async Task A_model_that_returns_no_usable_read_leaves_the_item_saved_counts_an_attempt_and_still_embeds()
     {
-        _modelDown = true;
+        _garbage = true;
         var id = await SaveAsync();
 
         await Build().RunAsync(default);
@@ -132,7 +142,7 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task After_five_failures_the_item_is_no_longer_pending_but_stays_saved()
     {
-        _embedderDown = true;
+        _garbage = true;
         var id = await SaveAsync();
         var enricher = Build();
 
@@ -181,5 +191,79 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(5, await Build().RunAsync(default));
         Assert.Equal(2, (await new LibraryStore(pg.Db).PendingEnrichmentAsync(10, default)).Count);
+    }
+
+    [Fact]
+    public async Task A_first_pass_that_throws_still_backs_off_for_a_while()
+    {
+        var enricher = Build();
+
+        Assert.True(PollingLoop.Backoff(enricher.Wait, 1) > TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task When_the_page_cannot_be_fetched_no_read_is_made_on_the_snippet_and_the_attempt_is_counted()
+    {
+        _fetcherDown = true;
+        var id = await SaveAsync();
+
+        await Build().RunAsync(default);
+
+        Assert.Equal(0, await ScalarAsync<int>("select count(*)::int from reads where item_id = @id", new { id }));
+        Assert.Equal(0, _chatCalls);
+        Assert.Equal(1, await ScalarAsync<int>("select enrich_attempts from saved where item_id = @id", new { id }));
+        Assert.True(await ScalarAsync<bool>("select enriched_at is null from saved where item_id = @id", new { id }));
+    }
+
+    [Fact]
+    public async Task On_the_last_attempt_an_unfetchable_page_is_read_on_the_feed_text()
+    {
+        _fetcherDown = true;
+        var id = await SaveAsync();
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update saved set enrich_attempts = 4 where item_id = @id", new { id });
+        }
+
+        await Build().RunAsync(default);
+
+        Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from reads where item_id = @id", new { id }));
+        Assert.Equal(5, await ScalarAsync<int>("select enrich_attempts from saved where item_id = @id", new { id }));
+        Assert.Empty(await new LibraryStore(pg.Db).PendingEnrichmentAsync(10, default));
+    }
+
+    [Fact]
+    public async Task A_spent_budget_ends_the_pass_without_counting_an_attempt()
+    {
+        _budgetSpent = true;
+        var first = await SaveAsync("First");
+        var second = await SaveAsync("Second");
+
+        Assert.Equal(0, await Build().RunAsync(default));
+
+        Assert.Equal(1, _chatCalls);   // the second item was not tried
+        Assert.Equal(0, await ScalarAsync<int>("select sum(enrich_attempts)::int from saved where item_id in (@first, @second)", new { first, second }));
+    }
+
+    [Fact]
+    public async Task A_model_outage_ends_the_pass_without_counting_an_attempt()
+    {
+        _modelDown = true;
+        var id = await SaveAsync();
+
+        Assert.Equal(0, await Build().RunAsync(default));
+
+        Assert.Equal(0, await ScalarAsync<int>("select enrich_attempts from saved where item_id = @id", new { id }));
+    }
+
+    [Fact]
+    public async Task An_embedder_outage_ends_the_pass_without_counting_an_attempt()
+    {
+        _embedderDown = true;
+        var id = await SaveAsync();
+
+        Assert.Equal(0, await Build().RunAsync(default));
+
+        Assert.Equal(0, await ScalarAsync<int>("select enrich_attempts from saved where item_id = @id", new { id }));
     }
 }

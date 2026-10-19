@@ -84,6 +84,12 @@ public sealed class LibraryStore(FeedDb db)
             new { max = MaxEnrichAttempts, limit }, cancellationToken: ct))).ToList();
     }
 
+    public async Task<int> EnrichAttemptsAsync(long itemId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<int>(new CommandDefinition("select enrich_attempts from saved where item_id = @itemId", new { itemId }, cancellationToken: ct));
+    }
+
     /// <summary>Counts one enrichment pass; <paramref name="done"/> closes the item.</summary>
     public async Task RecordAttemptAsync(long itemId, bool done, CancellationToken ct)
     {
