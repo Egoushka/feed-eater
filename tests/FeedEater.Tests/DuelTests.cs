@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Duels;
+using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Plane;
 using FeedEater.Storage;
@@ -56,14 +57,14 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         return ids;
     }
 
-    private (DuelJob Job, FakeTimeProvider Time, List<string> Sent) BuildJob(DateTimeOffset now, int perDay = 2, TimeSpan? quietFrom = null, TimeSpan? quietTo = null)
+    private (DuelJob Job, FakeTimeProvider Time, List<string> Sent) BuildJob(DateTimeOffset now, int perDay = 2, TimeSpan? quietFrom = null, TimeSpan? quietTo = null, string telegramToken = "T")
     {
         var time = new FakeTimeProvider(now);
         var sent = new List<string>();
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv",
-            Telegram = new TelegramOptions { AllowedUserId = 42 },
+            Telegram = new TelegramOptions { Token = telegramToken, AllowedUserId = 42 },
             Duel = new DuelOptions { PerDay = perDay },
             Quiet = new QuietOptions { From = quietFrom, To = quietTo },
         });
@@ -77,8 +78,9 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
             sent.Add(body);
             return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
         });
+        var telegram = new TelegramClient(stub.Client("http://tg/botT/"));
         var job = new DuelJob(
-            new DuelStore(pg.Db), new TelegramClient(stub.Client("http://tg/botT/")), new QuietHours(new CursorStore(pg.Db), options, time),
+            new DuelStore(pg.Db), new InboxService(new InboxStore(pg.Db), telegram, options, time), new QuietHours(new CursorStore(pg.Db), options, time),
             new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DuelJob>.Instance);
         return (job, time, sent);
     }
@@ -157,6 +159,35 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("\"callback_data\":\"d:2:a\"", sent[1], StringComparison.Ordinal);
         var pairs = await new DuelStore(pg.Db).SeenPairsAsync(default);
         Assert.Equal(2, pairs.Count);
+    }
+
+    [Fact]
+    public async Task A_duel_is_an_inbox_entry_with_both_items()
+    {
+        await PoolAsync(11);
+        var (job, _, sent) = BuildJob(Kyiv(13));
+
+        await job.TickAsync(default);
+        await job.TickAsync(default);
+
+        Assert.Single(sent);
+        var duel = await ScalarAsync<long>("select id from duels");
+        Assert.Equal("duel", await ScalarAsync<string>("select kind from inbox where key = @k", new { k = $"duel:{duel}" }));
+        Assert.Equal(duel, await ScalarAsync<long>("select ref_id from inbox where key = @k", new { k = $"duel:{duel}" }));
+    }
+
+    [Fact]
+    public async Task Without_Telegram_the_duel_is_kept_and_not_marked_failed()
+    {
+        await PoolAsync(11);
+        var (job, _, sent) = BuildJob(Kyiv(13), telegramToken: "");
+
+        await job.TickAsync(default);
+        await job.TickAsync(default);
+
+        Assert.Empty(sent);
+        Assert.Null(await ScalarAsync<DateTime?>("select send_failed_at from duels"));
+        Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from inbox where kind = 'duel'"));
     }
 
     [Theory]

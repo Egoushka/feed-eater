@@ -1,8 +1,9 @@
 using System.Globalization;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
+using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Duels;
 
@@ -11,7 +12,7 @@ namespace FeedEater.Duels;
 /// A slot runs once; one missed while down runs at start only within two hours of its time. Quiet hours hold it.
 /// </summary>
 public sealed class DuelJob(
-    DuelStore duels, TelegramClient telegram, QuietHours quiet,
+    DuelStore duels, IInbox inbox, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<DuelJob> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -48,7 +49,8 @@ public sealed class DuelJob(
         var id = await duels.CreateAsync(first.Id, second.Id, now, ct);
         try
         {
-            await telegram.SendAsync(Settings.Telegram.AllowedUserId, DuelFormatter.Message(id, first, second), ct);
+            await inbox.AddAsync(new InboxEntry($"duel:{id}", InboxKinds.Duel, RefId: id,
+                Payload: new JsonObject { ["a"] = first.Id, ["b"] = second.Id }, ExpiresAt: now.AddDays(7)), DuelFormatter.Message(id, first, second), ct);
         }
         catch
         {
