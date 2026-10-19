@@ -7,6 +7,7 @@ using FeedEater.Eval;
 using FeedEater.Fetch;
 using FeedEater.Follow;
 using FeedEater.Hype;
+using FeedEater.Inbox;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -146,6 +147,8 @@ public static class ServiceRegistration
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ArchiveAnswer>();
         services.AddSingleton<StoryFollower>();
+        services.AddSingleton<InboxStore>();
+        services.AddSingleton<IInbox, InboxService>();
         services.AddSingleton<ReplyHandler>();
         services.AddSingleton<TasteSwitch>();
         services.AddSingleton<CommandHandler>();
