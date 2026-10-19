@@ -237,7 +237,7 @@ public sealed partial class ResurfaceTests(PostgresFixture pg, ResurfaceTests.Ho
     public async Task The_card_says_how_long_the_item_has_waited_and_offers_keep_remove_read_open()
     {
         var item = await SavedAsync("Waiting", 20);
-        await SqlAsync("update saved set at = now() - interval '20 days' where item_id = @item", new { item });
+        await SqlAsync("update saved set at = now() - interval '20 days 1 hour' where item_id = @item", new { item });
 
         var (_, card) = await CardAsync(item);
 
