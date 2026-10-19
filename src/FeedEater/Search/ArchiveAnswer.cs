@@ -10,11 +10,11 @@ using FeedEater.Telegram;
 
 namespace FeedEater.Search;
 
-/// <summary>The answer and the items it cites, in source-number order; <c>Numbers</c> holds each citation's [n] marker in the answer.</summary>
-public sealed record AskResult(string Answer, IReadOnlyList<SearchHit> Citations)
-{
-    internal IReadOnlyList<int> Numbers { get; init; } = [];
-}
+/// <summary>A cited hit with the number of its [n] marker in the answer.</summary>
+public sealed record Citation(int Number, SearchHit Hit);
+
+/// <summary>The answer and the items it cites, in source-number order.</summary>
+public sealed record AskResult(string Answer, IReadOnlyList<Citation> Citations);
 
 /// <summary>
 /// A question answered from the archive: the top hits go to the read model as numbered sources, every [n] in the answer must name
@@ -52,7 +52,7 @@ public sealed partial class ArchiveAnswer(ArchiveSearch search, ItemStore items,
         var reply = await llm.ChatAsync(options.Value.Llm.ReadModel, system, user, MaxTokens, "ask", ct);
         var (answer, cited) = Check(reply.Content, hits.Count);
         var numbers = cited.Order().ToList();
-        return new AskResult(answer, numbers.Select(n => hits[n - 1]).ToList()) { Numbers = numbers };
+        return new AskResult(answer, numbers.Select(n => new Citation(n, hits[n - 1])).ToList());
     }
 
     /// <summary>Drops [n] markers that name no source; returns the cleaned answer and the cited source numbers in order.</summary>
@@ -87,12 +87,11 @@ public sealed partial class ArchiveAnswer(ArchiveSearch search, ItemStore items,
 
         var zone = options.Value.Zone;
         html.Append("\n\n");
-        for (var i = 0; i < result.Citations.Count; i++)
+        foreach (var (n, h) in result.Citations)
         {
-            var h = result.Citations[i];
             var title = WebUtility.HtmlEncode(Clip(h.Title, 120));
             var link = DigestFormatter.IsLinkable(h.Url) ? $"<a href=\"{WebUtility.HtmlEncode(h.Url)}\">{title}</a>" : title;
-            html.Append(CultureInfo.InvariantCulture, $"[{result.Numbers[i]}] {link} · <i>{WebUtility.HtmlEncode(Clip(h.Feed, 60))}, {Local(h.PublishedAt, zone)}</i>\n");
+            html.Append(CultureInfo.InvariantCulture, $"[{n}] {link} · <i>{WebUtility.HtmlEncode(Clip(h.Feed, 60))}, {Local(h.PublishedAt, zone)}</i>\n");
         }
 
         return html.ToString().TrimEnd();

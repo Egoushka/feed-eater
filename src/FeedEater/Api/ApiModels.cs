@@ -23,6 +23,12 @@ public sealed record ItemResponse(
 
 public sealed record AskRequest(string? Question);
 
-public sealed record AskResponse(string Answer, IReadOnlyList<SearchHit> Citations);
+/// <summary>A search result as the API shows it: no ranking internals, UTC time with an offset, a safe URL.</summary>
+public sealed record ApiHit(long Id, string Title, string? Url, string Feed, DateTimeOffset PublishedAt, string? Summary, string? Project, string? Kind, short? Vote);
+
+/// <summary><c>Number</c> is the [n] marker in the answer that cites this item.</summary>
+public sealed record AskCitation(int Number, ApiHit Hit);
+
+public sealed record AskResponse(string Answer, IReadOnlyList<AskCitation> Citations);
 
 public sealed record ItemAskResponse(string Answer);

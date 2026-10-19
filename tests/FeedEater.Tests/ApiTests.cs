@@ -77,12 +77,12 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
     private static HttpClient? http;
 
     // Embeddings fail (search falls back to keywords), chat answers with Chat, article fetches fail.
-    private static string Chat = "";
+    private static string? Chat = "";
 
     private WebApplicationFactory<Program> App => app ??= ApiHost.Create(pg.ConnectionString, s =>
     {
         var model = new StubHandler((request, _) => request.RequestUri!.AbsolutePath.EndsWith("chat/completions", StringComparison.Ordinal)
-            ? StubHandler.Json(JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = Chat } } }, usage = new { prompt_tokens = 10, completion_tokens = 5 } }))
+            ? Chat is null ? throw new HttpRequestException("model down") : StubHandler.Json(JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = Chat } } }, usage = new { prompt_tokens = 10, completion_tokens = 5 } }))
             : StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable));
         s.AddHttpClient<FeedEater.Llm.LiteLlmClient>().ConfigurePrimaryHttpMessageHandler(() => model);
         s.AddHttpClient(FeedEater.Fetch.SafeFetcher.ClientName)
@@ -354,7 +354,24 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
         var result = await PostAsync<AskResponse>("/api/v1/ask", new { question = "quokka" });
 
         Assert.Equal("Nightly [1], per nobody .", result.Answer);
-        Assert.Equal([id], result.Citations.Select(c => c.Id));
+        Assert.Equal([id], result.Citations.Select(c => c.Hit.Id));
+        Assert.Equal([1], result.Citations.Select(c => c.Number));
+        Assert.Contains("[1]", result.Answer);
+    }
+
+    [Fact]
+    public async Task An_over_long_question_is_a_400_and_a_failing_model_is_a_502_problem()
+    {
+        var auth = "Bearer " + await TokenAsync();
+        var tooLong = await RawAsync(HttpMethod.Post, "/api/v1/ask", auth, body: JsonSerializer.Serialize(new { question = new string('q', 501) }));
+        await Seed.ItemAsync(pg, 1, "Quokka backups", TestVectors.OneHot(1), content: "Quokka backups run nightly.");
+        Chat = null;
+        var down = await RawAsync(HttpMethod.Post, "/api/v1/ask", auth, body: """{"question":"quokka"}""");
+        Chat = "";
+
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Equal(HttpStatusCode.BadGateway, down.StatusCode);
+        Assert.Equal("application/problem+json", down.Content.Headers.ContentType!.MediaType);
     }
 
     [Fact]
@@ -378,11 +395,17 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
         await Seed.ReadAsync(pg, improve, "homelab", "improve");
         await Seed.ReadAsync(pg, learn, "homelab", "learn");
 
-        var all = await GetAsync<List<SearchHit>>("/api/v1/search?q=quokka");
-        var learning = await GetAsync<List<SearchHit>>("/api/v1/search?q=quokka&kind=learn&limit=500");
+        var all = await GetAsync<List<ApiHit>>("/api/v1/search?q=quokka");
+        var learning = await GetAsync<List<ApiHit>>("/api/v1/search?q=quokka&kind=learn&limit=500");
 
         Assert.Equal(2, all.Count);
         Assert.Equal([learn], learning.Select(h => h.Id));
+        Assert.Equal(TimeSpan.Zero, all[0].PublishedAt.Offset);
+
+        var json = JsonDocument.Parse(await (await RawAsync(HttpMethod.Get, "/api/v1/search?q=quokka", "Bearer " + await TokenAsync())).Content.ReadAsStringAsync());
+        var published = json.RootElement[0].GetProperty("publishedAt").GetString()!;
+        Assert.True(published.EndsWith('Z') || published.EndsWith("+00:00", StringComparison.Ordinal), published);
+        Assert.False(json.RootElement[0].TryGetProperty("rank", out _));
     }
 }
 

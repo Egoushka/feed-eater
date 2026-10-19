@@ -54,7 +54,7 @@ public static class ItemsApi
                 return await ModelCallAsync(async () =>
                 {
                     var result = await answers.AnswerAsync(question, ct);
-                    return Results.Ok(new AskResponse(result.Answer, result.Citations));
+                    return Results.Ok(new AskResponse(result.Answer, result.Citations.Select(c => new AskCitation(c.Number, Hit(c.Hit))).ToList()));
                 });
             })
             .WithName("AskArchive")
@@ -70,10 +70,10 @@ public static class ItemsApi
 
                 var hits = await search.SearchAsync(
                     query, project, kind, from, to, Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit), ct);
-                return Results.Ok(hits);
+                return Results.Ok(hits.Select(Hit).ToList());
             })
             .WithName("SearchArchive")
-            .Produces<IReadOnlyList<SearchHit>>();
+            .Produces<IReadOnlyList<ApiHit>>();
 
         return group;
     }
@@ -85,6 +85,9 @@ public static class ItemsApi
         Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: $"question must be 1 to {MaxQuestion} characters");
 
     private static IResult NotFound() => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "No such item");
+
+    private static ApiHit Hit(SearchHit h) =>
+        new(h.Id, h.Title, Html.SafeUrl(h.Url), h.Feed, Utc(h.PublishedAt), h.Summary, h.Project, h.Kind, (short?)h.Vote);
 
     private static DateTimeOffset Utc(DateTime utc) => new(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
 
