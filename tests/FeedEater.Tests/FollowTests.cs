@@ -39,9 +39,9 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
 
     private sealed record Rig(StoryFollower Follower, FollowJob Job, CallbackHandler Callbacks, CommandHandler Commands, FollowStore Store);
 
-    private Rig Build(Action<FeedEaterOptions>? tweak = null)
+    private Rig Build(Action<FeedEaterOptions>? tweak = null, string telegramToken = "T")
     {
-        var settings = new FeedEaterOptions { TimeZone = "Europe/Kyiv", Telegram = new TelegramOptions { AllowedUserId = 42 } };
+        var settings = new FeedEaterOptions { TimeZone = "Europe/Kyiv", Telegram = new TelegramOptions { Token = telegramToken, AllowedUserId = 42 } };
         tweak?.Invoke(settings);
         var options = Options.Create(settings);
         var telegram = new TelegramClient(new StubHandler((request, body) =>
@@ -66,7 +66,7 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
         var items = new ItemStore(pg.Db);
         var feedback = new FeedbackStore(pg.Db);
         var store = new FollowStore(pg.Db);
-        var follower = new StoryFollower(store, items, telegram, llm, options, _time, NullLogger<StoryFollower>.Instance);
+        var follower = new StoryFollower(store, items, telegram, new FeedEater.Inbox.InboxService(new InboxStore(pg.Db), telegram, options, _time), llm, options, _time, NullLogger<StoryFollower>.Instance);
         IIdeaSink sink = new PlaneIdeaSink(new PlaneClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://plane/"), options), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
         var callbacks = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://k/")),
@@ -400,6 +400,37 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(1, await rig.Job.RunAsync(default));
 
         Assert.Contains(Sends(), m => Text(m).Contains("Member B", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_follow_update_is_an_inbox_entry_replying_to_the_root()
+    {
+        var rig = Build();
+        var root = await RootAsync();
+        await PressAsync(rig, $"f:{root}");
+        var match = await LaterAsync("Member", TestVectors.OneHot(5), root);
+
+        Assert.Equal(1, await rig.Job.RunAsync(default));
+
+        Assert.Equal(1, await QueryAsync<int>("select count(*) from inbox where key = @k and kind = 'follow' and ref_id = 1 and item_id = @match", new { k = $"follow:1:{match}", match }));
+        Assert.Equal(100, ReplyTo(Sends()[^1]));
+    }
+
+    [Fact]
+    public async Task Without_Telegram_a_follow_starts_and_closes_and_updates_land_in_the_inbox()
+    {
+        var rig = Build(telegramToken: "");
+        var root = await RootAsync();
+
+        Assert.Equal(FollowOutcome.Started, await rig.Follower.StartAsync(root, default));
+        Assert.Null(await QueryAsync<long?>("select root_message_id from follows where id = 1"));
+
+        await LaterAsync("Member", TestVectors.OneHot(5), root);
+        Assert.Equal(1, await rig.Job.RunAsync(default));
+        Assert.Equal(1, await QueryAsync<int>("select count(*) from inbox where kind = 'follow'"));
+
+        Assert.True(await rig.Follower.CloseAsync(1, null, default));
+        Assert.Empty(_telegram);
     }
 
     [Fact]

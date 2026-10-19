@@ -6,6 +6,7 @@ using FeedEater.Follow;
 using FeedEater.Plane;
 using FeedEater.Signals;
 using FeedEater.Storage;
+using FeedEater.WeeklyIdeas;
 
 namespace FeedEater.Telegram;
 
@@ -13,7 +14,7 @@ public enum SaveOutcome { Saved, AlreadySaved, NotConfigured, Down, Refused, NoI
 
 public sealed class CallbackHandler(
     TelegramClient telegram, FeedbackStore feedback, IdeaFiler ideas, ItemStore items, DuelStore duels, KarakeepClient karakeep,
-    IOptions<FeedEaterOptions> options, ILogger<CallbackHandler> logger, StoryFollower? follower = null)
+    IOptions<FeedEaterOptions> options, ILogger<CallbackHandler> logger, StoryFollower? follower = null, IdeaDecisions? decisions = null)
 {
     public async Task HandleAsync(TgCallback callback, CancellationToken ct)
     {
@@ -63,6 +64,18 @@ public sealed class CallbackHandler(
 
             case UnfollowCallback stop when follower is not null:
                 await telegram.AnswerAsync(callback.Id, await follower.CloseAsync(stop.FollowId, null, ct) ? "Stopped following" : "Not following this any more", ct);
+                break;
+
+            case IdeaDecisionCallback d when decisions is not null:
+                var r = d.Keep ? await decisions.KeepAsync(d.InboxId, ct) : await decisions.DropAsync(d.InboxId, ct);
+                await telegram.AnswerAsync(callback.Id, r.Outcome switch
+                {
+                    IdeaOutcome.Filed => $"Filed in {r.Project}",
+                    IdeaOutcome.Dropped => "Dropped",
+                    IdeaOutcome.AlreadyDecided => "Already decided",
+                    IdeaOutcome.Failed => Clip($"Not filed: {r.Error}"),
+                    _ => "No such idea",
+                }, ct);
                 break;
 
             default:

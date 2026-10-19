@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace FeedEater.Telegram;
 
-/// <summary>Button payloads: <c>v:{id}:u</c>, <c>v:{id}:d</c>, <c>i:{id}</c>, <c>s:{id}</c>, <c>f:{item id}</c>, <c>u:{follow id}</c>, <c>d:{duel}:a|b|s</c>, <c>n</c>. Telegram allows 64 bytes.</summary>
+/// <summary>Button payloads: <c>v:{id}:u</c>, <c>v:{id}:d</c>, <c>i:{id}</c>, <c>s:{id}</c>, <c>f:{item id}</c>, <c>u:{follow id}</c>, <c>d:{duel}:a|b|s</c>, <c>ik:{inbox}</c>, <c>id:{inbox}</c>, <c>n</c>. Telegram allows 64 bytes.</summary>
 public abstract record CallbackData
 {
     public const string Noop = "n";
@@ -20,6 +20,10 @@ public abstract record CallbackData
 
     public static string Unfollow(long followId) => string.Create(CultureInfo.InvariantCulture, $"u:{followId}");
 
+    public static string KeepIdea(long inboxId) => string.Create(CultureInfo.InvariantCulture, $"ik:{inboxId}");
+
+    public static string DropIdea(long inboxId) => string.Create(CultureInfo.InvariantCulture, $"id:{inboxId}");
+
     public static CallbackData? Parse(string? data) => data?.Split(':') switch
     {
         ["v", var id, "u"] when Id(id) is { } i => new VoteCallback(i, 1),
@@ -31,6 +35,8 @@ public abstract record CallbackData
         ["d", var id, "s"] when Id(id) is { } i => new DuelCallback(i, 's'),
         ["f", var id] when Id(id) is { } i => new FollowCallback(i),
         ["u", var id] when Id(id) is { } i => new UnfollowCallback(i),
+        ["ik", var id] when Id(id) is { } i => new IdeaDecisionCallback(i, true),
+        ["id", var id] when Id(id) is { } i => new IdeaDecisionCallback(i, false),
         [Noop] => new NoopCallback(),
         _ => null,
     };
@@ -62,5 +68,7 @@ public sealed record DuelCallback(long DuelId, char Pick) : CallbackData;
 public sealed record FollowCallback(long ItemId) : CallbackData;
 
 public sealed record UnfollowCallback(long FollowId) : CallbackData;
+
+public sealed record IdeaDecisionCallback(long InboxId, bool Keep) : CallbackData;
 
 public sealed record NoopCallback : CallbackData;

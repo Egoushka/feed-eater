@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Digest;
+using FeedEater.Inbox;
 using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Storage;
@@ -199,12 +200,13 @@ public sealed class ReleaseWatcherTests(PostgresFixture pg) : IAsyncLifetime
         return path;
     }
 
-    private ReleaseWatcher Build(bool telegramToken = true)
+    private ReleaseWatcher Build(bool telegramToken = true, bool swipe = false)
     {
         LiteLlmClient.RetryDelay = TimeSpan.Zero;
         var settings = new FeedEaterOptions
         {
             Telegram = new TelegramOptions { AllowedUserId = 42, Token = telegramToken ? "t" : "" },
+            Swipe = new SwipeOptions { Enabled = swipe },
             Watch = new WatchOptions
             {
                 FallbackPath = Temp("""[{"service":"headscale","version":"0.29.4","image":"headscale/headscale"},{"service":"mystery","version":null,"image":"x/mystery"}]"""),
@@ -230,10 +232,11 @@ public sealed class ReleaseWatcherTests(PostgresFixture pg) : IAsyncLifetime
             _telegram.Add(body);
             return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
         });
+        var telegram = new TelegramClient(tg.Client("http://tg/botT/"));
         return new ReleaseWatcher(
             new WatchSource(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://x/"), options, NullLogger<WatchSource>.Instance),
             new ItemStore(pg.Db), new ReleaseStore(pg.Db), new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
-            new TelegramClient(tg.Client("http://tg/botT/")), new QuietHours(new CursorStore(pg.Db), options, time), options, new LoopHealth(time), time, NullLogger<ReleaseWatcher>.Instance);
+            new InboxService(new InboxStore(pg.Db), telegram, options, time), new QuietHours(new CursorStore(pg.Db), options, time), options, new LoopHealth(time), time, NullLogger<ReleaseWatcher>.Instance);
     }
 
     private readonly Dictionary<string, long> _feeds = [];
@@ -268,6 +271,30 @@ public sealed class ReleaseWatcherTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("You run headscale 0.29.4; 0.30.0 is out", message, StringComparison.Ordinal);
         Assert.Contains("Breaking: no", message, StringComparison.Ordinal);
         Assert.Equal(1, _llmCalls);
+    }
+
+    [Fact]
+    public async Task An_announced_release_is_an_inbox_entry()
+    {
+        await ReleaseItemAsync("juanfont/headscale", "v0.30.0", "Security fix.");
+
+        await Build().RunAsync(default);
+
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        Assert.Equal("release", await c.ExecuteScalarAsync<string>("select kind from inbox where key = 'release:juanfont/headscale:v0.30.0'"));
+    }
+
+    [Fact]
+    public async Task Without_Telegram_but_with_swipe_the_release_is_announced_into_the_inbox()
+    {
+        await ReleaseItemAsync("juanfont/headscale", "v0.30.0", "Security fix.");
+
+        await Build(telegramToken: false, swipe: true).RunAsync(default);
+
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        Assert.Equal(1, await c.ExecuteScalarAsync<int>("select count(*)::int from inbox where kind = 'release'"));
+        Assert.NotNull(await c.ExecuteScalarAsync<DateTime?>("select announced_at from releases where tag = 'v0.30.0'"));
+        Assert.Empty(_telegram);
     }
 
     [Fact]

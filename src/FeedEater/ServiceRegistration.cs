@@ -7,6 +7,7 @@ using FeedEater.Eval;
 using FeedEater.Fetch;
 using FeedEater.Follow;
 using FeedEater.Hype;
+using FeedEater.Inbox;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -146,6 +147,8 @@ public static class ServiceRegistration
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ArchiveAnswer>();
         services.AddSingleton<StoryFollower>();
+        services.AddSingleton<InboxStore>();
+        services.AddSingleton<IInbox, InboxService>();
         services.AddSingleton<ReplyHandler>();
         services.AddSingleton<TasteSwitch>();
         services.AddSingleton<CommandHandler>();
@@ -187,12 +190,15 @@ public static class ServiceRegistration
                 services.AddHostedService<ReleaseWatcher>();
             }
 
-            if (telegram)
+            // Inbox entries reach the owner through Telegram or a swipe session.
+            var delivers = telegram || settings.Swipe.Enabled;
+            if (delivers)
             {
                 services.AddHostedService<WeeklyReview>();
                 if (settings.WeeklyIdeas.Enabled && settings.Plane.Enabled)
                 {
                     services.AddHostedService<WeeklyIdeasJob>();
+                    services.AddSingleton<IdeaDecisions>();
                 }
 
                 if (settings.Duel.Enabled)
@@ -200,15 +206,19 @@ public static class ServiceRegistration
                     services.AddHostedService<DuelJob>();
                 }
 
-                services.AddHostedService<TelegramPoller>();
+                if (telegram)
+                {
+                    services.AddHostedService<TelegramPoller>();
+                }
+
                 if (settings.Follow.Enabled)
                 {
                     services.AddHostedService<FollowJob>();
                 }
             }
 
-            // The autopsy reports on Telegram; the snapshots are only worth taking when it can.
-            if (telegram && settings.GitHub.Enabled)
+            // The autopsy reaches the owner through the inbox; the snapshots are only worth taking when it can.
+            if (delivers && settings.GitHub.Enabled)
             {
                 services.AddHostedService<RepoSnapshotJob>();
                 services.AddHostedService<AutopsyJob>();

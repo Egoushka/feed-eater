@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Llm;
 using FeedEater.Loops;
+using FeedEater.Inbox;
 using FeedEater.Plane;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -53,6 +54,9 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     private string _chatReply = "";
     private string? _backlog = "| AIS-1 | Existing row |";
     private readonly List<string> _chatBodies = [];
+    private bool _planeDown;
+    private ManualResetEventSlim? _planeGate;
+    private readonly ManualResetEventSlim _planeEntered = new();
 
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
@@ -62,7 +66,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv",
-            Telegram = new TelegramOptions { AllowedUserId = 42 },
+            Telegram = new TelegramOptions { AllowedUserId = 42, Token = "T" },
             Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "t", Workspace = "w", FallbackProject = "FEED" },
             WeeklyIdeas = new WeeklyIdeasOptions { BacklogUrl = backlogUrl },
         });
@@ -70,7 +74,8 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         {
             "/api/v1/workspaces/w/projects/" => StubHandler.Json("""{"results":[{"id":"p-lab","identifier":"LAB"},{"id":"p-feed","identifier":"FEED"}]}"""),
             var p when p.EndsWith("/work-items/", StringComparison.Ordinal) => StubHandler.Json("""{"results":[{"name":"Existing plane item","state":"s"}]}"""),
-            var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) => StubHandler.Json("""{"issue":"issue-1"}""", HttpStatusCode.Created),
+            var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) && _planeDown => StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable),
+            var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) && Gate() => StubHandler.Json("""{"issue":"issue-1"}""", HttpStatusCode.Created),
             _ => StubHandler.Json("{}", HttpStatusCode.NotFound),
         });
         var llm = new StubHandler((_, body) =>
@@ -85,9 +90,40 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
             new WeeklyIdeaStore(pg.Db), new ProfileStore(pg.Db), new PlaneClient(plane.Client("http://plane/"), options),
             new BacklogClient(backlog.Client("http://backlog/"), options),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
-            new TelegramClient(telegram.Client("http://tg/botT/")), new QuietHours(cursors, options, time),
+            new TelegramClient(telegram.Client("http://tg/botT/")), new InboxStore(pg.Db), new QuietHours(cursors, options, time),
             cursors, options, new LoopHealth(time), time, NullLogger<WeeklyIdeasJob>.Instance);
         return (job, plane, telegram);
+    }
+
+    private bool Gate()
+    {
+        _planeEntered.Set();
+        _planeGate?.Wait();
+        return true;
+    }
+
+    private IdeaDecisions Decisions(StubHandler plane, TimeProvider time)
+    {
+        var options = Options.Create(new FeedEaterOptions { Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "t", Workspace = "w", FallbackProject = "FEED" } });
+        return new IdeaDecisions(new InboxStore(pg.Db), new WeeklyIdeaStore(pg.Db), new PlaneClient(plane.Client("http://plane/"), options), time);
+    }
+
+    private async Task<(IdeaDecisions Decisions, StubHandler Plane, long InboxId)> StagedAsync()
+    {
+        await SeedAsync();
+        _chatReply = """{"ideas":[{"lead":1,"idea":"Turn on caching","project":"LAB","where":"homelab-gitops","effort":"S","why":"Saves requests."}]}""";
+        var time = new FakeTimeProvider(Monday);
+        var (job, plane, _) = Build(time);
+        await job.TickAsync(default);
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        var id = await c.ExecuteScalarAsync<long>("select id from inbox where kind = 'idea'");
+        return (Decisions(plane, time), plane, id);
+    }
+
+    private async Task<T?> ScalarAsync<T>(string sql, object? args = null)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return await c.ExecuteScalarAsync<T>(sql, args);
     }
 
     private async Task<string> SeedAsync()
@@ -104,7 +140,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Files_the_ranked_ideas_in_Plane_records_them_and_sends_the_top_to_Telegram()
+    public async Task The_shortlist_stages_ideas_and_files_nothing_and_the_top_go_to_Telegram_with_buttons()
     {
         await SeedAsync();
         _chatReply = """{"ideas":[{"lead":1,"idea":"Turn on caching","project":"LAB","where":"homelab-gitops","effort":"S","why":"Saves requests."}]}""";
@@ -112,17 +148,136 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
 
         await job.TickAsync(default);
 
-        var post = Assert.Single(plane.Calls, c => c.Method == HttpMethod.Post);
-        Assert.Equal("http://plane/api/v1/workspaces/w/projects/p-lab/intake-issues/", post.Uri);
-        Assert.Contains("Turn on caching", post.Body, StringComparison.Ordinal);
-        Assert.Contains("homelab-gitops", post.Body, StringComparison.Ordinal);
-        Assert.Equal(["Turn on caching"], await new WeeklyIdeaStore(pg.Db).RecentTitlesAsync(10, default));
+        Assert.DoesNotContain(plane.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Equal(1, await ScalarAsync<int>("select count(*) from inbox where kind = 'idea'"));
+        Assert.Equal(0, await ScalarAsync<int>("select count(*) from weekly_ideas"));
+        Assert.Contains("homelab-gitops", await ScalarAsync<string>("select payload->>'html' from inbox where kind = 'idea'"), StringComparison.Ordinal);
         var message = Assert.Single(telegram.Calls);
         Assert.Contains("Ideas for 2026-W43", message.Body, StringComparison.Ordinal);
         Assert.Contains("Turn on caching", message.Body, StringComparison.Ordinal);
+        Assert.Contains("ik:", message.Body, StringComparison.Ordinal);
+        Assert.Contains("id:", message.Body, StringComparison.Ordinal);
         Assert.Contains("AIS-1", _chatBodies.Single(), StringComparison.Ordinal);            // the backlog reached the model
         Assert.Contains("Existing plane item", _chatBodies.Single(), StringComparison.Ordinal);
         Assert.Contains("A bookmarked tool", _chatBodies.Single(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Every_staged_idea_gets_Keep_and_Drop_buttons_and_only_the_top_are_detailed()
+    {
+        var staged = Enumerable.Range(1, 5).Select(i => (new ShortlistEntry(i, $"Idea {i}", "LAB", "box", "S", $"Why {i}"), new Lead("improve", $"Source {i}", $"https://e.org/{i}", ""), (long)i)).ToList();
+
+        var message = WeeklyIdeasJob.Message("2026-W43", staged, 3);
+
+        Assert.Equal(5, message.Keyboard!.Count);
+        Assert.Equal(["ik:4", "id:4"], message.Keyboard[3].Select(b => b.Data));
+        Assert.Contains("4. Idea 4", message.Html, StringComparison.Ordinal);
+        Assert.Contains("5. Idea 5", message.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Why 4", message.Html, StringComparison.Ordinal);
+        Assert.Contains("Why 3", message.Html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Keep_with_the_local_sink_answers_Filed_in_the_project_not_Saved_as_an_idea()
+    {
+        var (decisions, _, inboxId) = await StagedAsync();
+        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42, Token = "T" } });
+        var telegram = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":true}"""));
+        var client = new TelegramClient(telegram.Client("http://tg/botT/"));
+        var items = new ItemStore(pg.Db);
+        var feedback = new FeedbackStore(pg.Db);
+        var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), new LocalIdeaSink(), TimeProvider.System);
+        var callbacks = new CallbackHandler(client, feedback, filer, items, new DuelStore(pg.Db),
+            new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://k/")), options, NullLogger<CallbackHandler>.Instance, decisions: decisions);
+
+        await callbacks.HandleAsync(new TgCallback("cb1", 42, 42, 1, CallbackData.KeepIdea(inboxId)), default);
+
+        var answer = Assert.Single(telegram.Calls).Body;
+        Assert.Contains("Filed in LAB", answer, StringComparison.Ordinal);
+        Assert.DoesNotContain("Saved as an idea", answer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Keep_files_once_and_a_second_keep_is_already_decided()
+    {
+        var (decisions, plane, inboxId) = await StagedAsync();
+
+        var first = await decisions.KeepAsync(inboxId, default);
+        var second = await decisions.KeepAsync(inboxId, default);
+
+        Assert.Equal(IdeaOutcome.Filed, first.Outcome);
+        Assert.Equal("LAB", first.Project);
+        Assert.Equal(IdeaOutcome.AlreadyDecided, second.Outcome);
+        Assert.Single(plane.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Equal("filed", await ScalarAsync<string>("select outcome from weekly_ideas"));
+    }
+
+    [Fact]
+    public async Task Concurrent_presses_while_a_Keep_is_in_Plane_are_already_decided_and_one_item_is_filed()
+    {
+        var (decisions, plane, inboxId) = await StagedAsync();
+        _planeGate = new ManualResetEventSlim();
+        var first = Task.Run(() => decisions.KeepAsync(inboxId, default));
+        Assert.True(_planeEntered.Wait(TimeSpan.FromSeconds(10)));
+
+        Assert.Equal(IdeaOutcome.AlreadyDecided, (await decisions.KeepAsync(inboxId, default)).Outcome);
+        Assert.Equal(IdeaOutcome.AlreadyDecided, (await decisions.DropAsync(inboxId, default)).Outcome);
+        _planeGate.Set();
+
+        Assert.Equal(IdeaOutcome.Filed, (await first).Outcome);
+        Assert.Single(plane.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Equal(1, await ScalarAsync<int>("select count(*) from weekly_ideas where outcome = 'filed'"));
+        Assert.Equal(1, await ScalarAsync<int>("select count(*) from weekly_ideas"));
+    }
+
+    [Fact]
+    public async Task An_open_idea_staged_again_next_Monday_stays_one_row()
+    {
+        await SeedAsync();
+        _chatReply = """{"ideas":[{"lead":3,"idea":"Try the bookmarked tool","project":"LAB"}]}""";   // lead 3 is the bookmark
+        var time = new FakeTimeProvider(Monday);
+        var (job, _, _) = Build(time);
+
+        await job.TickAsync(default);
+        time.Advance(TimeSpan.FromDays(7));
+        _chatReply = """{"ideas":[{"lead":1,"idea":"Try the bookmarked tool","project":"LAB"}]}""";   // the week-old items are out of the window; the bookmark is lead 1
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update signals set at = @at where source = 'karakeep'", new { at = time.GetUtcNow().UtcDateTime });
+        }
+
+        await job.TickAsync(default);
+
+        Assert.Equal(2, _chatBodies.Count);   // both Mondays ran
+        Assert.Equal(1, await ScalarAsync<int>("select count(*) from inbox where kind = 'idea'"));
+        Assert.Equal("2026-W43", await ScalarAsync<string>("select payload->>'week' from inbox where kind = 'idea'"));
+    }
+
+    [Fact]
+    public async Task Drop_remembers_the_source_and_files_nothing()
+    {
+        var (decisions, plane, inboxId) = await StagedAsync();
+
+        Assert.Equal(IdeaOutcome.Dropped, (await decisions.DropAsync(inboxId, default)).Outcome);
+        Assert.Equal(IdeaOutcome.AlreadyDecided, (await decisions.KeepAsync(inboxId, default)).Outcome);
+        Assert.Equal(IdeaOutcome.NotFound, (await decisions.KeepAsync(inboxId + 1000, default)).Outcome);
+        Assert.DoesNotContain(plane.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Equal("dropped", await ScalarAsync<string>("select outcome from weekly_ideas"));
+        Assert.Equal(1, await ScalarAsync<int>("select count(*) from weekly_ideas where plane_issue_id is null"));
+    }
+
+    [Fact]
+    public async Task Keep_while_Plane_is_down_leaves_the_idea_open()
+    {
+        var (decisions, _, inboxId) = await StagedAsync();
+        _planeDown = true;
+
+        Assert.Equal(IdeaOutcome.Failed, (await decisions.KeepAsync(inboxId, default)).Outcome);
+        Assert.Null(await ScalarAsync<DateTime?>("select done_at from inbox where id = @inboxId", new { inboxId }));
+        Assert.Equal(0, await ScalarAsync<int>("select count(*) from weekly_ideas"));
+
+        _planeDown = false;
+        Assert.Equal(IdeaOutcome.Filed, (await decisions.KeepAsync(inboxId, default)).Outcome);
     }
 
     [Fact]
@@ -167,12 +322,12 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     {
         await SeedAsync();
         _chatReply = """{"ideas":[{"lead":1,"idea":"X","project":"LAB"}]}""";
-        var (job, plane, _) = Build(new FakeTimeProvider(Monday));
+        var (job, _, telegram) = Build(new FakeTimeProvider(Monday));
 
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Single(plane.Calls, c => c.Method == HttpMethod.Post);
+        Assert.Single(telegram.Calls);
         Assert.Equal("2026-10-19", await new CursorStore(pg.Db).GetAsync("job:weekly-ideas", default));
     }
 
@@ -181,7 +336,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     {
         await SeedAsync();
         _chatReply = """{"ideas":[{"lead":1,"idea":"X","project":"LAB"}]}""";
-        var (job, plane, _) = Build(new FakeTimeProvider(Monday));
+        var (job, _, telegram) = Build(new FakeTimeProvider(Monday));
         var cursors = new CursorStore(pg.Db);
 
         await job.TickAsync(default);
@@ -189,7 +344,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Equal(2, plane.Calls.Count(c => c.Method == HttpMethod.Post));
+        Assert.Equal(2, telegram.Calls.Count);
         Assert.Null(await cursors.GetAsync(WeeklyIdeasJob.ForceCursor, default));
     }
 }

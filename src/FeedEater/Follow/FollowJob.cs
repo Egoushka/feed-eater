@@ -35,8 +35,8 @@ public sealed class FollowJob(
                 var n = 0;
                 try
                 {
-                    // The follow row exists before its root message is sent; an update now would reply to nothing.
-                    n = follow.RootMessageId is null ? 0 : await follower.SendNewAsync(follow, ct);   // also at the end, for what arrived since the last run
+                    // The follow row exists before its root message is sent; an update now would reply to nothing. With Telegram off there is no root.
+                    n = follow.RootMessageId is null && options.Value.Telegram.Token.Length > 0 ? 0 : await follower.SendNewAsync(follow, ct);   // also at the end, for what arrived since the last run
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {

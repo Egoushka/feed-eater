@@ -75,4 +75,16 @@ public sealed class WeeklyIdeaStore(FeedDb db)
             on conflict (canonical_url) do nothing
             """, idea, cancellationToken: ct));
     }
+
+    /// <summary>Remembers a dropped idea's source so it is not offered again.</summary>
+    public async Task DropAsync(string canonicalUrl, string week, string title, string project, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        await c.ExecuteAsync(new CommandDefinition(
+            """
+            insert into weekly_ideas (canonical_url, week, title, plane_project, plane_issue_id, outcome)
+            values (@canonicalUrl, @week, @title, @project, null, 'dropped')
+            on conflict (canonical_url) do nothing
+            """, new { canonicalUrl, week, title, project }, cancellationToken: ct));
+    }
 }

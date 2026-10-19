@@ -398,7 +398,7 @@ public sealed class TelegramOptions
     public string BaseUrl { get; set; } = "https://api.telegram.org/";
 
     [Secret]
-    [Description("Bot token from @BotFather. Without it the digest and the Telegram poller are off.")]
+    [Description("Bot token from @BotFather. Without it the digest and the Telegram poller are off; duels, follows, the weekly review, ideas and the autopsy still run when Swipe:Enabled is true, and wait in the inbox.")]
     public string Token { get; set; } = "";
 
     /// <summary>The owner's Telegram user id: the only sender whose button presses count, and the chat digests go to.</summary>
@@ -408,7 +408,7 @@ public sealed class TelegramOptions
 
 public sealed class WeeklyIdeasOptions
 {
-    [Description("Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Needs Plane and the Telegram bot. False turns the job off.")]
+    [Description("Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Ideas are filed in Plane only after Keep (Telegram button, swipe card). Needs Plane, and Telegram or Swipe. False turns the job off.")]
     public bool Enabled { get; set; } = true;
 
     [Description("Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start.")]
