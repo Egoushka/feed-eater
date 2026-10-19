@@ -465,6 +465,9 @@ public sealed class KarakeepOptions
     [Secret]
     [Description("Karakeep API key.")]
     public string Token { get; set; } = "";
+
+    [Description("Copy each new save to Karakeep as a bookmark. The library works without it.")]
+    public bool Mirror { get; set; }
 }
 
 public sealed class GitHubOptions

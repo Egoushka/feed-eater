@@ -9,7 +9,7 @@ public sealed record ClusterMember(long Id, string Title, string Url, string Fee
 public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl, bool Muted = false, string? FeedUrl = null);
 
 public sealed record NewItem(
-    long? EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
+    long? EntryId, long? FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
     string? LinkUrl = null, long? HnId = null, string? SourceKey = null, bool Backfilled = false);
 
 public sealed record PendingLink(long Id, string? LinkUrl, long? HnId);
@@ -157,6 +157,22 @@ public sealed class ItemStore(FeedDb db)
             on conflict do nothing
             returning id
             """, item, cancellationToken: ct));
+    }
+
+    /// <summary>The oldest item with this canonical URL that is not a duplicate of another.</summary>
+    public async Task<long?> FindByCanonicalAsync(string canonicalUrl, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "select id from items where canonical_url = @canonicalUrl and @canonicalUrl <> '' and duplicate_of is null order by id limit 1",
+            new { canonicalUrl }, cancellationToken: ct));
+    }
+
+    public async Task<long?> FindBySourceKeyAsync(string sourceKey, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "select id from items where source_key = @sourceKey", new { sourceKey }, cancellationToken: ct));
     }
 
     public async Task<long> MaxEntryIdAsync(CancellationToken ct)

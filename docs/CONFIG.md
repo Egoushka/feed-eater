@@ -120,6 +120,7 @@ An integration is off until its required settings are filled. An off integration
 | Key | Default | Description |
 |---|---|---|
 | `FeedEater:Karakeep:BaseUrl` | (empty) | Karakeep server URL. Empty means no Karakeep: no 📌 button, no bookmark import. |
+| `FeedEater:Karakeep:Mirror` | `false` | Copy each new save to Karakeep as a bookmark. The library works without it. |
 | `FeedEater:Karakeep:Token` | (empty) | Karakeep API key. |
 
 ## Llm
