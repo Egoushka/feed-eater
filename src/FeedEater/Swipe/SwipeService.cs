@@ -39,6 +39,13 @@ public sealed class SwipeService(
 
     private FeedEaterOptions Settings => options.Value;
 
+    /// <summary>What <see cref="NextAsync"/> would decide right now, without expiring or starting anything.</summary>
+    public async Task<Decision> GateAsync(CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        return SessionPolicy.Decide(Settings.Swipe, now, Settings.Zone, await store.LatestAsync(ct), await store.StartedSinceAsync(DayStart(now), ct));
+    }
+
     public async Task<NextResult> NextAsync(int? position, CancellationToken ct)
     {
         var o = Settings.Swipe;

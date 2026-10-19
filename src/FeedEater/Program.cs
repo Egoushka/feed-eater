@@ -1,4 +1,5 @@
 using FeedEater;
+using FeedEater.Api;
 using FeedEater.Eval;
 using FeedEater.Mcp;
 using FeedEater.Setup;
@@ -37,7 +38,7 @@ if (args.FirstOrDefault() == "import-opml")
 
 if (args.FirstOrDefault() == "token")
 {
-    return await FeedEater.Api.ApiTokenCommand.RunAsync(args[1..]);
+    return await ApiTokenCommand.RunAsync(args[1..]);
 }
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,6 +46,11 @@ builder.Host.UseSerilog((context, logging) => logging
     .ReadFrom.Configuration(context.Configuration)
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddFeedEater(builder.Configuration);
+builder.Services.AddProblemDetails();
+builder.Services.AddOpenApi("v1");
+builder.Services.AddSingleton<ApiRateLimiter>();
+builder.Services.AddTransient<ApiAuth>();
+builder.Services.AddTransient<ApiErrors>();
 
 var app = builder.Build();
 var feedEater = app.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
@@ -74,6 +80,7 @@ if (feedEater.Telegram.Token.Length > 0 && feedEater.Telegram.AllowedUserId == 0
 app.MapGet("/healthz", async (FeedDb db, CancellationToken ct) => await db.PingAsync(ct) ? Results.Ok() : Results.StatusCode(503));
 app.MapFeedEaterMcp(token);
 app.MapFeedEaterUi();
+app.MapFeedEaterApi();
 if (feedEater.Swipe.Enabled)
 {
     app.MapFeedEaterSwipe();
