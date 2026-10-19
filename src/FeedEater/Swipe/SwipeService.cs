@@ -9,7 +9,7 @@ namespace FeedEater.Swipe;
 
 public sealed record CardView(
     long Session, int Position, int Total, string Title, string Feed, string? Category, string Why, string? Url, string Age, bool HasSuggestion,
-    string Kind = "item", string? Back = null);
+    string Kind = "item", string? Back = null, IReadOnlyDictionary<string, string?>? Detail = null);
 
 public sealed record SummaryView(long Session, string Reason, int Cards, int Minutes, IReadOnlyDictionary<string, int> Acts, IReadOnlyList<string> Categories, bool Rated);
 
@@ -25,7 +25,7 @@ internal sealed record Queued(string Kind, long RefId, string? Category, string 
 /// <summary>Starts, resumes and ends sessions, hands out the cards and applies what the owner does with them. Every id the client names is a position in the session's own queue.</summary>
 public sealed class SwipeService(
     SwipeStore store, RecallStore recall, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
-    InboxStore inbox, CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
+    InboxStore inbox, InboxCards inboxCards, CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
 {
     public static readonly string[] Acts = ["idea", "save", "share", "like", "dislike", "open"];
     private static readonly string[] RecallActs = ["good", "again"];
@@ -83,7 +83,7 @@ public sealed class SwipeService(
         }
 
         var kind = s.QueueKinds.ElementAtOrDefault(position) ?? "item";
-        if (kind != "item")
+        if (kind is not ("item" or "digest"))
         {
             return await SpecialCardAsync(s, position, kind, now, ct);
         }
@@ -100,10 +100,11 @@ public sealed class SwipeService(
         var category = s.QueueCategories.ElementAtOrDefault(position);
         return new NextResult("card", Card: new CardView(
             s.Id, position, Math.Min(s.CardCap, s.QueueItems.Length), item.Title, item.Feed, string.IsNullOrEmpty(category) ? null : category,
-            Why(item), Html.SafeUrl(item.Url), Age(item.PublishedAt, now), item.Suggestion is not null));
+            Why(item), Html.SafeUrl(item.Url), Age(item.PublishedAt, now), item.Suggestion is not null, kind,
+            Detail: kind == "digest" ? new Dictionary<string, string?> { ["summary"] = item.Summary, ["suggestion"] = item.Suggestion } : null));
     }
 
-    /// <summary>A recall question or a post seed. One that no longer exists is skipped like a deleted item.</summary>
+    /// <summary>A recall question, a post seed or an inbox entry. One that no longer exists is skipped like a deleted item.</summary>
     private async Task<NextResult> SpecialCardAsync(SessionRow s, int position, string kind, DateTimeOffset now, CancellationToken ct)
     {
         var category = s.QueueCategories.ElementAtOrDefault(position);
@@ -116,6 +117,10 @@ public sealed class SwipeService(
         else if (kind == "seed" && await recall.SeedAsync(s.QueueItems[position], ct) is { } seed && await items.GetAsync(seed.ItemId, ct) is { } source)
         {
             view = new CardView(s.Id, position, total, seed.Angle, "post seed", Blank(category), "From: " + source.Title, Html.SafeUrl(source.Url), Age(source.PublishedAt, now), false, "seed");
+        }
+        else if (kind is not ("recall" or "seed") && await inbox.GetAsync(s.QueueItems[position], ct) is { } row)
+        {
+            view = await inboxCards.ViewAsync(row, s, position, total, now, ct);
         }
 
         await store.RaiseShownAsync(s.Id, position + 1, ct);
@@ -386,7 +391,7 @@ public sealed class SwipeService(
         return text;
     }
 
-    private static string Age(DateTime published, DateTimeOffset now)
+    internal static string Age(DateTime published, DateTimeOffset now)
     {
         var age = now - new DateTimeOffset(DateTime.SpecifyKind(published, DateTimeKind.Utc));
         return age.TotalHours < 1 ? "just now" : age.TotalDays < 1 ? $"{(int)age.TotalHours} h ago" : $"{(int)age.TotalDays} d ago";

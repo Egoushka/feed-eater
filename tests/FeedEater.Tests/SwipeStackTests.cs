@@ -1,4 +1,5 @@
 using Dapper;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -170,5 +171,149 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         Assert.Equal(digest.Skip(3), await new SwipeStore(pg.Db).DigestSlotsAsync(Now.AddDays(-3), default));
+    }
+
+    private async Task<CardView> FirstCardAsync()
+    {
+        var next = await Service().NextAsync(null, default);
+        Assert.Equal("card", next.Type);
+        return next.Card!;
+    }
+
+    private Task<long> AddAsync(string kind, JsonObject payload, long? itemId = null, long? refId = null) =>
+        new InboxStore(pg.Db).AddAsync(new InboxEntry($"{kind}:{Guid.NewGuid():N}", kind, itemId, refId, payload, DateTimeOffset.UtcNow.AddDays(7)), DateTimeOffset.UtcNow, default);
+
+    private async Task<T> ScalarAsync<T>(string sql, object? args = null)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return await c.ExecuteScalarAsync<T>(sql, args) ?? throw new InvalidOperationException("no row");
+    }
+
+    [Theory]
+    [InlineData("digest")]
+    [InlineData("follow")]
+    [InlineData("duel")]
+    [InlineData("release")]
+    [InlineData("idea")]
+    [InlineData("review")]
+    [InlineData("autopsy")]
+    [InlineData("notice")]
+    public async Task Each_kind_builds_its_card_from_the_payload_the_jobs_write(string kind)
+    {
+        var first = await ItemAsync(1);
+        var second = await ItemAsync(2);
+        string title, feed, why;
+        string? url;
+        (string, string?)[] detail;
+        switch (kind)
+        {
+            case "digest":
+                await SqlAsync("insert into reads (item_id, summary, why, kind, suggestion, model) values (@first, 'The gist', 'Because it matters', 'news', 'Try it', 'm')", new { first });
+                await SqlAsync("insert into digests (local_date, status, item_ids, sent_at) values ('2026-10-19', 'sent', @ids, @at)",
+                    new { ids = new[] { first }, at = DateTime.UtcNow.AddHours(-1) });
+                (title, feed, why) = ("Item 1", "Feed 1", "Because it matters");
+                url = await ScalarAsync<string>("select url from items where id = @first", new { first });
+                detail = [("summary", "The gist"), ("suggestion", "Try it")];
+                break;
+            case "follow":
+                await AddAsync("follow", new JsonObject { ["story"] = "Big story" }, first, 7);
+                (title, feed, why) = ("Item 1", "Feed 1", "New in a story you follow: Big story");
+                url = await ScalarAsync<string>("select url from items where id = @first", new { first });
+                detail = [("story", "Big story")];
+                break;
+            case "duel":
+                await AddAsync("duel", new JsonObject { ["a"] = first, ["b"] = second }, refId: 3);
+                (title, feed, why, url) = ("Which was more useful?", "duel", "", null);
+                detail = [("aTitle", "Item 1"), ("bTitle", "Item 2")];
+                break;
+            case "release":
+                await AddAsync("release", new JsonObject
+                {
+                    ["services"] = "grafana",
+                    ["running"] = "11.1",
+                    ["version"] = "11.2",
+                    ["url"] = "https://example.com/r",
+                    ["summary"] = "Fixes",
+                    ["breaking"] = true,
+                    ["urgent"] = false,
+                });
+                (title, feed, why, url) = ("grafana 11.1 → 11.2", "release", "Fixes", "https://example.com/r");
+                detail = [("breaking", "true"), ("urgent", "false")];
+                break;
+            case "idea":
+                await AddAsync("idea", new JsonObject
+                {
+                    ["week"] = "2026-W43",
+                    ["title"] = "Build a thing",
+                    ["project"] = "homelab",
+                    ["html"] = "<b>x</b>",
+                    ["url"] = "https://example.com/i",
+                    ["sourceTitle"] = "Source",
+                    ["signal"] = "s",
+                    ["why"] = "It fits",
+                    ["where"] = "src/",
+                    ["effort"] = "Small",
+                });
+                (title, feed, why, url) = ("Build a thing", "homelab", "It fits", "https://example.com/i");
+                detail = [("where", "src/"), ("effort", "Small"), ("sourceTitle", "Source")];
+                break;
+            case "review":
+                await AddAsync("review", new JsonObject { ["html"] = "<p>Week <b>one</b></p>" });
+                (title, feed, why, url) = ("Weekly review", "review", "Week one", null);
+                detail = [];
+                break;
+            case "autopsy":
+                await AddAsync("autopsy", new JsonObject { ["html"] = "<p>Hype</p>" });
+                (title, feed, why, url) = ("Hype autopsy", "autopsy", "Hype", null);
+                detail = [];
+                break;
+            default:
+                await AddAsync("notice", new JsonObject { ["text"] = "Digest failed" });
+                (title, feed, why, url) = ("Notice", "feed-eater", "Digest failed", null);
+                detail = [];
+                break;
+        }
+
+        var card = await FirstCardAsync();
+
+        Assert.Equal(kind, card.Kind);
+        Assert.Equal((title, feed, why, url), (card.Title, card.Feed, card.Why, card.Url));
+        foreach (var (key, value) in detail)
+        {
+            Assert.Equal(value, card.Detail![key]);
+        }
+
+        if (kind == "duel")
+        {
+            Assert.StartsWith("https://example.com/", card.Detail!["aUrl"], StringComparison.Ordinal);
+        }
+
+        if (detail.Length == 0)
+        {
+            Assert.Null(card.Detail);
+        }
+    }
+
+    [Fact]
+    public async Task A_duel_with_a_deleted_item_is_skipped()
+    {
+        await AddAsync("duel", new JsonObject { ["a"] = await ItemAsync(1), ["b"] = 99999 }, refId: 1);
+        await AddAsync("review", new JsonObject { ["html"] = "Next up" });
+
+        var card = await FirstCardAsync();
+
+        Assert.Equal("review", card.Kind);
+        Assert.Equal(1, card.Position);
+    }
+
+    [Fact]
+    public async Task Payload_html_and_script_stay_text()
+    {
+        await AddAsync("notice", new JsonObject { ["text"] = "<script>alert(1)</script>" });
+
+        var card = await FirstCardAsync();
+
+        Assert.Equal("<script>alert(1)</script>", card.Why);           // JSON carries the text; the page sets textContent
+        Assert.Equal(1, await ScalarAsync<int>("select shown_count from inbox"));
     }
 }
