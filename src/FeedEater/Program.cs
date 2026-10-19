@@ -37,6 +37,11 @@ if (args.FirstOrDefault() == "import-opml")
     return await ImportOpmlCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "import-karakeep")
+{
+    return await FeedEater.Library.ImportKarakeepCommand.RunAsync(args[1..]);
+}
+
 if (args.FirstOrDefault() == "token")
 {
     return await ApiTokenCommand.RunAsync(args[1..]);

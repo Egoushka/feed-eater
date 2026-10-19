@@ -1,0 +1,30 @@
+[
+  {
+    "itemId": 1,
+    "title": "Quokka backups",
+    "url": "https://example.com/item",
+    "feed": "Feed 1",
+    "publishedAt": "2026-01-01T00:00:00\u002B00:00",
+    "savedAt": "2026-01-01T00:00:00\u002B00:00",
+    "readAt": "2026-01-01T00:00:00\u002B00:00",
+    "note": "Worth a second look.",
+    "source": "api",
+    "summary": "s",
+    "fullText": false,
+    "enriched": false
+  },
+  {
+    "itemId": 4,
+    "title": "Shared page",
+    "url": "https://example.com/shared",
+    "feed": "",
+    "publishedAt": "2026-01-01T00:00:00\u002B00:00",
+    "savedAt": "2026-01-01T00:00:00\u002B00:00",
+    "readAt": null,
+    "note": null,
+    "source": "share",
+    "summary": null,
+    "fullText": false,
+    "enriched": false
+  }
+]

@@ -19,7 +19,8 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
     private bool _editFails;
     private bool _answerFails;
     private System.Net.HttpStatusCode _karakeepStatus = System.Net.HttpStatusCode.Created;
-    private string _karakeepToken = "k";
+    private string _karakeepToken = "";
+    private bool _mirror;
     private bool _localIdeas;
     private readonly List<string> _karakeepBodies = [];
     private System.Net.HttpStatusCode _planeStatus = System.Net.HttpStatusCode.Created;
@@ -39,7 +40,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         {
             TimeZone = "Europe/Kyiv",
             Telegram = new TelegramOptions { AllowedUserId = 42 },
-            Karakeep = new KarakeepOptions { BaseUrl = "http://karakeep/", Token = _karakeepToken },
+            Karakeep = new KarakeepOptions { BaseUrl = "http://karakeep/", Token = _karakeepToken, Mirror = _mirror },
             Plane = _localIdeas ? new PlaneOptions() : new PlaneOptions { BaseUrl = "http://plane/", Token = "p", Workspace = "homelab", FallbackProject = "FEED" },
         });
         var karakeepStub = new StubHandler((_, body) =>
@@ -69,7 +70,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         var feedback = new FeedbackStore(pg.Db);
         IIdeaSink sink = _localIdeas ? new LocalIdeaSink() : new PlaneIdeaSink(new PlaneClient(planeStub.Client("http://plane/"), options), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
-        var handler = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), new FeedEater.Signals.KarakeepClient(karakeepStub.Client("http://karakeep/")), options, NullLogger<CallbackHandler>.Instance);
+        var handler = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), Seed.Library(pg, options, karakeepStub), options, NullLogger<CallbackHandler>.Instance);
         // Embeddings fail, so search falls back to keywords; chat answers with the next _chat reply.
         var embedder = new StubHandler((request, body) =>
         {
@@ -175,9 +176,8 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Without_Karakeep_the_refreshed_keyboard_has_no_save_button()
+    public async Task Without_Karakeep_the_refreshed_keyboard_still_has_the_save_button()
     {
-        _karakeepToken = "";
         var id = await SeedReadItemAsync("Try it.");
         var (poller, _) = Build();
         _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"v:{id}:u")}}]}""";
@@ -185,7 +185,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         await poller.TickAsync(default);
 
         var markup = JsonSerializer.Deserialize<JsonElement>(_telegram.Single(t => t.Method == "editMessageReplyMarkup").Body);
-        Assert.Equal(["👍 ✓", "👎", "🧵"], markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0].EnumerateArray().Select(b => b.GetProperty("text").GetString()));
+        Assert.Equal(["👍 ✓", "👎", "📌 Save", "🧵"], markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0].EnumerateArray().Select(b => b.GetProperty("text").GetString()));
     }
 
     [Fact]
@@ -426,7 +426,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_save_button_creates_one_karakeep_bookmark_marks_the_buttons_and_is_idempotent()
+    public async Task The_save_button_saves_into_the_library_without_Karakeep_marks_the_buttons_and_is_idempotent()
     {
         var id = await SeedReadItemAsync("Try it.");
         var (poller, _) = Build();
@@ -434,61 +434,50 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
 
         await poller.TickAsync(default);
 
-        var body = JsonSerializer.Deserialize<JsonElement>(Assert.Single(_karakeepBodies));
-        Assert.Equal("link", body.GetProperty("type").GetString());
-        Assert.StartsWith("https://example.com/", body.GetProperty("url").GetString(), StringComparison.Ordinal);
-        Assert.Equal("Backup tool", body.GetProperty("title").GetString());
+        Assert.Empty(_karakeepBodies);
         Assert.True((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
-        Assert.Contains("Saved to Karakeep", Answers(), StringComparison.Ordinal);
-        Assert.Contains("Already saved", Answers(), StringComparison.Ordinal);
+        Assert.Equal("telegram", await SourceOfSavedAsync(id));
+        Assert.Equal(((short)1, 1f), await new FeedbackStore(pg.Db).VoteOfAsync(id, default));
+        Assert.Equal(["📌 Saved to your library", "Already in your library"], AnswerTexts());
         var markup = JsonSerializer.Deserialize<JsonElement>(_telegram.First(t => t.Method == "editMessageReplyMarkup").Body);
         Assert.Equal("📌 Saved ✓", markup.GetProperty("reply_markup").GetProperty("inline_keyboard")[0][2].GetProperty("text").GetString());
     }
 
     [Fact]
-    public async Task When_karakeep_is_down_nothing_is_recorded_and_the_button_says_so_and_works_later()
+    public async Task A_save_with_Karakeep_mirroring_down_still_saves_and_says_the_same()
     {
         var id = await SeedReadItemAsync("Try it.");
-        _karakeepStatus = System.Net.HttpStatusCode.ServiceUnavailable;
+        (_karakeepToken, _mirror, _karakeepStatus) = ("k", true, System.Net.HttpStatusCode.ServiceUnavailable);
         var (poller, _) = Build();
         _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"s:{id}")}}]}""";
 
         await poller.TickAsync(default);
 
-        Assert.False((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
-        Assert.Contains("Karakeep is not reachable", Answers(), StringComparison.Ordinal);
-        Assert.DoesNotContain(_telegram, t => t.Method == "editMessageReplyMarkup");
-
-        _karakeepStatus = System.Net.HttpStatusCode.Created;
-        _updates = $$"""{"ok":true,"result":[{{Callback(11, 42, $"s:{id}")}}]}""";
-        await poller.TickAsync(default);
         Assert.True((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
+        Assert.Equal(["📌 Saved to your library"], AnswerTexts());
     }
 
     [Fact]
-    public async Task Saving_without_a_token_or_without_a_web_link_or_from_someone_else_does_nothing()
+    public async Task A_save_from_someone_else_does_nothing_and_an_unknown_item_says_so()
     {
         var id = await SeedReadItemAsync("Try it.");
-        _karakeepToken = "";
         var (poller, _) = Build();
-        _updates = $$"""{"ok":true,"result":[{{Callback(10, 42, $"s:{id}")}},{{Callback(11, 999, $"s:{id}")}}]}""";
+        _updates = $$"""{"ok":true,"result":[{{Callback(10, 999, $"s:{id}")}},{{Callback(11, 42, "s:99999")}}]}""";
+
         await poller.TickAsync(default);
-        Assert.Contains("Karakeep is not configured", Answers(), StringComparison.Ordinal);
-        Assert.Contains("Not for you.", Answers(), StringComparison.Ordinal);
 
-        _karakeepToken = "k";
-        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
-        {
-            await Dapper.SqlMapper.ExecuteAsync(c, "update items set url = 'javascript:alert(1)' where id = @id", new { id });
-        }
-
-        var (second, _) = Build();
-        _updates = $$"""{"ok":true,"result":[{{Callback(12, 42, $"s:{id}")}}]}""";
-        await second.TickAsync(default);
-        Assert.Contains("no link to save", Answers(), StringComparison.Ordinal);
-        Assert.Empty(_karakeepBodies);
+        Assert.Equal(["Not for you.", "No such item"], AnswerTexts());
         Assert.False((await new ItemStore(pg.Db).GetAsync(id, default))!.Saved);
     }
+
+    private async Task<string> SourceOfSavedAsync(long id)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return await Dapper.SqlMapper.ExecuteScalarAsync<string>(c, "select source from saved where item_id = @id", new { id }) ?? "";
+    }
+
+    private List<string> AnswerTexts() => _telegram.Where(t => t.Method == "answerCallbackQuery")
+        .Select(t => JsonSerializer.Deserialize<JsonElement>(t.Body).GetProperty("text").GetString()!).ToList();
 
     [Theory]
     [InlineData("/quiet", "Quiet mode is on until")]

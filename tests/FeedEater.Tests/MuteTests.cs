@@ -85,7 +85,7 @@ public sealed class MuteTests(PostgresFixture pg) : IAsyncLifetime
         var id = await ItemAsync(1, "pgvector tuning", 1);
         await items.SetFeedMutedAsync(1, true, default);
 
-        Assert.Equal([id], (await items.SearchAsync(null, "pgvector", null, null, null, null, 10, default)).Select(h => h.Id));
+        Assert.Equal([id], (await items.SearchAsync(null, "pgvector", null, null, null, null, null, 10, default)).Select(h => h.Id));
     }
 
     [Fact]

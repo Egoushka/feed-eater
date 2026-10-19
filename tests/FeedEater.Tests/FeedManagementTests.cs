@@ -44,7 +44,7 @@ public sealed class FeedManagementTests(PostgresFixture pg) : IAsyncLifetime
         Assert.True(result.Ok);
         Assert.False(result.Existing);
         Assert.Equal(1, result.Items);
-        Assert.Equal(["Entry"], (await new ItemStore(pg.Db).SearchAsync(null, "Entry", null, null, null, null, 10, default)).Select(h => h.Title));
+        Assert.Equal(["Entry"], (await new ItemStore(pg.Db).SearchAsync(null, "Entry", null, null, null, null, null, 10, default)).Select(h => h.Title));
         var feed = Assert.Single(await kit.Feeds.ListAsync(default));
         Assert.Equal(title, feed.Title);
         Assert.Equal("https://x.example/feed", feed.FeedUrl);
@@ -147,7 +147,7 @@ public sealed class FeedsCommandTests(PostgresFixture pg) : IAsyncLifetime
         var llm = new FeedEater.Llm.LiteLlmClient(new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable)).Client("http://llm/"), new UsageStore(pg.Db), options);
         IIdeaSink sink = new PlaneIdeaSink(new PlaneClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://plane/"), options), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
-        var callbacks = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://k/")), options, NullLogger<CallbackHandler>.Instance);
+        var callbacks = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), Seed.Library(pg, options), options, NullLogger<CallbackHandler>.Instance);
         var search = new FeedEater.Search.ArchiveSearch(items, llm);
         var replies = new ReplyHandler(telegram, callbacks, items, new ProfileStore(pg.Db), llm, new FeedEater.Search.ItemAnswer(items, llm, options), sink, options, NullLogger<ReplyHandler>.Instance);
         return new CommandHandler(

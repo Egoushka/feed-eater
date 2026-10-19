@@ -6,6 +6,7 @@ using FeedEater.Duels;
 using FeedEater.Follow;
 using FeedEater.Hype;
 using FeedEater.Ingest;
+using FeedEater.Library;
 using FeedEater.Memory;
 using FeedEater.Plane;
 using FeedEater.Profiles;
@@ -54,7 +55,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true, extra: AllIntegrations);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(WeeklyIdeasJob), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(RepoSnapshotJob), typeof(AutopsyJob) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(WeeklyIdeasJob), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(ResurfaceJob), typeof(RepoSnapshotJob), typeof(AutopsyJob) }, Jobs(host));
     }
 
     [Fact]
@@ -70,7 +71,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true, telegramToken: "", extra: AllIntegrations);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(SignalJob), typeof(WeeklyRetain), typeof(ReleaseWatcher) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(SignalJob), typeof(WeeklyRetain), typeof(ReleaseWatcher) }, Jobs(host));
     }
 
     [Fact]
@@ -96,7 +97,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(ResurfaceJob) }, Jobs(host));
     }
 
     [Fact]

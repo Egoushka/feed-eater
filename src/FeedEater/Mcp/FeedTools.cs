@@ -12,7 +12,7 @@ namespace FeedEater.Mcp;
 public sealed class FeedTools(ArchiveSearch search, ItemStore items, DigestStore digests, FeedbackStore feedback)
 {
     [McpServerTool(Name = "feed_search", ReadOnly = true)]
-    [Description("Search the owner's research archive: every item from their feeds (news, blogs, releases), with an AI summary where one was written. Matches by meaning and by keywords. Optional filters: project or topic key, kind (improve, new, fyi), published range. Returns id, title, url, feed, date, summary, project, kind, the owner's vote.")]
+    [Description("Search the owner's research archive: every item from their feeds (news, blogs, releases), with an AI summary where one was written. Matches by meaning and by keywords. Optional filters: project or topic key, kind (improve, new, fyi), published range, saved (only items in the owner's library). Returns id, title, url, feed, date, summary, project, kind, the owner's vote.")]
     public async Task<string> SearchAsync(
         [Description("What to look for, in words.")] string query,
         [Description("Project or topic key from the owner's profile.")] string? project = null,
@@ -20,6 +20,7 @@ public sealed class FeedTools(ArchiveSearch search, ItemStore items, DigestStore
         [Description("Published at or after, ISO 8601.")] DateTimeOffset? from = null,
         [Description("Published before, ISO 8601.")] DateTimeOffset? to = null,
         [Description("At most this many results, 1 to 50; default 20.")] int limit = 20,
+        [Description("True to search only the items the owner saved to their library; default searches everything.")] bool? saved = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -27,7 +28,7 @@ public sealed class FeedTools(ArchiveSearch search, ItemStore items, DigestStore
             throw new McpProtocolException("query is empty.", McpErrorCode.InvalidParams);
         }
 
-        return Json(await search.SearchAsync(query, project, kind, from, to, Math.Clamp(limit, 1, 50), ct));
+        return Json(await search.SearchAsync(query, project, kind, from, to, saved, Math.Clamp(limit, 1, 50), ct));
     }
 
     [McpServerTool(Name = "feed_read", ReadOnly = true)]

@@ -60,7 +60,7 @@ public static class ItemsApi
             .WithName("AskArchive")
             .Produces<AskResponse>();
 
-        group.MapGet("/search", async (string? q, string? kind, string? project, DateTimeOffset? from, DateTimeOffset? to, int? limit, ArchiveSearch search, CancellationToken ct) =>
+        group.MapGet("/search", async (string? q, string? kind, string? project, DateTimeOffset? from, DateTimeOffset? to, bool? saved, int? limit, ArchiveSearch search, CancellationToken ct) =>
             {
                 var query = q?.Trim();
                 if (string.IsNullOrEmpty(query) || query.Length > MaxQuery)
@@ -69,7 +69,7 @@ public static class ItemsApi
                 }
 
                 var hits = await search.SearchAsync(
-                    query, project, kind, from, to, Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit), ct);
+                    query, project, kind, from, to, saved, Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit), ct);
                 return Results.Ok(hits.Select(Hit).ToList());
             })
             .WithName("SearchArchive")
@@ -87,7 +87,7 @@ public static class ItemsApi
     private static IResult NotFound() => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "No such item");
 
     private static ApiHit Hit(SearchHit h) =>
-        new(h.Id, h.Title, Html.SafeUrl(h.Url), h.Feed, Utc(h.PublishedAt), h.Summary, h.Project, h.Kind, (short?)h.Vote);
+        new(h.Id, h.Title, Html.SafeUrl(h.Url), h.Feed, Utc(h.PublishedAt), h.Summary, h.Project, h.Kind, (short?)h.Vote, h.Saved);
 
     private static DateTimeOffset Utc(DateTime utc) => new(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
 

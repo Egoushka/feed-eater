@@ -28,12 +28,12 @@ public sealed record DigestHeader(
     DateOnly Date, int Shown, int Candidates, IReadOnlyList<(string Key, int Count)> ByProject,
     int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes, IReadOnlyList<string>? Releases = null, int UnpricedCalls = 0);
 
-/// <summary>Which optional buttons a surface offers: 📌 needs Karakeep, and the filed-idea label says where the idea went.</summary>
+/// <summary>Which optional buttons a surface offers: the filed-idea label says where the idea went.</summary>
 public sealed record ButtonStyle(bool CanSave, bool ToPlane)
 {
     public static readonly ButtonStyle Default = new(true, true);
 
-    public static ButtonStyle From(FeedEaterOptions o) => new(o.Karakeep.Enabled, o.IdeaSink == IdeasOptions.PlaneSink);
+    public static ButtonStyle From(FeedEaterOptions o) => new(true, o.IdeaSink == IdeasOptions.PlaneSink);
 }
 
 /// <summary>

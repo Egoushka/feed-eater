@@ -30,7 +30,9 @@ public sealed class DigestRun(
     IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null)
 {
     private const int TriageMaxTokens = 200;
-    private const int ReadMaxTokens = 600;
+
+    // Stateless; built here so the constructor, and every caller of it, stays as it was.
+    private readonly ItemReader reader = new(analysis, profiles, llm, options);
 
     public async Task RunAsync(string date, CancellationToken ct)
     {
@@ -127,7 +129,8 @@ public sealed class DigestRun(
         var dayStart = new DateTimeOffset(localDay, zone.GetUtcOffset(localDay));
         var floor = now - TimeSpan.FromDays(o.Caps.CandidateDays);
         var candidates = await items.CandidatesAsync(floor, dayStart, ct);
-        var profileList = await profiles.AllAsync(ct);
+        var readContext = await reader.ContextAsync(ct);
+        var profileList = readContext.Profiles;
         var taste = Taste.Build(
             await feedback.PositiveWeightedAsync(o.Caps.Centroid, ct), await feedback.NegativeWeightedAsync(o.Caps.Centroid, ct),
             await feedback.FeedVotesAsync(ct), o.Weights);
@@ -145,14 +148,13 @@ public sealed class DigestRun(
         await items.SetScoresAsync(scored, ct);
 
         var byId = candidates.ToDictionary(c => c.Id);
-        var keys = profileList.Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
-        var (profile, isExample) = ProfileFile.LoadOrExample(o.ProfilePath);
-        if (isExample)
+        var keys = readContext.Keys;
+        if (readContext.IsExample)
         {
             notes.Add(ProfileFile.ExampleNote(o.ProfilePath));
         }
 
-        var about = profile.About;
+        var about = readContext.About;
 
         var budgetSpent = false;
         var triaged = new List<(Scored Score, TriageResult Triage)>();
@@ -227,14 +229,8 @@ public sealed class DigestRun(
                 try
                 {
                     var text = await itemText.FullTextAsync(c, ct);
-                    var match = profileList.FirstOrDefault(p => p.Key == (t.Project ?? s.ProfileKey));
                     var facts = await RepoFactsAsync(repoFacts, c.Url, text, ct);
-                    var (system, user) = Prompts.Read(about, profileList, match, c.Title, c.Url, c.FeedTitle, text, o.Caps.ReadChars, facts, Clip(c.ExtraText, o.Fetch.PageChars));
-                    r = LlmJson.Read((await llm.ChatAsync(o.Llm.ReadModel, system, user, ReadMaxTokens, "read", ct)).Content, keys);
-                    if (r is not null)
-                    {
-                        await analysis.SaveReadAsync(s.ItemId, r, o.Llm.ReadModel, ct);
-                    }
+                    r = await reader.ReadAsync(c, text, readContext, t.Project ?? s.ProfileKey, facts, Clip(c.ExtraText, o.Fetch.PageChars), ct);
                 }
                 catch (BudgetExceededException)
                 {

@@ -9,6 +9,7 @@ using FeedEater.Follow;
 using FeedEater.Hype;
 using FeedEater.Inbox;
 using FeedEater.Ingest;
+using FeedEater.Library;
 using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Memory;
@@ -135,6 +136,9 @@ public static class ServiceRegistration
             Bearer(http, o.Token);
         });
 
+        services.AddSingleton<ItemReader>();
+        services.AddSingleton<LibraryStore>();
+        services.AddSingleton<LibraryService>();
         services.AddSingleton<DigestRun>();
         services.AddSingleton<PlaneIdeaSink>();
         services.AddSingleton<LocalIdeaSink>();
@@ -162,6 +166,7 @@ public static class ServiceRegistration
         {
             services.AddHostedService<Ingestor>();
             services.AddHostedService<ProfileBuilder>();
+            services.AddHostedService<LibraryEnricher>();
             if (settings.Swipe.Enabled)
             {
                 services.AddHostedService<CategoryBuilder>();
@@ -217,6 +222,8 @@ public static class ServiceRegistration
                 {
                     services.AddHostedService<FollowJob>();
                 }
+
+                services.AddHostedService<ResurfaceJob>();
             }
 
             // The autopsy reaches the owner through the inbox; the snapshots are only worth taking when it can.

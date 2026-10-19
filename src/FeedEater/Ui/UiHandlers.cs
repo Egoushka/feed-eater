@@ -114,7 +114,7 @@ public sealed class UiHandlers(
         IReadOnlyList<SearchHit>? hits = null;
         if (q.Text.Length > 0)
         {
-            hits = await search.SearchAsync(q.Text, q.Project, q.Kind is "improve" or "new" or "fyi" ? q.Kind : null, Day(q.From, false), Day(q.To, true), SearchLimit, ct);
+            hits = await search.SearchAsync(q.Text, q.Project, q.Kind is "improve" or "new" or "fyi" ? q.Kind : null, Day(q.From, false), Day(q.To, true), null, SearchLimit, ct);
         }
 
         return Html(UiPages.Search(Context(ctx), q, keys, hits));
@@ -262,8 +262,8 @@ public sealed class UiHandlers(
                 await callbacks.ClearVoteAsync(id, ct);
                 return SeeOther(ctx, back);
             case "save":
-                var saved = await callbacks.SaveAsync(id, ct);
-                return SeeOther(ctx, saved is SaveOutcome.Saved or SaveOutcome.AlreadySaved ? back : WithNotice(back, saved == SaveOutcome.NotConfigured ? "save-off" : saved == SaveOutcome.Refused ? "save-refused" : "save-down"));
+                var saved = await callbacks.SaveAsync(id, "ui", ct);
+                return SeeOther(ctx, saved == SaveOutcome.NoItem ? WithNotice(back, "save-missing") : back);
             case "idea":
                 var (project, _) = await callbacks.FileIdeaAsync(id, ct);
                 return SeeOther(ctx, WithNotice(back, project is null ? "file-failed" : Settings.IdeaSink == IdeasOptions.PlaneSink ? "filed" : "saved-idea"));

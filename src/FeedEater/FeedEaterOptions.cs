@@ -38,6 +38,7 @@ public sealed class FeedEaterOptions
     public WeeklyIdeasOptions WeeklyIdeas { get; set; } = new();
     public PlaneOptions Plane { get; set; } = new();
     public KarakeepOptions Karakeep { get; set; } = new();
+    public LibraryOptions Library { get; set; } = new();
     public GitHubOptions GitHub { get; set; } = new();
     public HindsightOptions Hindsight { get; set; } = new();
     public ClusterOptions Cluster { get; set; } = new();
@@ -459,12 +460,30 @@ public sealed class KarakeepOptions
     /// <summary>On when the server and its API key are set.</summary>
     public bool Enabled => BaseUrl.Length > 0 && Token.Length > 0;
 
-    [Description("Karakeep server URL. Empty means no Karakeep: no 📌 button, no bookmark import.")]
+    [Description("Karakeep server URL. Empty means no Karakeep: no mirror of saves, no bookmark import.")]
     public string BaseUrl { get; set; } = "";
 
     [Secret]
     [Description("Karakeep API key.")]
     public string Token { get; set; } = "";
+
+    [Description("Copy each new save to Karakeep as a bookmark. The library works without it.")]
+    public bool Mirror { get; set; }
+}
+
+public sealed class LibraryOptions
+{
+    [Description("Saved items the background enrichment (full text, read, embedding) handles per pass.")]
+    public int EnrichBatch { get; set; } = 5;
+
+    [Description("How long the enrichment loop waits after a pass that found nothing to do. After a pass that did work it waits 30 seconds.")]
+    public TimeSpan EnrichIdle { get; set; } = TimeSpan.FromMinutes(5);
+
+    [Description("A saved item still unread after this many days is a candidate for the weekly resurface.")]
+    public int ResurfaceDays { get; set; } = 14;
+
+    [Description("At most this many saved items are resurfaced in one week.")]
+    public int ResurfacePerWeek { get; set; } = 3;
 }
 
 public sealed class GitHubOptions

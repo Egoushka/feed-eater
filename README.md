@@ -52,7 +52,7 @@ prints the effective values with secrets masked.
 | `FeedEater:Miniflux:BaseUrl`, `Token` | no | use Miniflux as the feed source instead of the built-in reader; read-only use |
 | `FeedEater:TimeZone` | no | default `UTC`; set an IANA name such as `Europe/Berlin` for the digest time, quiet hours and shown dates |
 | `FeedEater:Plane:BaseUrl`, `Token`, `Workspace` | no | without them 💡 saves ideas to the local list (`/ui/ideas`) |
-| `FeedEater:Karakeep:BaseUrl`, `Token` | no | without them there is no 📌 button and no bookmark import |
+| `FeedEater:Karakeep:BaseUrl`, `Token` | no | without them there is no Karakeep mirror and no bookmark import |
 | `FeedEater:Hindsight:BaseUrl` | no | weekly summary to the `feed-eater` bank; off without it |
 | `FeedEater:GitHub:User` | no | stars of this user count as liked items; off without it. With a Telegram token it also turns on the hype autopsy (`/ui/autopsy`) |
 | `FeedEater:GitHub:Token` | no | sent on every GitHub call; lifts the 60 requests an hour limit (the autopsy snapshots stop at 40 requests a run without it) |
@@ -138,7 +138,7 @@ vote kind and per profile for use without the picture. It needs at least 3 embed
   maps images to upstream GitHub repos (add rows for more). A release newer than the pinned version is read by the model (what changed,
   breaking yes/no/unknown with a quote); one that mentions security, a CVE, a vulnerability or breaking goes to Telegram on its own,
   the rest in the digest header. `/ui/releases` lists products and releases. Each release is announced once; nothing is applied.
-- **📌 Save** (Telegram, Today, Posts, Feedback, item page) bookmarks the link in Karakeep once; the button is hidden without Karakeep. Karakeep being down gives a notice.
+- **📌 Save** (Telegram, Today, Posts, Feedback, item page) saves the item to the library; it always shows. With Karakeep set it also mirrors the bookmark there, and Karakeep being down never fails the save.
 - **Suggested feeds** on `/ui/sources`: domains behind your 👍 items that no subscribed feed covers, with the feed URL found on the
   homepage (3 domains per poll, rechecked after 30 days). Subscribe in Miniflux yourself.
 - **Prompt eval.** `dotnet FeedEater.dll eval --max-usd 0.25 [--max-items 40] [--reads] [--out report.md]` re-runs the current prompts

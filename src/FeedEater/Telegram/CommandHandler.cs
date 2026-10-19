@@ -205,7 +205,7 @@ public sealed class CommandHandler(
     private async Task SearchAsync(TgMessage message, string query, CancellationToken ct)
     {
         query = Clip(query);
-        var hits = await search.SearchAsync(query, null, null, null, null, MaxResults, ct);
+        var hits = await search.SearchAsync(query, null, null, null, null, null, MaxResults, ct);
         if (hits.Count == 0)
         {
             await ReplyAsync(message, $"Nothing found for {WebUtility.HtmlEncode(query.Length <= 80 ? query : query[..80] + "…")}.", ct);

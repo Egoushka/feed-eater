@@ -91,7 +91,7 @@ public sealed class ReplyHandler(
                 return project is null ? $"Not filed: {E(error ?? "")}" : $"💡 {E(sink.Filed(project))}";
 
             case "save":
-                return CallbackHandler.SaveMessage(await callbacks.SaveAsync(item.Id, ct));
+                return CallbackHandler.SaveMessage(await callbacks.SaveAsync(item.Id, "telegram", ct));
 
             case "mute":
                 if (item.FeedId is not { } feedId || !await items.SetFeedMutedAsync(feedId, true, ct))

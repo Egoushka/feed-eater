@@ -147,12 +147,13 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         var id = Guid.NewGuid();
         var session = await StartSessionAsync();
 
-        Assert.Null(await acts.ClaimAsync(id, session, 0, "like", ((short)-1, 0.5f), default));
+        Assert.Null(await acts.ClaimAsync(id, session, 0, "like", ((short)-1, 0.5f), true, default));
         await acts.CompleteAsync(id, true, "Liked", default);
-        var again = await acts.ClaimAsync(id, session, 0, "like", null, default);
+        var again = await acts.ClaimAsync(id, session, 0, "like", null, false, default);
 
         Assert.Equal("Liked", again!.Message);
         Assert.Equal((short)-1, again.PreviousValue);
+        Assert.True((await acts.GetAsync(id, default))!.PreviouslySaved);   // the first claim's value stays
     }
 
     [Fact]
@@ -474,7 +475,7 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         });
         var sp = app!.Services;
         var decisions = new IdeaDecisions(new InboxStore(pg.Db), new WeeklyIdeaStore(pg.Db), new PlaneClient(plane.Client("http://plane/"), options), TimeProvider.System);
-        var cards = new InboxCards(new InboxStore(pg.Db), sp.GetRequiredService<ItemStore>(), new DuelStore(pg.Db), sp.GetRequiredService<FeedEater.Follow.StoryFollower>(), TimeProvider.System, decisions);
+        var cards = new InboxCards(new InboxStore(pg.Db), sp.GetRequiredService<ItemStore>(), new DuelStore(pg.Db), sp.GetRequiredService<FeedEater.Follow.StoryFollower>(), sp.GetRequiredService<FeedEater.Library.LibraryStore>(), sp.GetRequiredService<FeedEater.Library.LibraryService>(), TimeProvider.System, decisions);
         return ActivatorUtilities.CreateInstance<SwipeService>(sp, cards);
     }
 

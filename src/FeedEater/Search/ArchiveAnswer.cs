@@ -33,7 +33,7 @@ public sealed partial class ArchiveAnswer(ArchiveSearch search, ItemStore items,
     /// <summary>The answer and the cited hits, ordered by their source number.</summary>
     public async Task<AskResult> AnswerAsync(string question, CancellationToken ct)
     {
-        var hits = await search.SearchAsync(question, null, null, null, null, Sources, ct);
+        var hits = await search.SearchAsync(question, null, null, null, null, null, Sources, ct);
         if (hits.Count == 0)
         {
             return new AskResult(Prompts.NothingFound, []);

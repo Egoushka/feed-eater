@@ -9,7 +9,7 @@ public sealed record ClusterMember(long Id, string Title, string Url, string Fee
 public sealed record Feed(long Id, string Title, string? Category, string? SiteUrl, bool Muted = false, string? FeedUrl = null);
 
 public sealed record NewItem(
-    long? EntryId, long FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
+    long? EntryId, long? FeedId, string Url, string CanonicalUrl, string TitleHash, string Title, DateTime PublishedAt, string Content,
     string? LinkUrl = null, long? HnId = null, string? SourceKey = null, bool Backfilled = false);
 
 public sealed record PendingLink(long Id, string? LinkUrl, long? HnId);
@@ -159,6 +159,27 @@ public sealed class ItemStore(FeedDb db)
             """, item, cancellationToken: ct));
     }
 
+    /// <summary>The oldest item with this canonical URL that is not a duplicate of another; failing that, the original the oldest duplicate points at.</summary>
+    public async Task<long?> FindByCanonicalAsync(string canonicalUrl, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<long?>(new CommandDefinition(
+            """
+            select coalesce(
+                (select id from items where canonical_url = @canonicalUrl and duplicate_of is null order by id limit 1),
+                (select duplicate_of from items where canonical_url = @canonicalUrl and duplicate_of is not null order by id limit 1))
+            where @canonicalUrl <> ''
+            """,
+            new { canonicalUrl }, cancellationToken: ct));
+    }
+
+    public async Task<long?> FindBySourceKeyAsync(string sourceKey, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "select id from items where source_key = @sourceKey", new { sourceKey }, cancellationToken: ct));
+    }
+
     public async Task<long> MaxEntryIdAsync(CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
@@ -172,6 +193,14 @@ public sealed class ItemStore(FeedDb db)
         return (await c.QueryAsync<PendingEmbed>(new CommandDefinition(
             "select id, title, content, url from items where embedding is null and not backfilled and id <> all(@exclude) order by id limit @limit",
             new { limit, exclude }, cancellationToken: ct))).ToList();
+    }
+
+    /// <summary>The item's embed input when it has no vector yet; null when it is embedded or does not exist.</summary>
+    public async Task<PendingEmbed?> UnembeddedAsync(long id, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.QuerySingleOrDefaultAsync<PendingEmbed>(new CommandDefinition(
+            "select id, title, content, url from items where id = @id and embedding is null", new { id }, cancellationToken: ct));
     }
 
     public async Task SetEmbeddingsAsync(IReadOnlyList<(long Id, float[] Vector)> rows, CancellationToken ct)
@@ -505,7 +534,7 @@ public sealed class ItemStore(FeedDb db)
     /// A null vector searches keywords only.
     /// </summary>
     public async Task<IReadOnlyList<SearchHit>> SearchAsync(
-        float[]? vector, string text, string? project, string? kind, DateTimeOffset? from, DateTimeOffset? to, int limit, CancellationToken ct)
+        float[]? vector, string text, string? project, string? kind, DateTimeOffset? from, DateTimeOffset? to, bool? saved, int limit, CancellationToken ct)
     {
         const string Filter =
             """
@@ -515,6 +544,7 @@ public sealed class ItemStore(FeedDb db)
             and (@kind::text is null or exists (select 1 from reads r where r.item_id = i.id and r.kind = @kind))
             and (@from::timestamptz is null or i.published_at >= @from)
             and (@to::timestamptz is null or i.published_at < @to)
+            and (@saved is not true or exists (select 1 from saved s where s.item_id = i.id))
             """;
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
@@ -552,6 +582,6 @@ public sealed class ItemStore(FeedDb db)
             order by fused.rrf desc
             limit @limit
             """,
-            new { vector, text, project, kind, from = from?.UtcDateTime, to = to?.UtcDateTime, limit }, transaction: tx, cancellationToken: ct))).ToList();
+            new { vector, text, project, kind, from = from?.UtcDateTime, to = to?.UtcDateTime, saved, limit }, transaction: tx, cancellationToken: ct))).ToList();
     }
 }

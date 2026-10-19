@@ -140,6 +140,12 @@ public static class SwipeEndpoints
             <button type="button" data-do="keep" aria-label="Keep the idea">✅</button>
             <button type="button" data-do="open" aria-label="Open the link">↗</button>
           </div>
+          <div data-for="resurface">
+            <button type="button" data-do="remove" aria-label="Remove from the library">🗑 remove</button>
+            <button type="button" data-do="keep" aria-label="Keep it saved">✅ keep</button>
+            <button type="button" data-do="read" aria-label="Mark as read">✓ read</button>
+            <button type="button" data-do="open" aria-label="Open the link">↗ open</button>
+          </div>
           <div data-for="info">
             <button type="button" data-do="open" aria-label="Open the link">↗</button>
           </div>

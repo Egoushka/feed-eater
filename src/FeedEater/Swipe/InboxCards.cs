@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using FeedEater.Inbox;
 using FeedEater.Follow;
+using FeedEater.Library;
 using FeedEater.Storage;
 using FeedEater.Text;
 using FeedEater.Ui;
@@ -9,22 +10,27 @@ using FeedEater.WeeklyIdeas;
 namespace FeedEater.Swipe;
 
 /// <summary>The swipe cards for inbox entries and what the owner can do with them. Payloads are the jobs' own (see their <c>InboxEntry</c> calls); every string is plain text.</summary>
-public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duels, StoryFollower follower, TimeProvider time, IdeaDecisions? ideas = null)
+public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duels, StoryFollower follower, LibraryStore library, LibraryService libraryService, TimeProvider time, IdeaDecisions? ideas = null)
 {
     private static readonly string[] OpenOnly = ["open"];
     private static readonly string[] FollowActs = ["save", "like", "dislike", "open", "stop"];
     private static readonly string[] DuelActs = ["pick_a", "pick_b"];
     private static readonly string[] IdeaActs = ["keep", "drop", "open"];
+    private static readonly string[] ResurfaceActs = ["keep", "remove", "read", "open"];
 
     /// <summary>The acts a card of this inbox kind takes; empty for a kind with no card.</summary>
     /// <summary>The message of a stop that closed nothing; <see cref="SwipeService.UndoAsync"/> reads it to refuse the undo.</summary>
     public const string AlreadyStopped = "Already stopped";
+
+    /// <summary>The message of a read on an item that was already read; undo leaves its read time alone.</summary>
+    public const string AlreadyRead = "Already read";
 
     public static string[] ActsFor(string kind) => kind switch
     {
         InboxKinds.Follow => FollowActs,
         InboxKinds.Duel => DuelActs,
         InboxKinds.Idea => IdeaActs,
+        InboxKinds.Resurface => ResurfaceActs,
         InboxKinds.Release or InboxKinds.Review or InboxKinds.Autopsy or InboxKinds.Notice => OpenOnly,
         _ => [],
     };
@@ -38,6 +44,7 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
             InboxKinds.Duel => await DuelAsync(row, s, position, total, now, ct),
             InboxKinds.Release => Release(row, s, position, total, now),
             InboxKinds.Idea => Idea(row, s, position, total, now),
+            InboxKinds.Resurface => await ResurfaceAsync(row, s, position, total, now, ct),
             InboxKinds.Review => Plain(row, s, position, total, now, "Weekly review", "review", null, HtmlText.ToPlain(Str(row.Payload, "html"))),
             InboxKinds.Autopsy => Plain(row, s, position, total, now, "Hype autopsy", "autopsy", Html.SafeUrl("/ui/autopsy"), HtmlText.ToPlain(Str(row.Payload, "html"))),
             InboxKinds.Notice => Plain(row, s, position, total, now, "Notice", "feed-eater", null, Str(row.Payload, "text") ?? ""),
@@ -61,6 +68,19 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
         var story = Str(row.Payload, "story") ?? "";
         return new CardView(s.Id, position, total, item.Title, item.Feed, null, "New in a story you follow: " + story, Html.SafeUrl(item.Url),
             SwipeService.Age(item.PublishedAt, now), false, InboxKinds.Follow, Detail: new Dictionary<string, string?> { ["story"] = story });
+    }
+
+    private async Task<CardView?> ResurfaceAsync(InboxRow row, SessionRow s, int position, int total, DateTimeOffset now, CancellationToken ct)
+    {
+        if (row.ItemId is not { } id || await items.GetAsync(id, ct) is not { } item || await library.GetAsync(id, ct) is not { ReadAt: null } saved)
+        {
+            return null;
+        }
+
+        var days = Math.Max(0, (int)(now - SessionPolicy.Utc(saved.SavedAt)).TotalDays);
+        return new CardView(s.Id, position, total, item.Title, item.Feed, null, $"Saved {days} days ago, still unread", Html.SafeUrl(item.Url),
+            SwipeService.Age(item.PublishedAt, now), false, InboxKinds.Resurface,
+            Detail: new Dictionary<string, string?> { ["savedAt"] = saved.SavedAt.ToString("yyyy-MM-dd") });
     }
 
     private async Task<CardView?> DuelAsync(InboxRow row, SessionRow s, int position, int total, DateTimeOffset now, CancellationToken ct)
@@ -108,6 +128,13 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
                 return new ActResult(true, "");
             case (InboxKinds.Follow, "stop"):
                 return await follower.CloseAsync(row.RefId ?? 0, null, ct) ? new ActResult(true, "Stopped following") : new ActResult(true, AlreadyStopped);
+            case (InboxKinds.Resurface, "keep"):
+                return new ActResult(true, "Kept");
+            case (InboxKinds.Resurface, "read") when row.ItemId is { } readId && await library.GetAsync(readId, ct) is { ReadAt: not null }:
+                return new ActResult(true, AlreadyRead);
+            case (InboxKinds.Resurface, "remove" or "read") when row.ItemId is { } itemId:
+                var changed = act == "remove" ? await libraryService.UnsaveAsync(itemId, ct) : await library.MarkReadAsync(itemId, true, time.GetUtcNow(), ct);
+                return new ActResult(true, !changed ? "Not in your library any more" : act == "remove" ? "Removed from your library" : "Marked read");
             case (InboxKinds.Duel, "pick_a" or "pick_b"):
                 var answer = await duels.AnswerAsync(row.RefId ?? 0, act == "pick_a" ? 'a' : 'b', ct);
                 return answer.Outcome switch

@@ -35,6 +35,7 @@ public static class ApiEndpoints
         group.MapSwipeApi();
         group.MapItemsApi();
         group.MapManageApi();
+        group.MapLibraryApi();
 
         return group;
     }

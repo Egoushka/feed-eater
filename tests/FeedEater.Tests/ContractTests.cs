@@ -127,6 +127,7 @@ public sealed partial class ContractTests(PostgresFixture pg) : IAsyncLifetime
     {
         var a = await Seed.ItemAsync(pg, 1, "Quokka backups", TestVectors.OneHot(1), DateTime.UtcNow.AddHours(-2), content: "Quokka backups run nightly.");
         var b = await Seed.ItemAsync(pg, 1, "Quokka habitat", TestVectors.OneHot(2), DateTime.UtcNow.AddHours(-3));
+        await Seed.ReadAsync(pg, a, "homelab", "improve");
         var inbox = App.Services.GetRequiredService<FeedEater.Storage.InboxStore>();
         var now = DateTimeOffset.UtcNow;
         var expires = now.AddDays(7);
@@ -177,6 +178,12 @@ public sealed partial class ContractTests(PostgresFixture pg) : IAsyncLifetime
         await SampleAsync("item-ask", HttpMethod.Post, $"/api/v1/items/{a}/ask", new { question = "How often?" });
         await SampleAsync("start-follow", HttpMethod.Post, "/api/v1/follows", new { itemId = b });
         await SampleAsync("add-feed", HttpMethod.Post, "/api/v1/feeds", new { url = "https://good.example/feed" }, HttpStatusCode.Created);
+        await SampleAsync("library-save", HttpMethod.Post, "/api/v1/library", new { url = "https://example.com/shared", title = "Shared page" }, HttpStatusCode.Created);
+        Assert.Equal(HttpStatusCode.Created, (await CallAsync(HttpMethod.Post, $"/api/v1/library/{a}")).Status);
+        var auth = "Bearer " + await ApiHost.TokenAsync(App);
+        Assert.Equal(HttpStatusCode.NoContent, (await ApiHost.RawAsync(App.CreateClient(), HttpMethod.Post, $"/api/v1/library/{a}/read", auth, body: """{"read":true}""")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await ApiHost.RawAsync(App.CreateClient(), HttpMethod.Put, $"/api/v1/library/{a}/note", auth, body: """{"note":"Worth a second look."}""")).StatusCode);
+        await SampleAsync("library-list", HttpMethod.Get, "/api/v1/library?state=all");
         MatchFixtures();
     }
 
