@@ -1,6 +1,8 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
+using FeedEater.Inbox;
 using FeedEater.Llm;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -14,7 +16,7 @@ public enum FollowOutcome { Started, AlreadyFollowing, TooMany, NoItem, Off }
 /// The model only writes the summary; when it fails the close still sends the links.
 /// </summary>
 public sealed class StoryFollower(
-    FollowStore follows, ItemStore items, TelegramClient telegram, LiteLlmClient llm, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<StoryFollower> logger)
+    FollowStore follows, ItemStore items, TelegramClient telegram, IInbox inbox, LiteLlmClient llm, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<StoryFollower> logger)
 {
     /// <summary>A story follows a little looser than a cluster, which is built on the strictest match.</summary>
     private const double Margin = 0.04;
@@ -55,6 +57,11 @@ public sealed class StoryFollower(
 
         var now = time.GetUtcNow().UtcDateTime;
         var id = await follows.StartAsync(itemId, now, now.AddDays(o.Days), ct);
+        if (options.Value.Telegram.Token.Length == 0)
+        {
+            return FollowOutcome.Started;   // the app shows the follow on its screen; there is no root message to reply to
+        }
+
         try
         {
             await follows.SetRootMessageAsync(id, await telegram.SendAsync(options.Value.Telegram.AllowedUserId, FollowFormatter.Root(item.Title, item.Url, o.Days, id), ct), ct);
@@ -89,7 +96,9 @@ public sealed class StoryFollower(
 
             try
             {
-                await telegram.SendAsync(o.Telegram.AllowedUserId, FollowFormatter.Update(item, style), ct, follow.RootMessageId);
+                await inbox.AddAsync(new InboxEntry($"follow:{follow.Id}:{id}", InboxKinds.Follow, ItemId: id, RefId: follow.Id,
+                    Payload: new JsonObject { ["story"] = follow.Title }, ExpiresAt: time.GetUtcNow().AddDays(7)),
+                    FollowFormatter.Update(item, style), ct, follow.RootMessageId);
                 sent++;
             }
             catch (TelegramException ex) when (ex.Permanent)
@@ -109,6 +118,11 @@ public sealed class StoryFollower(
         if (await follows.ActiveAsync(followId, ct) is not { } follow || !await follows.CloseAsync(followId, ct))
         {
             return false;
+        }
+
+        if (options.Value.Telegram.Token.Length == 0)
+        {
+            return true;
         }
 
         try
