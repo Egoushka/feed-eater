@@ -123,6 +123,15 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Karakeep:Mirror` | `false` | Copy each new save to Karakeep as a bookmark. The library works without it. |
 | `FeedEater:Karakeep:Token` | (empty) | Karakeep API key. |
 
+## Library
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Library:EnrichBatch` | `5` | Saved items the background enrichment (full text, read, embedding) handles per pass. |
+| `FeedEater:Library:EnrichIdle` | `00:05:00` | How long the enrichment loop waits after a pass that found nothing to do. After a pass that did work it waits 30 seconds. |
+| `FeedEater:Library:ResurfaceDays` | `14` | A saved item still unread after this many days is a candidate for the weekly resurface. |
+| `FeedEater:Library:ResurfacePerWeek` | `3` | At most this many saved items are resurfaced in one week. |
+
 ## Llm
 
 | Key | Default | Description |

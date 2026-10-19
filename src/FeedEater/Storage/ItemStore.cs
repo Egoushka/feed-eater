@@ -195,6 +195,14 @@ public sealed class ItemStore(FeedDb db)
             new { limit, exclude }, cancellationToken: ct))).ToList();
     }
 
+    /// <summary>The item's embed input when it has no vector yet; null when it is embedded or does not exist.</summary>
+    public async Task<PendingEmbed?> UnembeddedAsync(long id, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.QuerySingleOrDefaultAsync<PendingEmbed>(new CommandDefinition(
+            "select id, title, content, url from items where id = @id and embedding is null", new { id }, cancellationToken: ct));
+    }
+
     public async Task SetEmbeddingsAsync(IReadOnlyList<(long Id, float[] Vector)> rows, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
