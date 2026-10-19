@@ -74,6 +74,24 @@ public sealed class CompositionTests
     }
 
     [Fact]
+    public void With_swipe_and_no_Telegram_the_inbox_jobs_run_and_the_poller_and_digest_do_not()
+    {
+        using var host = Build(runJobs: true, telegramToken: "", extra: new Dictionary<string, string?>
+        {
+            ["FeedEater:Swipe:Enabled"] = "true",
+            ["FeedEater:Duel:Enabled"] = "true",
+            ["FeedEater:Follow:Enabled"] = "true",
+        });
+        var hosted = Jobs(host);
+
+        Assert.Contains(typeof(WeeklyReview), hosted);
+        Assert.Contains(typeof(DuelJob), hosted);
+        Assert.Contains(typeof(FollowJob), hosted);
+        Assert.DoesNotContain(typeof(TelegramPoller), hosted);
+        Assert.DoesNotContain(typeof(DigestJob), hosted);   // step 2 lets the digest run without Telegram
+    }
+
+    [Fact]
     public void With_no_optional_integration_configured_only_the_core_jobs_run()
     {
         using var host = Build(runJobs: true);

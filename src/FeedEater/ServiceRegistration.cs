@@ -190,7 +190,9 @@ public static class ServiceRegistration
                 services.AddHostedService<ReleaseWatcher>();
             }
 
-            if (telegram)
+            // Inbox entries reach the owner through Telegram or a swipe session.
+            var delivers = telegram || settings.Swipe.Enabled;
+            if (delivers)
             {
                 services.AddHostedService<WeeklyReview>();
                 if (settings.WeeklyIdeas.Enabled && settings.Plane.Enabled)
@@ -204,15 +206,19 @@ public static class ServiceRegistration
                     services.AddHostedService<DuelJob>();
                 }
 
-                services.AddHostedService<TelegramPoller>();
+                if (telegram)
+                {
+                    services.AddHostedService<TelegramPoller>();
+                }
+
                 if (settings.Follow.Enabled)
                 {
                     services.AddHostedService<FollowJob>();
                 }
             }
 
-            // The autopsy reports on Telegram; the snapshots are only worth taking when it can.
-            if (telegram && settings.GitHub.Enabled)
+            // The autopsy reaches the owner through the inbox; the snapshots are only worth taking when it can.
+            if (delivers && settings.GitHub.Enabled)
             {
                 services.AddHostedService<RepoSnapshotJob>();
                 services.AddHostedService<AutopsyJob>();
