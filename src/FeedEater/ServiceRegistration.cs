@@ -222,6 +222,8 @@ public static class ServiceRegistration
                 {
                     services.AddHostedService<FollowJob>();
                 }
+
+                services.AddHostedService<ResurfaceJob>();
             }
 
             // The autopsy reaches the owner through the inbox; the snapshots are only worth taking when it can.

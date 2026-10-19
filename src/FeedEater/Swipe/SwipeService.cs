@@ -282,7 +282,13 @@ public sealed class SwipeService(
             previouslySaved = act == "save" && await libraryStore.IsSavedAsync(item, ct);
         }
 
-        if (await acts.ClaimAsync(id, sessionId, position, act, previous, previouslySaved, ct) is { } stored)
+        string? previousSource = null;
+        if (act == "remove" && queued.Kind == InboxKinds.Resurface && await inbox.GetAsync(queued.RefId, ct) is { ItemId: { } removing })
+        {
+            previousSource = (await libraryStore.GetAsync(removing, ct))?.Source;
+        }
+
+        if (await acts.ClaimAsync(id, sessionId, position, act, previous, previouslySaved, ct, previousSource) is { } stored)
         {
             return stored.SessionId != sessionId || stored.Position != position
                 ? new ActResult(false, "Nothing to do.")
@@ -398,6 +404,18 @@ public sealed class SwipeService(
                 await follows.ReopenAsync(followId, ct);
             }
 
+            if (record is { Act: "remove" } && row.ItemId is { } removedItem)
+            {
+                var savedAt = row.Payload["savedAt"] is JsonValue s && s.TryGetValue<string>(out var text) && DateTimeOffset.TryParse(text, out var parsed) ? parsed : time.GetUtcNow();
+                await libraryStore.AddAsync(removedItem, record.PreviousSource ?? "swipe", savedAt, ct);
+                undoneMessage = "Undone; back in your library";
+            }
+
+            if (record is { Act: "read" } && row.ItemId is { } readItem)
+            {
+                await libraryStore.MarkReadAsync(readItem, false, time.GetUtcNow(), ct);
+            }
+
             if (record is { Act: "drop" } && row.Payload["url"] is JsonValue { } url && url.TryGetValue<string>(out var canonical))
             {
                 await ideas.UndropAsync(canonical, ct);
@@ -419,7 +437,7 @@ public sealed class SwipeService(
     {
         ("recall", _) => "the card was already reviewed.",
         ("seed", _) => "the post seed was already handled.",
-        (_, "idea" or "keep") => "it was filed in Plane.",
+        (_, "idea") or (InboxKinds.Idea, "keep") => "it was filed in Plane.",
         (_, "pick_a" or "pick_b") => "the duel was answered.",
         _ => null,
     };
@@ -457,7 +475,7 @@ public sealed class SwipeService(
             return result;
         }
 
-        if (act != "open" && row.Kind is InboxKinds.Follow or InboxKinds.Duel)
+        if (act != "open" && row.Kind is InboxKinds.Follow or InboxKinds.Duel or InboxKinds.Resurface)
         {
             await inboxCards.DoneAsync(row.Id, ct);
         }

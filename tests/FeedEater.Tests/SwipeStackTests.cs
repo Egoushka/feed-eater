@@ -475,7 +475,7 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         });
         var sp = app!.Services;
         var decisions = new IdeaDecisions(new InboxStore(pg.Db), new WeeklyIdeaStore(pg.Db), new PlaneClient(plane.Client("http://plane/"), options), TimeProvider.System);
-        var cards = new InboxCards(new InboxStore(pg.Db), sp.GetRequiredService<ItemStore>(), new DuelStore(pg.Db), sp.GetRequiredService<FeedEater.Follow.StoryFollower>(), TimeProvider.System, decisions);
+        var cards = new InboxCards(new InboxStore(pg.Db), sp.GetRequiredService<ItemStore>(), new DuelStore(pg.Db), sp.GetRequiredService<FeedEater.Follow.StoryFollower>(), sp.GetRequiredService<FeedEater.Library.LibraryStore>(), sp.GetRequiredService<FeedEater.Library.LibraryService>(), TimeProvider.System, decisions);
         return ActivatorUtilities.CreateInstance<SwipeService>(sp, cards);
     }
 

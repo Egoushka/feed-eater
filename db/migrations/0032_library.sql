@@ -11,3 +11,10 @@ create index saved_unread_idx on saved (at) where read_at is null;
 
 -- Undo removes a library row only if the act created it.
 alter table swipe_acts add column previously_saved boolean;
+
+-- Resurface cards: remove and read are swipe acts; undo of a remove re-adds the row with the source it had.
+alter table swipe_events drop constraint swipe_events_action_check;
+alter table swipe_events add constraint swipe_events_action_check check (
+    action in ('next', 'back', 'like', 'dislike', 'save', 'share', 'idea', 'open', 'good', 'again', 'send', 'dismiss',
+               'stop', 'pick_a', 'pick_b', 'keep', 'drop', 'remove', 'read'));
+alter table swipe_acts add column previous_source text;

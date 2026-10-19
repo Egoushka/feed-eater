@@ -4,21 +4,21 @@ using FeedEater.Storage;
 namespace FeedEater.Swipe;
 
 public sealed record ActRecord(Guid ClientId, long SessionId, int Position, string Act, bool? Ok, string? Message, short? PreviousValue, float? PreviousWeight,
-    bool? PreviouslySaved, DateTime At, DateTime? UndoneAt);
+    bool? PreviouslySaved, string? PreviousSource, DateTime At, DateTime? UndoneAt);
 
 /// <summary>Acts the client sent with an id. The insert is the claim: a second call with the same id finds the row and runs nothing.</summary>
 public sealed class SwipeActStore(FeedDb db)
 {
-    private const string Columns = "client_id, session_id, position, act, ok, message, previous_value, previous_weight, previously_saved, at, undone_at";
+    private const string Columns = "client_id, session_id, position, act, ok, message, previous_value, previous_weight, previously_saved, previous_source, at, undone_at";
 
-    public async Task<ActRecord?> ClaimAsync(Guid clientId, long sessionId, int position, string act, (short Value, float Weight)? previous, bool previouslySaved, CancellationToken ct)
+    public async Task<ActRecord?> ClaimAsync(Guid clientId, long sessionId, int position, string act, (short Value, float Weight)? previous, bool previouslySaved, CancellationToken ct, string? previousSource = null)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         var inserted = await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into swipe_acts (client_id, session_id, position, act, previous_value, previous_weight, previously_saved)
-            values (@clientId, @sessionId, @position, @act, @value, @weight, @previouslySaved) on conflict (client_id) do nothing
-            """, new { clientId, sessionId, position, act, value = previous?.Value, weight = previous?.Weight, previouslySaved }, cancellationToken: ct));
+            insert into swipe_acts (client_id, session_id, position, act, previous_value, previous_weight, previously_saved, previous_source)
+            values (@clientId, @sessionId, @position, @act, @value, @weight, @previouslySaved, @previousSource) on conflict (client_id) do nothing
+            """, new { clientId, sessionId, position, act, value = previous?.Value, weight = previous?.Weight, previouslySaved, previousSource }, cancellationToken: ct));
         return inserted == 1 ? null : await GetAsync(clientId, ct);
     }
 

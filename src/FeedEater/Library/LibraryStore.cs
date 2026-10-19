@@ -10,6 +10,8 @@ public sealed record LibraryRow(
     long ItemId, string Title, string? Url, string Feed, DateTime PublishedAt, DateTime SavedAt, DateTime? ReadAt, string? Note,
     string Source, string? Summary, bool FullText, bool Enriched);
 
+public sealed record SavedRow(DateTime SavedAt, string Source, DateTime? ReadAt);
+
 public sealed class LibraryStore(FeedDb db)
 {
     public const int MaxEnrichAttempts = 5;
@@ -27,6 +29,13 @@ public sealed class LibraryStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.ExecuteAsync(new CommandDefinition("delete from saved where item_id = @itemId", new { itemId }, cancellationToken: ct)) > 0;
+    }
+
+    public async Task<SavedRow?> GetAsync(long itemId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.QuerySingleOrDefaultAsync<SavedRow>(new CommandDefinition(
+            "select at as saved_at, source, read_at from saved where item_id = @itemId", new { itemId }, cancellationToken: ct));
     }
 
     public async Task<bool> IsSavedAsync(long itemId, CancellationToken ct)

@@ -55,7 +55,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true, extra: AllIntegrations);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(WeeklyIdeasJob), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(RepoSnapshotJob), typeof(AutopsyJob) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(WeeklyIdeasJob), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(ResurfaceJob), typeof(RepoSnapshotJob), typeof(AutopsyJob) }, Jobs(host));
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob) }, Jobs(host));
+        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(ResurfaceJob) }, Jobs(host));
     }
 
     [Fact]
