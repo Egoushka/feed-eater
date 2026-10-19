@@ -69,7 +69,7 @@ public sealed class DigestFormatterTests
     }
 
     [Fact]
-    public void Optional_buttons_follow_the_style_Karakeep_adds_save_and_Plane_names_the_filed_label()
+    public void Optional_buttons_follow_the_style_and_the_save_button_never_needs_Karakeep()
     {
         var local = new ButtonStyle(CanSave: false, ToPlane: false);
 
@@ -79,7 +79,8 @@ public sealed class DigestFormatterTests
         Assert.Equal(["👍", "👎"], fresh[0].Select(b => b.Text));
         Assert.Single(fresh);   // no 💡 button: the weekly shortlist files ideas
         Assert.Equal("✓ Saved as an idea", filed[1].Single().Text);
-        Assert.Equal(new ButtonStyle(false, false), ButtonStyle.From(new FeedEaterOptions()));
+        Assert.Equal(new ButtonStyle(true, false), ButtonStyle.From(new FeedEaterOptions()));   // the library is always there
+        Assert.Contains("📌 Save", DigestFormatter.Buttons(42, null, null, style: ButtonStyle.From(new FeedEaterOptions()))[0].Select(b => b.Text));
         Assert.Equal(new ButtonStyle(true, true), ButtonStyle.From(new FeedEaterOptions
         {
             Karakeep = new KarakeepOptions { BaseUrl = "http://k/", Token = "t" },

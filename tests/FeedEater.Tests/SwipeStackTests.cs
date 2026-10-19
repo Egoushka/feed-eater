@@ -147,12 +147,13 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         var id = Guid.NewGuid();
         var session = await StartSessionAsync();
 
-        Assert.Null(await acts.ClaimAsync(id, session, 0, "like", ((short)-1, 0.5f), default));
+        Assert.Null(await acts.ClaimAsync(id, session, 0, "like", ((short)-1, 0.5f), true, default));
         await acts.CompleteAsync(id, true, "Liked", default);
-        var again = await acts.ClaimAsync(id, session, 0, "like", null, default);
+        var again = await acts.ClaimAsync(id, session, 0, "like", null, false, default);
 
         Assert.Equal("Liked", again!.Message);
         Assert.Equal((short)-1, again.PreviousValue);
+        Assert.True((await acts.GetAsync(id, default))!.PreviouslySaved);   // the first claim's value stays
     }
 
     [Fact]

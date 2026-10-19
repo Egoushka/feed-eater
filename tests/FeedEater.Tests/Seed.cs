@@ -1,9 +1,20 @@
 using Dapper;
+using FeedEater.Library;
+using FeedEater.Signals;
+using FeedEater.Storage;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace FeedEater.Tests;
 
 public static class Seed
 {
+    /// <summary>A library service for handlers under test; Karakeep answers an empty object and only matters when <c>Karakeep:Mirror</c> is on.</summary>
+    public static LibraryService Library(PostgresFixture pg, IOptions<FeedEaterOptions> options, StubHandler? karakeep = null) => new(
+        new LibraryStore(pg.Db), new ItemStore(pg.Db), new FeedbackStore(pg.Db),
+        new KarakeepClient((karakeep ?? new StubHandler((_, _) => StubHandler.Json("""{"id":"bm-1"}"""))).Client("http://karakeep/")),
+        options, TimeProvider.System, NullLogger<LibraryService>.Instance);
+
     public static async Task<long> ItemAsync(
         PostgresFixture pg, long feedId, string title, float[] embedding,
         DateTime? publishedAt = null, DateTime? ingestedAt = null, string content = "", long? entryId = null)

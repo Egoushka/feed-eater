@@ -979,18 +979,22 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_save_button_shows_saved_state_and_reports_karakeep_being_down_or_unconfigured()
+    public async Task The_save_button_saves_into_the_library_even_when_Karakeep_is_unreachable_and_then_shows_the_saved_state()
     {
         var (item, _) = await SeedDigestAsync();
         var cookie = await LoginAsync();
         Assert.Contains("name=\"v\" value=\"save\"", await GetAsync("/ui", cookie), StringComparison.Ordinal);
 
-        var down = await PostAsync("/ui/vote", cookie, ("item", item.ToString()), ("v", "save"), ("back", "/ui#item-1"));
-        Assert.Equal("/ui?notice=save-down#item-1", down.Headers.Location!.OriginalString);
-        Assert.False(await new FeedbackStore(pg.Db).IsSavedAsync(item, default));
-        Assert.Contains("Karakeep is not reachable", await GetAsync("/ui?notice=save-down", cookie), StringComparison.Ordinal);
+        var first = await PostAsync("/ui/vote", cookie, ("item", item.ToString()), ("v", "save"), ("back", "/ui#item-1"));
+        Assert.Equal("/ui#item-1", first.Headers.Location!.OriginalString);   // nothing to report: the library never waits for Karakeep
+        Assert.True(await new FeedbackStore(pg.Db).IsSavedAsync(item, default));
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            Assert.Equal("ui", await c.ExecuteScalarAsync<string>("select source from saved where item_id = @item", new { item }));
+        }
 
-        await new FeedbackStore(pg.Db).AddSavedAsync(item, "bm-9", default);
+        Assert.Equal(((short)1, 1f), await new FeedbackStore(pg.Db).VoteOfAsync(item, default));
+
         var after = await PostAsync("/ui/vote", cookie, ("item", item.ToString()), ("v", "save"), ("back", "/ui#item-1"));
         Assert.Equal("/ui#item-1", after.Headers.Location!.OriginalString);   // already saved: nothing to report
         foreach (var path in new[] { "/ui", $"/ui/item/{item}", "/ui/posts" })
@@ -1044,7 +1048,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/ui/quiet", cookie, ("mode", "sideways"))).StatusCode);
     }
     [Fact]
-    public async Task Without_Plane_or_Karakeep_the_idea_button_saves_locally_and_the_save_button_is_gone()
+    public async Task Without_Plane_or_Karakeep_the_idea_button_saves_locally_and_the_save_button_stays()
     {
         await using var app = Factory(Token, false, ("FeedEater:Plane:BaseUrl", ""), ("FeedEater:Karakeep:BaseUrl", ""));
         var http = Client(app);
@@ -1054,7 +1058,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Contains("💡 Save idea", page, StringComparison.Ordinal);
         Assert.DoesNotContain("File to Plane", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("📌 Save", page, StringComparison.Ordinal);
+        Assert.Contains("📌 Save", page, StringComparison.Ordinal);
 
         var response = await http.SendAsync(Req(HttpMethod.Post, "/ui/vote", cookie, "http://localhost",
             [new("_csrf", CsrfOf(page)), new("item", item.ToString()), new("v", "idea"), new("back", "/ui#item-1")]));

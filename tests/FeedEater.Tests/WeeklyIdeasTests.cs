@@ -190,7 +190,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         var feedback = new FeedbackStore(pg.Db);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), new LocalIdeaSink(), TimeProvider.System);
         var callbacks = new CallbackHandler(client, feedback, filer, items, new DuelStore(pg.Db),
-            new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://k/")), options, NullLogger<CallbackHandler>.Instance, decisions: decisions);
+            Seed.Library(pg, options), options, NullLogger<CallbackHandler>.Instance, decisions: decisions);
 
         await callbacks.HandleAsync(new TgCallback("cb1", 42, 42, 1, CallbackData.KeepIdea(inboxId)), default);
 

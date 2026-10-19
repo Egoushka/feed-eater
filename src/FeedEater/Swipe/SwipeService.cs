@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using FeedEater.Inbox;
+using FeedEater.Library;
 using Microsoft.Extensions.Options;
 using FeedEater.Ranking;
 using FeedEater.Storage;
@@ -30,7 +31,7 @@ internal sealed record Queued(string Kind, long RefId, string? Category, string 
 /// <summary>Starts, resumes and ends sessions, hands out the cards and applies what the owner does with them. Every id the client names is a position in the session's own queue.</summary>
 public sealed class SwipeService(
     SwipeStore store, RecallStore recall, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
-    InboxStore inbox, InboxCards inboxCards, SwipeActStore acts, FollowStore follows, WeeklyIdeaStore ideas, CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
+    InboxStore inbox, InboxCards inboxCards, SwipeActStore acts, FollowStore follows, WeeklyIdeaStore ideas, CallbackHandler callbacks, LibraryService library, LibraryStore libraryStore, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
 {
     public static readonly string[] Acts = ["idea", "save", "share", "like", "dislike", "open"];
     private static readonly string[] RecallActs = ["good", "again"];
@@ -274,12 +275,14 @@ public sealed class SwipeService(
         }
 
         (short Value, float Weight)? previous = null;
+        var previouslySaved = false;
         if (act is "like" or "dislike" or "save" && await VoteItemAsync(queued, ct) is { } item)
         {
             previous = await feedback.VoteOfAsync(item, ct);
+            previouslySaved = act == "save" && await libraryStore.IsSavedAsync(item, ct);
         }
 
-        if (await acts.ClaimAsync(id, sessionId, position, act, previous, ct) is { } stored)
+        if (await acts.ClaimAsync(id, sessionId, position, act, previous, previouslySaved, ct) is { } stored)
         {
             return stored.SessionId != sessionId || stored.Position != position
                 ? new ActResult(false, "Nothing to do.")
@@ -369,6 +372,7 @@ public sealed class SwipeService(
             return new ActResult(false, "Can't undo that: it is already undone.");
         }
 
+        var undoneMessage = "Undone";
         if (record.Act is "like" or "dislike" or "save" && await VoteItemAsync(queued, ct) is { } item)
         {
             if (record.PreviousValue is { } value)
@@ -378,6 +382,12 @@ public sealed class SwipeService(
             else
             {
                 await feedback.ClearVoteAsync(item, ct);
+            }
+
+            if (record is { Act: "save" })
+            {
+                var removed = record.PreviouslySaved == false && await library.UnsaveAsync(item, ct);
+                undoneMessage = removed ? "Undone; removed from your library" : "Undone; it stays in your library";
             }
         }
 
@@ -402,7 +412,7 @@ public sealed class SwipeService(
             await store.SaveEventAsync(existing with { Acts = remaining, Action = Primary(remaining, existing.Direction) }, ct);
         }
 
-        return new ActResult(true, "Undone");
+        return new ActResult(true, undoneMessage);
     }
 
     private static string? NotUndoable(string kind, string act) => (kind, act) switch
@@ -610,15 +620,9 @@ public sealed class SwipeService(
         return message;
     }
 
-    /// <summary>A save is a firm yes (weight 1) and, when Karakeep is set up, a bookmark. Karakeep being off or down does not undo the save.</summary>
-    private async Task<string> SaveAsync(long itemId, CancellationToken ct)
-    {
-        await feedback.SetVoteAsync(itemId, 1, ct);
-        var outcome = await callbacks.SaveAsync(itemId, ct);
-        return outcome is SaveOutcome.Saved or SaveOutcome.AlreadySaved or SaveOutcome.NotConfigured or SaveOutcome.Refused
-            ? "Saved"
-            : "Saved here; Karakeep is not reachable";
-    }
+    /// <summary>A save goes into the library, which also records the firm yes (weight 1).</summary>
+    private async Task<string> SaveAsync(long itemId, CancellationToken ct) =>
+        (await library.SaveAsync(itemId, "swipe", ct)).Status == SaveStatus.AlreadySaved ? "Already saved" : "Saved";
 
     private async Task<string?> IdeaAsync(long itemId, CancellationToken ct)
     {

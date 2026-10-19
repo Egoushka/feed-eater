@@ -3,6 +3,7 @@ using System.Text.Json;
 using FeedEater.Digest;
 using FeedEater.Duels;
 using FeedEater.Follow;
+using FeedEater.Library;
 using FeedEater.Plane;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -10,10 +11,10 @@ using FeedEater.WeeklyIdeas;
 
 namespace FeedEater.Telegram;
 
-public enum SaveOutcome { Saved, AlreadySaved, NotConfigured, Down, Refused, NoItem }
+public enum SaveOutcome { Saved, AlreadySaved, NoItem }
 
 public sealed class CallbackHandler(
-    TelegramClient telegram, FeedbackStore feedback, IdeaFiler ideas, ItemStore items, DuelStore duels, KarakeepClient karakeep,
+    TelegramClient telegram, FeedbackStore feedback, IdeaFiler ideas, ItemStore items, DuelStore duels, LibraryService library,
     IOptions<FeedEaterOptions> options, ILogger<CallbackHandler> logger, StoryFollower? follower = null, IdeaDecisions? decisions = null)
 {
     public async Task HandleAsync(TgCallback callback, CancellationToken ct)
@@ -45,7 +46,7 @@ public sealed class CallbackHandler(
                 break;
 
             case SaveCallback save:
-                var outcome = await SaveAsync(save.ItemId, ct);
+                var outcome = await SaveAsync(save.ItemId, "telegram", ct);
                 if (outcome is SaveOutcome.Saved or SaveOutcome.AlreadySaved)
                 {
                     await RefreshButtonsAsync(callback, save.ItemId, ct);
@@ -109,52 +110,18 @@ public sealed class CallbackHandler(
     /// <summary>Also used by the web UI, so a vote means the same on both surfaces.</summary>
     public Task VoteAsync(long itemId, short value, CancellationToken ct) => feedback.SetVoteAsync(itemId, value, ct);
 
-    /// <summary>Saves the item's link as a Karakeep bookmark, once. Karakeep being down is an outcome, not an exception.</summary>
-    public async Task<SaveOutcome> SaveAsync(long itemId, CancellationToken ct)
+    /// <summary>Saves the item into the library, once. Also used by the web UI, which passes its own <paramref name="source"/>.</summary>
+    public async Task<SaveOutcome> SaveAsync(long itemId, string source, CancellationToken ct) => (await library.SaveAsync(itemId, source, ct)).Status switch
     {
-        if (await feedback.IsSavedAsync(itemId, ct))
-        {
-            return SaveOutcome.AlreadySaved;
-        }
-
-        if (await items.GetAsync(itemId, ct) is not { } item)
-        {
-            return SaveOutcome.NoItem;
-        }
-
-        if (!options.Value.Karakeep.Enabled)
-        {
-            return SaveOutcome.NotConfigured;
-        }
-
-        if (!Uri.TryCreate(item.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
-        {
-            return SaveOutcome.Refused;
-        }
-
-        string id;
-        try
-        {
-            id = await karakeep.CreateLinkAsync(item.Url, item.Title, ct);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException
-            || (ex is TaskCanceledException && !ct.IsCancellationRequested))
-        {
-            logger.LogWarning(ex, "Saving item {Item} to Karakeep failed", itemId);
-            return SaveOutcome.Down;
-        }
-
-        await feedback.AddSavedAsync(itemId, id, ct);
-        return SaveOutcome.Saved;
-    }
+        SaveStatus.Saved => SaveOutcome.Saved,
+        SaveStatus.AlreadySaved => SaveOutcome.AlreadySaved,
+        _ => SaveOutcome.NoItem,
+    };
 
     public static string SaveMessage(SaveOutcome outcome) => outcome switch
     {
-        SaveOutcome.Saved => "📌 Saved to Karakeep",
-        SaveOutcome.AlreadySaved => "Already saved",
-        SaveOutcome.NotConfigured => "Karakeep is not configured",
-        SaveOutcome.Down => "Karakeep is not reachable; try again later",
-        SaveOutcome.Refused => "This item has no link to save",
+        SaveOutcome.Saved => "📌 Saved to your library",
+        SaveOutcome.AlreadySaved => "Already in your library",
         _ => "No such item",
     };
 
