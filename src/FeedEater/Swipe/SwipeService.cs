@@ -161,7 +161,7 @@ public sealed class SwipeService(
     private async Task<IReadOnlyList<QueuedCard>> BuildItemQueueAsync(int slots, DateTimeOffset now, CancellationToken ct)
     {
         var o = Settings;
-        var candidates = await store.CandidatesAsync(now.AddDays(-o.Swipe.CandidateDays), now.AddDays(-o.Swipe.RepeatDays), ct);
+        var candidates = await store.CandidatesAsync(now.AddDays(-o.Swipe.CandidateDays), now.AddDays(-o.Swipe.RepeatDays), [], ct);
         if (candidates.Count == 0 || slots == 0)
         {
             return [];

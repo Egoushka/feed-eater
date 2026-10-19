@@ -350,7 +350,7 @@ internal sealed class SwipeCheck(SwipeStore swipe, IOptions<FeedEaterOptions> op
         }
 
         var now = time.GetUtcNow();
-        var unseen = (await swipe.CandidatesAsync(now.AddDays(-o.CandidateDays), now.AddDays(-o.RepeatDays), ct)).Count;
+        var unseen = (await swipe.CandidatesAsync(now.AddDays(-o.CandidateDays), now.AddDays(-o.RepeatDays), [], ct)).Count;
         var detail = $"{unseen} unseen items, {(categories.Categories.Count == 0 ? "one pool (no categories file)" : $"{categories.Categories.Count} categories")}";
         return unseen == 0
             ? CheckResult.Warn(detail, "Wait for the feeds to bring new items, or raise Swipe:CandidateDays. Open the page over HTTPS to install it on the phone.")

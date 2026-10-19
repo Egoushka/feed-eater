@@ -232,6 +232,7 @@ public static class ServiceRegistration
         services.AddSingleton<TasteMap>();
         services.AddSingleton<MapHandler>();
         services.AddSingleton<SwipeStore>();
+        services.AddSingleton<SwipeActStore>();
         services.AddSingleton<RecallStore>();
         services.AddSingleton<CategoryStore>();
         services.AddSingleton<SwipeYield>();
