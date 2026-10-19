@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Dapper;
+using FeedEater.Swipe;
 using FeedEater.Api;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -35,9 +38,14 @@ internal static class ApiHost
     public static async Task<string> TokenAsync(WebApplicationFactory<Program> app) =>
         (await app.Services.GetRequiredService<ApiTokenStore>().CreateAsync("test", [ApiScopes.App], default)).Token;
 
-    public static async Task<HttpResponseMessage> RawAsync(HttpClient http, HttpMethod method, string path, string? authorization, string? origin = null)
+    public static async Task<HttpResponseMessage> RawAsync(HttpClient http, HttpMethod method, string path, string? authorization, string? origin = null, string? body = null)
     {
         var request = new HttpRequestMessage(method, path);
+        if (body is not null)
+        {
+            request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        }
+
         if (authorization is not null)
         {
             request.Headers.TryAddWithoutValidation("Authorization", authorization);
@@ -67,14 +75,41 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
 
     private Task<string> TokenAsync() => ApiHost.TokenAsync(App);
 
-    private Task<HttpResponseMessage> RawAsync(HttpMethod method, string path, string? authorization, string? origin = null) =>
-        ApiHost.RawAsync(Http, method, path, authorization, origin);
+    private Task<HttpResponseMessage> RawAsync(HttpMethod method, string path, string? authorization, string? origin = null, string? body = null) =>
+        ApiHost.RawAsync(Http, method, path, authorization, origin, body);
 
     private async Task<T> GetAsync<T>(string path)
     {
         var response = await RawAsync(HttpMethod.Get, path, "Bearer " + await TokenAsync());
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<T> PostAsync<T>(string path, object body)
+    {
+        var response = await RawAsync(HttpMethod.Post, path, "Bearer " + await TokenAsync(), body: JsonSerializer.Serialize(body));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task RankedItemsAsync(int n)
+    {
+        for (var i = 0; i < n; i++)
+        {
+            await Seed.ItemAsync(pg, 1, $"Item {i}", TestVectors.OneHot(100 + i), DateTime.UtcNow.AddHours(-5));
+        }
+    }
+
+    private async Task SqlAsync(string sql, object? args = null)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await c.ExecuteAsync(sql, args);
+    }
+
+    private async Task<T> ScalarAsync<T>(string sql, object? args = null)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return await c.ExecuteScalarAsync<T>(sql, args) ?? throw new InvalidOperationException("no row");
     }
 
     private async Task RevokeAllAsync()
@@ -142,13 +177,73 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Peek_returns_later_cards_without_counting_them_shown()
+    {
+        await RankedItemsAsync(5);
+        var first = await PostAsync<NextResult>("/api/v1/swipe/next", new { });
+        var ahead = await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 3, peek = true });
+
+        Assert.Equal(3, ahead.Card!.Position);
+        Assert.Equal(1, await ScalarAsync<int>("select cards_shown from swipe_sessions where id = @id", new { id = first.Card!.Session }));
+    }
+
+    [Fact]
+    public async Task An_event_on_a_peeked_card_counts_it_shown_and_then_acts_work()
+    {
+        await RankedItemsAsync(5);
+        var s = (await PostAsync<NextResult>("/api/v1/swipe/next", new { })).Card!.Session;
+        await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 2, peek = true });
+
+        await PostAsync<JsonElement>("/api/v1/swipe/event", new { session = s, position = 2, direction = "up" });
+        var act = await PostAsync<ActResult>("/api/v1/swipe/act", new { session = s, position = 2, act = "like", clientId = Guid.NewGuid() });
+
+        Assert.True(act.Ok);
+        Assert.Equal(3, await ScalarAsync<int>("select cards_shown from swipe_sessions where id = @s", new { s }));
+    }
+
+    [Fact]
+    public async Task Peek_never_starts_a_session()
+    {
+        await RankedItemsAsync(5);
+        var r = await PostAsync<NextResult>("/api/v1/swipe/next", new { position = 0, peek = true });
+
+        Assert.Equal("closed", r.Type);
+        Assert.Equal("not-started", r.Closed!.Why);
+        Assert.Equal(0, await ScalarAsync<int>("select count(*) from swipe_sessions"));
+    }
+
+    [Fact]
+    public async Task The_same_act_twice_over_the_API_votes_once()
+    {
+        await RankedItemsAsync(1);
+        var card = (await PostAsync<NextResult>("/api/v1/swipe/next", new { })).Card!;
+        var id = Guid.NewGuid();
+
+        var first = await PostAsync<ActResult>("/api/v1/swipe/act", new { session = card.Session, position = card.Position, act = "like", clientId = id });
+        await SqlAsync("update votes set at = now() - interval '1 hour'");
+        var second = await PostAsync<ActResult>("/api/v1/swipe/act", new { session = card.Session, position = card.Position, act = "like", clientId = id });
+
+        Assert.Equal(first, second);
+        Assert.True(await ScalarAsync<DateTime>("select at from votes") < DateTime.UtcNow.AddMinutes(-30));
+    }
+
+    [Fact]
+    public async Task A_body_over_64_KB_is_413()
+    {
+        var response = await RawAsync(HttpMethod.Post, "/api/v1/swipe/event", "Bearer " + await TokenAsync(),
+            body: "{\"direction\":\"" + new string('x', 70_000) + "\"}");
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+    }
+
+    [Fact]
     public async Task The_OpenAPI_document_lists_the_status_route_and_needs_no_token()
     {
         var doc = await Http.GetStringAsync("/api/v1/openapi.json");
         Assert.Contains("/api/v1/status", doc);
         Assert.Contains("bearer", doc);
         Assert.DoesNotContain("/ui", doc);
-        Assert.DoesNotContain("/swipe", doc);
+        Assert.DoesNotContain("\"/swipe", doc);
+        Assert.Contains("/api/v1/swipe/next", doc);
         Assert.DoesNotContain("/healthz", doc);
     }
 }

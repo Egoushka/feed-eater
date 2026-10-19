@@ -71,11 +71,18 @@ public sealed class ApiAuth(ApiTokenStore tokens, ApiRateLimiter limits) : IEndp
     }
 }
 
-/// <summary>An unhandled exception becomes a 500 problem without the exception text.</summary>
+/// <summary>An unhandled exception becomes a 500 problem without the exception text. A body over 64 KB is a 413 whatever the server enforces.</summary>
 public sealed class ApiErrors(ILogger<ApiErrors> logger) : IEndpointFilter
 {
+    public const int MaxBodyBytes = 65_536;
+
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
+        if (context.HttpContext.Request.ContentLength > MaxBodyBytes)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status413PayloadTooLarge, title: "The request body is too large");
+        }
+
         try
         {
             return await next(context);

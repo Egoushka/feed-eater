@@ -27,11 +27,12 @@ public static class ApiEndpoints
         var group = app.MapGroup(Prefix);
         group.AddEndpointFilter<ApiErrors>();
         group.AddEndpointFilter<ApiAuth>();
-        group.WithMetadata(new RequestSizeLimitAttribute(65_536));
+        group.WithMetadata(new RequestSizeLimitAttribute(ApiErrors.MaxBodyBytes));
 
         group.MapGet("/status", StatusAsync)
             .WithName("GetStatus")
             .Produces<StatusResponse>();
+        group.MapSwipeApi();
 
         return group;
     }
