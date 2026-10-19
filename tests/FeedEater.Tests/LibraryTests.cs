@@ -234,6 +234,7 @@ public sealed class LibraryTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task A_url_equal_to_a_feed_item_saves_that_item_without_a_new_row()
     {
+        await new ItemStore(pg.Db).UpsertFeedAsync(new Feed(1, "Feed 1", null, null), default);
         var id = (await new ItemStore(pg.Db).InsertAsync(New(1, "https://news.example.net/story", "a feed story"), default))!.Value;
 
         var result = await Service().SaveUrlAsync("https://news.example.net/story?utm_medium=mail", "other title", null, "share", default);
