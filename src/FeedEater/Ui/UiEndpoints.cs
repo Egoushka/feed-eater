@@ -99,6 +99,9 @@ public static class UiEndpoints
         secured.MapGet("/map", app.ServiceProvider.GetRequiredService<MapHandler>().GetAsync);
         secured.MapGet("/swipe", app.ServiceProvider.GetRequiredService<SwipeReportHandler>().GetAsync);
         secured.MapGet("/setup", app.ServiceProvider.GetRequiredService<SetupHandler>().GetAsync);
+        var pairing = app.ServiceProvider.GetRequiredService<PairingHandler>();
+        secured.MapPost("/setup/pair", pairing.PairAsync);
+        secured.MapPost("/setup/revoke", pairing.RevokeAsync);
         secured.MapPost("/vote", h.VoteAsync);
         secured.MapPost("/feeds/mute", h.MuteFeedAsync);
         secured.MapPost("/digest/run", h.RunDigestAsync);

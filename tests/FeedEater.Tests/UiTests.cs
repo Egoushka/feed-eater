@@ -120,6 +120,55 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
             fields.Select(f => new KeyValuePair<string, string>(f.Key, f.Value)).Append(new("_csrf", csrf))));
     }
 
+    [Fact]
+    public async Task Pairing_makes_one_token_and_shows_it_once_with_a_QR_code()
+    {
+        var cookie = await LoginAsync();
+
+        var response = await PostAsync("/ui/setup/pair", cookie, ("name", "pixel"));
+        var page = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("<svg", page);
+        Assert.Contains("Shown once", page);
+        var token = Regex.Match(page, "<code>(fe_[A-Za-z0-9_-]+)</code>").Groups[1].Value;
+        Assert.NotEmpty(token);
+        var rows = await _app.Services.GetRequiredService<FeedEater.Api.ApiTokenStore>().ListAsync(default);
+        Assert.Equal(["pixel"], rows.Select(r => r.Name));
+        Assert.Contains("http://localhost", page);
+
+        var later = await GetAsync("/ui/setup", cookie);
+        Assert.DoesNotContain(token, later);
+        Assert.Contains("pixel", later);
+    }
+
+    [Fact]
+    public async Task Revoking_a_token_sets_revoked_at_and_hides_it()
+    {
+        var cookie = await LoginAsync();
+        var (id, _) = await _app.Services.GetRequiredService<FeedEater.Api.ApiTokenStore>().CreateAsync("old phone", [FeedEater.Api.ApiScopes.App], default);
+
+        var response = await PostAsync("/ui/setup/revoke", cookie, ("id", id.ToString()));
+
+        Assert.Equal(HttpStatusCode.SeeOther, response.StatusCode);
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        Assert.NotNull(await c.ExecuteScalarAsync<DateTime?>("select revoked_at from api_tokens where id = @id", new { id }));
+        Assert.DoesNotContain("old phone", await GetAsync("/ui/setup", cookie));
+    }
+
+    [Theory]
+    [InlineData("/ui/setup/pair")]
+    [InlineData("/ui/setup/revoke")]
+    public async Task Pairing_posts_without_the_csrf_value_get_403(string path)
+    {
+        var cookie = await LoginAsync();
+
+        var response = await _http.SendAsync(Req(HttpMethod.Post, path, cookie, "http://localhost", [new("id", "1")]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(await _app.Services.GetRequiredService<FeedEater.Api.ApiTokenStore>().ListAsync(default));
+    }
+
     private async Task<(long Item, string Today)> SeedDigestAsync(string title = "Postgres 19 lands", string url = "https://example.com/a", string feed = "Feed 1", string? suggestion = "Upgrade the box.")
     {
         var id = await Seed.ItemAsync(pg, 1, title, TestVectors.OneHot(1), content: "Full text of the post.");

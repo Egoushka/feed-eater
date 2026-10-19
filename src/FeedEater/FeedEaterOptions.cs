@@ -48,6 +48,7 @@ public sealed class FeedEaterOptions
     public DuelOptions Duel { get; set; } = new();
     public FollowOptions Follow { get; set; } = new();
     public SwipeOptions Swipe { get; set; } = new();
+    public ApiOptions Api { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -179,6 +180,12 @@ public sealed class FollowOptions
 
     [Description("Messages sent per followed story; the follow closes when it is reached.")]
     public int MaxMessages { get; set; } = 50;
+}
+
+public sealed class ApiOptions
+{
+    [Description("The address the phone app uses; the pairing QR carries it. Empty: the address the setup page was opened on.")]
+    public string BaseUrl { get; set; } = "";
 }
 
 public sealed class SwipeOptions
