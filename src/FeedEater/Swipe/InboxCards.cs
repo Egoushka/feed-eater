@@ -22,6 +22,9 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
     /// <summary>The message of a stop that closed nothing; <see cref="SwipeService.UndoAsync"/> reads it to refuse the undo.</summary>
     public const string AlreadyStopped = "Already stopped";
 
+    /// <summary>The message of a read on an item that was already read; undo leaves its read time alone.</summary>
+    public const string AlreadyRead = "Already read";
+
     public static string[] ActsFor(string kind) => kind switch
     {
         InboxKinds.Follow => FollowActs,
@@ -69,7 +72,7 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
 
     private async Task<CardView?> ResurfaceAsync(InboxRow row, SessionRow s, int position, int total, DateTimeOffset now, CancellationToken ct)
     {
-        if (row.ItemId is not { } id || await items.GetAsync(id, ct) is not { } item || await library.GetAsync(id, ct) is not { } saved)
+        if (row.ItemId is not { } id || await items.GetAsync(id, ct) is not { } item || await library.GetAsync(id, ct) is not { ReadAt: null } saved)
         {
             return null;
         }
@@ -127,6 +130,8 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
                 return await follower.CloseAsync(row.RefId ?? 0, null, ct) ? new ActResult(true, "Stopped following") : new ActResult(true, AlreadyStopped);
             case (InboxKinds.Resurface, "keep"):
                 return new ActResult(true, "Kept");
+            case (InboxKinds.Resurface, "read") when row.ItemId is { } readId && await library.GetAsync(readId, ct) is { ReadAt: not null }:
+                return new ActResult(true, AlreadyRead);
             case (InboxKinds.Resurface, "remove" or "read") when row.ItemId is { } itemId:
                 var changed = act == "remove" ? await libraryService.UnsaveAsync(itemId, ct) : await library.MarkReadAsync(itemId, true, time.GetUtcNow(), ct);
                 return new ActResult(true, !changed ? "Not in your library any more" : act == "remove" ? "Removed from your library" : "Marked read");

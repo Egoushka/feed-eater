@@ -310,6 +310,49 @@ public sealed partial class ResurfaceTests(PostgresFixture pg, ResurfaceTests.Ho
     }
 
     [Fact]
+    public async Task Undo_of_a_remove_on_an_item_that_was_already_unsaved_adds_nothing()
+    {
+        var item = await SavedAsync("Gone", 20);
+        var (session, _) = await CardAsync(item);
+        await SqlAsync("delete from saved where item_id = @item", new { item });
+        var id = Guid.NewGuid();
+
+        await ActAsync(session, "remove", id);
+        Assert.True((await UndoAsync(session, id)).GetProperty("ok").GetBoolean());
+
+        Assert.False(await ScalarAsync<bool>("select exists (select 1 from saved where item_id = @item)", new { item }));
+        Assert.False(await DoneAsync());
+    }
+
+    [Fact]
+    public async Task An_item_read_after_the_entry_was_made_has_no_card()
+    {
+        var item = await SavedAsync("Read elsewhere", 20);
+        await new InboxStore(pg.Db).AddAsync(new InboxEntry($"resurface:{item}:t", InboxKinds.Resurface, ItemId: item, ExpiresAt: DateTimeOffset.UtcNow.AddDays(7)), DateTimeOffset.UtcNow, default);
+        await SqlAsync("update saved set read_at = now() where item_id = @item", new { item });
+
+        var next = await (await PostAsync("next", new { })).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("summary", next.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task A_read_act_on_an_item_read_meanwhile_keeps_its_read_time_through_undo()
+    {
+        var item = await SavedAsync("Read meanwhile", 20);
+        var (session, _) = await CardAsync(item);
+        await SqlAsync("update saved set read_at = now() - interval '1 day' where item_id = @item", new { item });
+        var before = await ScalarAsync<DateTime>("select read_at from saved where item_id = @item", new { item });
+        var id = Guid.NewGuid();
+
+        await ActAsync(session, "read", id);
+        Assert.Equal(before, await ScalarAsync<DateTime>("select read_at from saved where item_id = @item", new { item }));
+
+        await UndoAsync(session, id);
+        Assert.Equal(before, await ScalarAsync<DateTime>("select read_at from saved where item_id = @item", new { item }));
+    }
+
+    [Fact]
     public async Task The_swipe_page_has_the_resurface_button_set_and_the_script_maps_the_swipes()
     {
         var shell = await (await host.Client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/swipe") { Headers = { { "Cookie", host.Cookie } } })).Content.ReadAsStringAsync();

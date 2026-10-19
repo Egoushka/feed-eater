@@ -404,14 +404,14 @@ public sealed class SwipeService(
                 await follows.ReopenAsync(followId, ct);
             }
 
-            if (record is { Act: "remove" } && row.ItemId is { } removedItem)
+            if (record is { Act: "remove", PreviousSource: { } source } && row.ItemId is { } removedItem)
             {
                 var savedAt = row.Payload["savedAt"] is JsonValue s && s.TryGetValue<string>(out var text) && DateTimeOffset.TryParse(text, out var parsed) ? parsed : time.GetUtcNow();
-                await libraryStore.AddAsync(removedItem, record.PreviousSource ?? "swipe", savedAt, ct);
+                await libraryStore.AddAsync(removedItem, source, savedAt, ct);
                 undoneMessage = "Undone; back in your library";
             }
 
-            if (record is { Act: "read" } && row.ItemId is { } readItem)
+            if (record is { Act: "read", Message: not InboxCards.AlreadyRead } && row.ItemId is { } readItem)
             {
                 await libraryStore.MarkReadAsync(readItem, false, time.GetUtcNow(), ct);
             }
