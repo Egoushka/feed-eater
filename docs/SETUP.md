@@ -151,7 +151,7 @@ Anonymous requests are rate limited. The machine-readable description is at `/ap
 
 ## Library
 
-Saving an item (swipe right, 📌 in Telegram, Save in `/ui`) puts it in your own library, `/ui/library`, and counts as a like in
+Saving an item (swipe right, 📌 in Telegram, Save in `/ui`) puts it in your own library (read it through the API, `GET /api/v1/library`, or the phone app) and counts as a like in
 the ranking. The library needs no other service. It holds links and articles; a note can be added to a saved item.
 
 **From the phone.** Share a link to the paired app, or call `POST /api/v1/library` with `{"url": "...", "title": "...", "text": "..."}`
@@ -183,8 +183,8 @@ Switching between the two on a database that already holds entries is not suppor
 project named in the profile entry (`"plane": "<identifier>"`), else of `FeedEater__Plane__FallbackProject`. Intake must be enabled
 on those projects. `FeedEater__Ideas__Sink=local` keeps ideas local even with Plane configured.
 
-**Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). Items get a 📌 button that bookmarks the link,
-and your Karakeep bookmarks count as liked items in the ranking. See "Library" for the mirror and the one-time import.
+**Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). The 📌 button always shows and saves to the library; Karakeep
+is an optional mirror of those saves, and your Karakeep bookmarks count as liked items in the ranking. See "Library" for the mirror and the one-time import.
 
 **GitHub stars.** Set `FeedEater__GitHub__User`. The public stars of that user count as liked items. A token is optional
 (`FeedEater__GitHub__Token`, no scopes needed): without it GitHub allows 60 requests an hour, which is enough for the stars.

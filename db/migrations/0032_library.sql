@@ -6,7 +6,8 @@ alter table saved
     add column read_at timestamptz,
     add column note text,
     add column enrich_attempts int not null default 0,
-    add column enriched_at timestamptz;
+    add column enriched_at timestamptz,
+    add column full_text boolean not null default false;   -- the article page was fetched, not just the shared text
 create index saved_unread_idx on saved (at) where read_at is null;
 
 -- Undo removes a library row only if the act created it.

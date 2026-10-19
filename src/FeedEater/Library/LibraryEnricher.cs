@@ -45,7 +45,8 @@ public sealed class LibraryEnricher(
         {
             try
             {
-                await library.RecordAttemptAsync(id, await EnrichAsync(id, ct), ct);
+                var (done, fullText) = await EnrichAsync(id, ct);
+                await library.RecordAttemptAsync(id, done, fullText, ct);
             }
             catch (Exception ex) when (IsOutage(ex, ct))
             {
@@ -58,11 +59,19 @@ public sealed class LibraryEnricher(
         return pending.Count;
     }
 
+    // Server-side or transport trouble stops the pass; any other 4xx answer is about this one item and counts as its failed attempt,
+    // or the oldest item would head the queue for ever (DigestRun treats it the same way).
     private static bool IsOutage(Exception ex, CancellationToken ct) =>
-        ex is BudgetExceededException or HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested);
+        ex is BudgetExceededException
+        || ex is HttpRequestException
+        {
+            StatusCode: null or >= System.Net.HttpStatusCode.InternalServerError or System.Net.HttpStatusCode.Unauthorized
+            or System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests
+        }
+        || (ex is TaskCanceledException && !ct.IsCancellationRequested);
 
-    /// <summary>Runs the steps independently so one failing step does not starve the others; true when all are in place.</summary>
-    private async Task<bool> EnrichAsync(long itemId, CancellationToken ct)
+    /// <summary>Runs the steps independently so one failing step does not starve the others; Done is true when all are in place; FullText when the page was really fetched.</summary>
+    private async Task<(bool Done, bool FullText)> EnrichAsync(long itemId, CancellationToken ct)
     {
         string? text = null;
         var fetched = true;
@@ -74,7 +83,7 @@ public sealed class LibraryEnricher(
         }, outageStops: false, ct);
         if (ok && text is null)
         {
-            return true;   // the item is gone; nothing to enrich
+            return (true, false);   // the item is gone; nothing to enrich
         }
 
         // A read or embedding made on the feed's snippet would be stored for good, so they wait for the page,
@@ -83,7 +92,7 @@ public sealed class LibraryEnricher(
         {
             if (await library.EnrichAttemptsAsync(itemId, ct) + 1 < LibraryStore.MaxEnrichAttempts)
             {
-                return false;
+                return (false, ok && fetched);
             }
         }
 
@@ -107,7 +116,7 @@ public sealed class LibraryEnricher(
             }
         }, outageStops: true, ct);
 
-        return ok;
+        return (ok, fetched && text is not null);
     }
 
     private async Task<bool> StepAsync(long itemId, string step, Func<Task> run, bool outageStops, CancellationToken ct)

@@ -73,7 +73,7 @@ public sealed class LibraryStore(FeedDb db)
         return (await c.QueryAsync<LibraryRow>(new CommandDefinition(
             """
             select i.id as item_id, i.title, i.url, coalesce(f.title, '') as feed, i.published_at, s.at as saved_at, s.read_at, s.note, s.source,
-                   r.summary, coalesce(i.extra_text, '') <> '' as full_text, s.enriched_at is not null as enriched
+                   r.summary, s.full_text, s.enriched_at is not null as enriched
             from saved s
             join items i on i.id = s.item_id
             left join feeds f on f.id = i.feed_id
@@ -100,13 +100,16 @@ public sealed class LibraryStore(FeedDb db)
         return await c.ExecuteScalarAsync<int>(new CommandDefinition("select enrich_attempts from saved where item_id = @itemId", new { itemId }, cancellationToken: ct));
     }
 
-    /// <summary>Counts one enrichment pass; <paramref name="done"/> closes the item.</summary>
-    public async Task RecordAttemptAsync(long itemId, bool done, CancellationToken ct)
+    /// <summary>Counts one enrichment pass; <paramref name="done"/> closes the item; <paramref name="fullText"/> marks that the page was fetched.</summary>
+    public async Task RecordAttemptAsync(long itemId, bool done, bool fullText, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
-            "update saved set enrich_attempts = enrich_attempts + 1, enriched_at = case when @done then now() else enriched_at end where item_id = @itemId",
-            new { itemId, done }, cancellationToken: ct));
+            """
+            update saved set enrich_attempts = enrich_attempts + 1, enriched_at = case when @done then now() else enriched_at end,
+                             full_text = full_text or @fullText
+            where item_id = @itemId
+            """, new { itemId, done, fullText }, cancellationToken: ct));
     }
 
     /// <summary>Unread items saved before the cutoff with no resurface entry in the last 30 days, oldest save first.</summary>

@@ -54,7 +54,8 @@ public sealed class LibraryService(LibraryStore library, ItemStore items, Feedba
             var name = string.IsNullOrWhiteSpace(title) ? uri.Host : title.Trim();
             var sourceKey = "share:" + canonical;
             itemId = await items.InsertAsync(new NewItem(
-                null, null, url, canonical, TitleHash.Of(title ?? ""), name, time.GetUtcNow().UtcDateTime, HtmlText.ToPlain(text ?? ""), SourceKey: sourceKey), ct)
+                null, null, url, canonical, "", name,   // no title hash: a share is deduplicated by URL only
+                time.GetUtcNow().UtcDateTime, HtmlText.ToPlain(text ?? ""), SourceKey: sourceKey), ct)
                 ?? await items.FindBySourceKeyAsync(sourceKey, ct);
         }
 

@@ -94,8 +94,10 @@ public sealed class LibraryTests(PostgresFixture pg) : IAsyncLifetime
         Assert.False(row.Enriched);
         Assert.False(row.FullText);
 
-        await store.RecordAttemptAsync(id, true, default);
-        Assert.True((await store.ListAsync(LibraryState.All, null, 10, default)).Single().Enriched);
+        await store.RecordAttemptAsync(id, true, true, default);
+        var listed = (await store.ListAsync(LibraryState.All, null, 10, default)).Single();
+        Assert.True(listed.Enriched);
+        Assert.True(listed.FullText);
         Assert.False(await store.SetNoteAsync(999, "x", default));
     }
 
@@ -170,15 +172,15 @@ public sealed class LibraryTests(PostgresFixture pg) : IAsyncLifetime
         await store.AddAsync(older, "ui", Now.AddDays(-1), default);
         await store.AddAsync(done, "ui", Now.AddDays(-2), default);
         await store.AddAsync(spent, "ui", Now.AddDays(-3), default);
-        await store.RecordAttemptAsync(done, true, default);
+        await store.RecordAttemptAsync(done, true, false, default);
         for (var i = 0; i < 4; i++)
         {
-            await store.RecordAttemptAsync(spent, false, default);
+            await store.RecordAttemptAsync(spent, false, false, default);
         }
 
         Assert.Equal([spent, older, newer], await store.PendingEnrichmentAsync(10, default));
 
-        await store.RecordAttemptAsync(spent, false, default);
+        await store.RecordAttemptAsync(spent, false, false, default);
         Assert.Equal([older, newer], await store.PendingEnrichmentAsync(10, default));
         Assert.Equal([older], await store.PendingEnrichmentAsync(1, default));
     }
@@ -246,6 +248,21 @@ public sealed class LibraryTests(PostgresFixture pg) : IAsyncLifetime
         Assert.NotEqual(a.ItemId, b.ItemId);
         Assert.Equal("example.com", await QueryAsync<string>("select title from items where id = @id", new { id = a.ItemId }));
         Assert.Equal(0, await QueryAsync<int>("select count(*)::int from items where duplicate_of is not null"));
+    }
+
+    [Fact]
+    public async Task A_shared_url_whose_title_matches_a_recent_item_is_its_own_item_and_a_second_share_finds_it()
+    {
+        await new ItemStore(pg.Db).UpsertFeedAsync(new Feed(1, "Feed 1", null, null), default);
+        var other = (await new ItemStore(pg.Db).InsertAsync(New(1, "https://news.example.net/story", "A long shared headline"), default))!.Value;
+
+        var first = await Service().SaveUrlAsync("https://amp.example.net/story-amp", "A long shared headline", null, "share", default);
+
+        Assert.NotEqual(other, first.ItemId);
+        Assert.Equal(SaveStatus.Saved, first.Status);
+        Assert.True(await QueryAsync<bool>("select duplicate_of is null from items where id = @id", new { id = first.ItemId }));
+        var again = await Service().SaveUrlAsync("https://amp.example.net/story-amp", "A long shared headline", null, "share", default);
+        Assert.Equal(new SaveResult(SaveStatus.AlreadySaved, first.ItemId), again);
     }
 
     [Fact]

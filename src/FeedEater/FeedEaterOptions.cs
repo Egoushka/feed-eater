@@ -460,7 +460,7 @@ public sealed class KarakeepOptions
     /// <summary>On when the server and its API key are set.</summary>
     public bool Enabled => BaseUrl.Length > 0 && Token.Length > 0;
 
-    [Description("Karakeep server URL. Empty means no Karakeep: no 📌 button, no bookmark import.")]
+    [Description("Karakeep server URL. Empty means no Karakeep: no mirror of saves, no bookmark import.")]
     public string BaseUrl { get; set; } = "";
 
     [Secret]

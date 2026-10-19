@@ -27,6 +27,7 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
     private bool _embedderDown;
     private bool _budgetSpent;
     private bool _garbage;
+    private int _rejectChats;   // the first N chat calls answer 400
     private bool _fetcherDown;
     private static long _entry = 300;
 
@@ -47,6 +48,12 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         Interlocked.Increment(ref _chatCalls);
+        if (_rejectChats > 0)
+        {
+            _rejectChats--;
+            return StubHandler.Json("""{"error":{"message":"bad input"}}""", HttpStatusCode.BadRequest);
+        }
+
         if (_modelDown)
         {
             return StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable);
@@ -122,6 +129,21 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
         Assert.True(await ScalarAsync<bool>("select embedding is not null from items where id = @id", new { id }));
         Assert.True(await ScalarAsync<bool>("select enriched_at is not null from saved where item_id = @id", new { id }));
         Assert.Equal(1, await ScalarAsync<int>("select enrich_attempts from saved where item_id = @id", new { id }));
+        Assert.True(await ScalarAsync<bool>("select full_text from saved where item_id = @id", new { id }));
+    }
+
+    [Fact]
+    public async Task A_model_that_rejects_one_item_with_a_4xx_counts_its_attempt_and_the_next_item_is_still_processed()
+    {
+        _rejectChats = 1;
+        var first = await SaveAsync("First");
+        var second = await SaveAsync("Second");
+
+        Assert.Equal(2, await Build().RunAsync(default));
+
+        Assert.Equal(1, await ScalarAsync<int>("select enrich_attempts from saved where item_id = @first", new { first }));
+        Assert.True(await ScalarAsync<bool>("select enriched_at is null from saved where item_id = @first", new { first }));
+        Assert.True(await ScalarAsync<bool>("select enriched_at is not null from saved where item_id = @second", new { second }));
     }
 
     [Fact]
@@ -211,6 +233,7 @@ public sealed class LibraryEnricherTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(0, await ScalarAsync<int>("select count(*)::int from reads where item_id = @id", new { id }));
         Assert.Equal(0, _chatCalls);
+        Assert.False(await ScalarAsync<bool>("select full_text from saved where item_id = @id", new { id }));
         Assert.Equal(1, await ScalarAsync<int>("select enrich_attempts from saved where item_id = @id", new { id }));
         Assert.True(await ScalarAsync<bool>("select enriched_at is null from saved where item_id = @id", new { id }));
     }
