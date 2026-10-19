@@ -133,7 +133,7 @@ public sealed class WeeklyIdeasJob(
         Logger.LogInformation("Staged {Count} ideas for {Week}", staged.Count, week);
         if (Settings.Telegram.Token.Length > 0)
         {
-            await telegram.SendAsync(Settings.Telegram.AllowedUserId, Message(week, staged.Take(settings.TopInMessage).ToList(), staged.Count), ct);
+            await telegram.SendAsync(Settings.Telegram.AllowedUserId, Message(week, staged, settings.TopInMessage), ct);
         }
     }
 
@@ -167,12 +167,18 @@ public sealed class WeeklyIdeasJob(
         return html.ToString();
     }
 
-    internal static OutMessage Message(string week, IReadOnlyList<(ShortlistEntry Entry, Lead Lead, long InboxId)> top, int total)
+    internal static OutMessage Message(string week, IReadOnlyList<(ShortlistEntry Entry, Lead Lead, long InboxId)> staged, int detailed)
     {
-        var html = new StringBuilder($"💡 <b>Ideas for {week}</b> ({total} waiting for Keep or Drop)\n");
-        for (var i = 0; i < top.Count; i++)
+        var html = new StringBuilder($"💡 <b>Ideas for {week}</b> ({staged.Count} waiting for Keep or Drop)\n");
+        for (var i = 0; i < staged.Count; i++)
         {
-            var (e, lead, _) = top[i];
+            var (e, lead, _) = staged[i];
+            if (i >= detailed)
+            {
+                html.Append($"\n{i + 1}. {E(e.Idea)}");
+                continue;
+            }
+
             html.Append($"\n{i + 1}. <b>{E(e.Idea)}</b>\n   {E(e.Project)} · {E(e.Where)} · {e.Effort}");
             if (e.Why.Length > 0)
             {
@@ -182,7 +188,7 @@ public sealed class WeeklyIdeasJob(
             html.Append($"\n   <a href=\"{E(lead.Url)}\">{E(lead.Title)}</a>\n");
         }
 
-        var keyboard = top.Select((t, i) => (IReadOnlyList<Button>)
+        var keyboard = staged.Select((t, i) => (IReadOnlyList<Button>)
             [new Button($"✅ {i + 1}", CallbackData.KeepIdea(t.InboxId)), new Button($"✖ {i + 1}", CallbackData.DropIdea(t.InboxId))]).ToList();
         return new OutMessage(html.ToString(), keyboard);
     }

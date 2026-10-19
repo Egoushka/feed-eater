@@ -95,4 +95,20 @@ public sealed class InboxTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal([a], open.Select(r => r.Id));
         Assert.DoesNotContain(b, open.Select(r => r.Id));
     }
+
+    [Fact]
+    public async Task The_same_key_again_refreshes_the_expiry_and_lists_an_expired_row_again()
+    {
+        var store = new InboxStore(pg.Db);
+        var now = new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero);
+        var id = await store.AddAsync(new InboxEntry("idea:x", InboxKinds.Idea, ExpiresAt: now.AddDays(14)), now, default);
+        var later = now.AddDays(15);
+        Assert.Empty(await store.OpenAsync(later, 10, default));
+
+        var again = await store.AddAsync(new InboxEntry("idea:x", InboxKinds.Idea, ExpiresAt: later.AddDays(14)), later, default);
+
+        Assert.Equal(id, again);
+        Assert.Equal(later.AddDays(14), (await store.GetAsync(id, default))!.ExpiresAt);
+        Assert.Equal([id], (await store.OpenAsync(later, 10, default)).Select(r => r.Id));
+    }
 }

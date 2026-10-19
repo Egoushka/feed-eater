@@ -163,6 +163,41 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public void Every_staged_idea_gets_Keep_and_Drop_buttons_and_only_the_top_are_detailed()
+    {
+        var staged = Enumerable.Range(1, 5).Select(i => (new ShortlistEntry(i, $"Idea {i}", "LAB", "box", "S", $"Why {i}"), new Lead("improve", $"Source {i}", $"https://e.org/{i}", ""), (long)i)).ToList();
+
+        var message = WeeklyIdeasJob.Message("2026-W43", staged, 3);
+
+        Assert.Equal(5, message.Keyboard!.Count);
+        Assert.Equal(["ik:4", "id:4"], message.Keyboard[3].Select(b => b.Data));
+        Assert.Contains("4. Idea 4", message.Html, StringComparison.Ordinal);
+        Assert.Contains("5. Idea 5", message.Html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Why 4", message.Html, StringComparison.Ordinal);
+        Assert.Contains("Why 3", message.Html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Keep_with_the_local_sink_answers_Filed_in_the_project_not_Saved_as_an_idea()
+    {
+        var (decisions, _, inboxId) = await StagedAsync();
+        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42, Token = "T" } });
+        var telegram = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":true}"""));
+        var client = new TelegramClient(telegram.Client("http://tg/botT/"));
+        var items = new ItemStore(pg.Db);
+        var feedback = new FeedbackStore(pg.Db);
+        var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), new LocalIdeaSink(), TimeProvider.System);
+        var callbacks = new CallbackHandler(client, feedback, filer, items, new DuelStore(pg.Db),
+            new FeedEater.Signals.KarakeepClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://k/")), options, NullLogger<CallbackHandler>.Instance, decisions: decisions);
+
+        await callbacks.HandleAsync(new TgCallback("cb1", 42, 42, 1, CallbackData.KeepIdea(inboxId)), default);
+
+        var answer = Assert.Single(telegram.Calls).Body;
+        Assert.Contains("Filed in LAB", answer, StringComparison.Ordinal);
+        Assert.DoesNotContain("Saved as an idea", answer, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Keep_files_once_and_a_second_keep_is_already_decided()
     {
         var (decisions, plane, inboxId) = await StagedAsync();

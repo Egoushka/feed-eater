@@ -70,7 +70,7 @@ public sealed class CallbackHandler(
                 var r = d.Keep ? await decisions.KeepAsync(d.InboxId, ct) : await decisions.DropAsync(d.InboxId, ct);
                 await telegram.AnswerAsync(callback.Id, r.Outcome switch
                 {
-                    IdeaOutcome.Filed => ideas.Sink.Filed(r.Project!),
+                    IdeaOutcome.Filed => $"Filed in {r.Project}",
                     IdeaOutcome.Dropped => "Dropped",
                     IdeaOutcome.AlreadyDecided => "Already decided",
                     IdeaOutcome.Failed => Clip($"Not filed: {r.Error}"),

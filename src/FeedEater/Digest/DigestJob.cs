@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Storage;
@@ -77,9 +78,9 @@ public sealed class DigestJob(
             await inbox.AddAsync(new InboxEntry(key, InboxKinds.Notice, Payload: new JsonObject { ["text"] = text },
                 ExpiresAt: Time.GetUtcNow().AddDays(2)), new OutMessage(WebUtility.HtmlEncode(text)), ct);
         }
-        catch (Exception notify) when (notify is HttpRequestException or TelegramException or JsonException)
+        catch (Exception notify) when (notify is HttpRequestException or TelegramException or JsonException or NpgsqlException)
         {
-            Logger.LogWarning(notify, "Could not send the digest notice on Telegram");
+            Logger.LogWarning(notify, "Could not send the digest notice");
         }
     }
 
@@ -93,9 +94,9 @@ public sealed class DigestJob(
                 ExpiresAt: Time.GetUtcNow().AddDays(2)),
                 new OutMessage($"Digest {key} failed: {WebUtility.HtmlEncode(error)}. Retrying until {until}."), ct);
         }
-        catch (Exception notify) when (notify is HttpRequestException or TelegramException or JsonException)
+        catch (Exception notify) when (notify is HttpRequestException or TelegramException or JsonException or NpgsqlException)
         {
-            Logger.LogWarning(notify, "Could not report the digest failure on Telegram");
+            Logger.LogWarning(notify, "Could not report the digest failure");
         }
     }
 }

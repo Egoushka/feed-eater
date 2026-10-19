@@ -8,7 +8,7 @@ public sealed class InboxStore(FeedDb db)
 {
     private const string Columns = "id, key, kind, item_id, ref_id, payload::text as payload, created_at, expires_at, shown_session, done_at";
 
-    /// <summary>Returns the existing row's id when the key was written before.</summary>
+    /// <summary>Returns the existing row's id when the key was written before; a repeat refreshes <c>expires_at</c> and leaves <c>done_at</c> alone.</summary>
     public async Task<long> AddAsync(InboxEntry e, DateTimeOffset now, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
@@ -16,7 +16,7 @@ public sealed class InboxStore(FeedDb db)
             """
             insert into inbox (key, kind, item_id, ref_id, payload, created_at, expires_at)
             values (@Key, @Kind, @ItemId, @RefId, @Payload::jsonb, @Now, @ExpiresAt)
-            on conflict (key) do update set key = excluded.key
+            on conflict (key) do update set expires_at = excluded.expires_at
             returning id
             """,
             new { e.Key, e.Kind, e.ItemId, e.RefId, Payload = (e.Payload ?? []).ToJsonString(), Now = now.UtcDateTime, ExpiresAt = e.ExpiresAt?.UtcDateTime },

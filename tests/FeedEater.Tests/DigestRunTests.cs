@@ -564,6 +564,28 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_notice_that_cannot_be_stored_does_not_fail_the_forced_run()
+    {
+        await SeedAsync();
+        var (run, _, job, trigger, _) = BuildForced();
+        await run.RunAsync(Today, default);
+        await trigger.RequestAsync(false, default);
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await c.ExecuteAsync("alter table inbox rename to inbox_away");
+        try
+        {
+            await job.TickAsync(default);
+        }
+        finally
+        {
+            await c.ExecuteAsync("alter table inbox_away rename to inbox");
+        }
+
+        Assert.Null(await trigger.PendingAsync(default));
+        Assert.Contains("already sent", (await trigger.LastResultAsync(default))!.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_forced_run_rebuilds_a_digest_that_failed_without_items()
     {
         var (run, digests, job, trigger, _) = BuildForced();

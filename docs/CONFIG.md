@@ -206,7 +206,7 @@ An integration is off until its required settings are filled. An off integration
 |---|---|---|
 | `FeedEater:Telegram:AllowedUserId` | `0` | Your numeric Telegram user id: the only sender the bot answers, and the chat digests go to. |
 | `FeedEater:Telegram:BaseUrl` | `https://api.telegram.org/` | Telegram Bot API URL. |
-| `FeedEater:Telegram:Token` | (empty) | Bot token from @BotFather. Without it the digest and the Telegram poller are off; duels, follows, releases, the weekly review, ideas and the autopsy still run when Swipe:Enabled is true, and wait in the inbox. |
+| `FeedEater:Telegram:Token` | (empty) | Bot token from @BotFather. Without it the digest and the Telegram poller are off; duels, follows, the weekly review, ideas and the autopsy still run when Swipe:Enabled is true, and wait in the inbox. |
 
 ## Watch
 
@@ -224,7 +224,7 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:WeeklyIdeas:At` | `09:00:00` | Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start. |
 | `FeedEater:WeeklyIdeas:BacklogToken` | (empty) | GitHub token that can read the backlog file; empty for a public repository. |
 | `FeedEater:WeeklyIdeas:BacklogUrl` | (empty) | GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; Plane items and earlier shortlists still are. |
-| `FeedEater:WeeklyIdeas:Enabled` | `true` | Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Ideas are filed in Plane only after Keep (Telegram button, swipe card). Needs Plane and the Telegram bot. False turns the job off. |
+| `FeedEater:WeeklyIdeas:Enabled` | `true` | Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Ideas are filed in Plane only after Keep (Telegram button, swipe card). Needs Plane, and Telegram or Swipe. False turns the job off. |
 | `FeedEater:WeeklyIdeas:MaxFiled` | `5` | Most ideas filed in Plane per week. |
 | `FeedEater:WeeklyIdeas:TopInMessage` | `3` | Ideas listed in the Telegram message, best first. |
 
