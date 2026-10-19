@@ -35,6 +35,11 @@ if (args.FirstOrDefault() == "import-opml")
     return await ImportOpmlCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "token")
+{
+    return await FeedEater.Api.ApiTokenCommand.RunAsync(args[1..]);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((context, logging) => logging
     .ReadFrom.Configuration(context.Configuration)

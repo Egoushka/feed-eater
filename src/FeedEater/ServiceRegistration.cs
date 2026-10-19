@@ -58,6 +58,7 @@ public static class ServiceRegistration
         services.AddSingleton<ReleaseStore>();
         services.AddSingleton<DuelStore>();
         services.AddSingleton<QuietHours>();
+        services.AddSingleton<FeedEater.Api.ApiTokenStore>();
         services.AddSingleton<UsageStore>();
         services.AddSingleton<IUsageSink>(sp => sp.GetRequiredService<UsageStore>());
         services.AddSingleton<LoopHealth>();
