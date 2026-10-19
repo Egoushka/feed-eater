@@ -398,7 +398,7 @@ public sealed class TelegramOptions
     public string BaseUrl { get; set; } = "https://api.telegram.org/";
 
     [Secret]
-    [Description("Bot token from @BotFather. Without it the digest and the Telegram poller are off; duels, follows, the weekly review, ideas and the autopsy still run when Swipe:Enabled is true, and wait in the inbox.")]
+    [Description("Bot token from @BotFather. Without it the Telegram poller is off; the digest and the inbox jobs (duels, follows, the weekly review, ideas, the autopsy) still run when Swipe:Enabled is true, and wait in the swipe stack.")]
     public string Token { get; set; } = "";
 
     /// <summary>The owner's Telegram user id: the only sender whose button presses count, and the chat digests go to.</summary>
