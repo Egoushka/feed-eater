@@ -285,6 +285,22 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
     }
 
     [Fact]
+    public async Task Undo_of_a_stop_that_closed_nothing_does_not_reopen_the_follow()
+    {
+        var item = await Seed.ItemAsync(pg, 1, "Item", TestVectors.OneHot(1), Time.GetUtcNow().UtcDateTime.AddHours(-2));
+        var follow = await ScalarAsync<long>("insert into follows (root_item_id, started_at, ends_at, status) values (@item, now(), now() + interval '7 days', 'closed') returning id", new { item });
+        await new InboxStore(pg.Db).AddAsync(new InboxEntry($"follow:{Guid.NewGuid():N}", InboxKinds.Follow, item, follow, new JsonObject { ["story"] = "S" }, Time.GetUtcNow().AddDays(7)), Time.GetUtcNow(), default);
+        var session = await SessionOfNextAsync();
+        var id = Guid.NewGuid();
+        Assert.True((await ActAsync(session, 0, "stop", id)).Ok, "act");
+
+        var undo = await UndoAsync(session, 0, id);
+
+        Assert.False(undo.Ok);
+        Assert.Equal("closed", await ScalarAsync<string>("select status from follows where id = @follow", new { follow }));
+    }
+
+    [Fact]
     public async Task Undo_after_a_day_is_refused()
     {
         var (session, position, item) = await ItemCardAsync();

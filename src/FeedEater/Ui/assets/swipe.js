@@ -136,6 +136,7 @@
 
   const REASONS = { cards: 'That was the last card.', time: 'Time is up.', exhausted: 'Nothing new is left.', user: 'Done.' };
   const LABELS = [['save', 'Saved'], ['share', 'Shared'], ['idea', 'Ideas filed'], ['like', 'Liked'], ['dislike', 'Not for me'], ['open', 'Opened'],
+    ['stop', 'Stopped following'], ['pick_a', 'Duel picks (A)'], ['pick_b', 'Duel picks (B)'], ['keep', 'Ideas kept'], ['drop', 'Ideas dropped'],
     ['good', 'Remembered'], ['again', 'Forgot'], ['send', 'Seeds sent'], ['dismiss', 'Seeds dismissed']];
 
   function renderSummary(s) {

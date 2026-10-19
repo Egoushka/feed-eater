@@ -249,7 +249,7 @@ public sealed class SwipeService(
             throw;
         }
 
-        await acts.CompleteAsync(id, result.Ok, result.Message, ct);
+        await acts.CompleteAsync(id, result.Ok, result.Message, CancellationToken.None);
         return result;
     }
 
@@ -306,6 +306,11 @@ public sealed class SwipeService(
         }
 
         var row = queued.Kind is "item" or "digest" or "recall" or "seed" ? null : await inbox.GetAsync(queued.RefId, ct);
+        if (record is { Act: "stop", Message: InboxCards.AlreadyStopped })
+        {
+            return new ActResult(false, "Can't undo that: the follow was already stopped.");
+        }
+
         if (NotUndoable(queued.Kind, record.Act) is { } reason)
         {
             return new ActResult(false, "Can't undo that: " + reason);

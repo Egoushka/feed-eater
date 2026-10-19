@@ -17,6 +17,9 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
     private static readonly string[] IdeaActs = ["keep", "drop", "open"];
 
     /// <summary>The acts a card of this inbox kind takes; empty for a kind with no card.</summary>
+    /// <summary>The message of a stop that closed nothing; <see cref="SwipeService.UndoAsync"/> reads it to refuse the undo.</summary>
+    public const string AlreadyStopped = "Already stopped";
+
     public static string[] ActsFor(string kind) => kind switch
     {
         InboxKinds.Follow => FollowActs,
@@ -104,7 +107,7 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
             case (_, "open"):
                 return new ActResult(true, "");
             case (InboxKinds.Follow, "stop"):
-                return await follower.CloseAsync(row.RefId ?? 0, null, ct) ? new ActResult(true, "Stopped following") : new ActResult(true, "Already stopped");
+                return await follower.CloseAsync(row.RefId ?? 0, null, ct) ? new ActResult(true, "Stopped following") : new ActResult(true, AlreadyStopped);
             case (InboxKinds.Duel, "pick_a" or "pick_b"):
                 var answer = await duels.AnswerAsync(row.RefId ?? 0, act == "pick_a" ? 'a' : 'b', ct);
                 return answer.Outcome switch
@@ -140,7 +143,7 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
 
     private static string? Str(JsonObject p, string key) => p[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
-    private static string Flag(JsonObject p, string key) => p[key] is JsonValue v && v.TryGetValue<bool>(out var b) && b ? "true" : "false";
+    private static string? Flag(JsonObject p, string key) => p[key] is JsonValue v && v.TryGetValue<bool>(out var b) && b ? "true" : null;
 
     /// <summary>Ids are JSON numbers; a string is accepted too.</summary>
     private static long? Id(JsonObject p, string key) => p[key] is JsonValue v

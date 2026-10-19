@@ -76,7 +76,7 @@ public sealed class SwipeStore(FeedDb db)
             where i.published_at > @publishedAfter and i.duplicate_of is null and i.embedding is not null
               and not coalesce(f.muted, false)
               and not exists (select 1 from votes v where v.item_id = i.id)
-              and not exists (select 1 from swipe_events e where e.kind = 'item' and e.ref_id = i.id and e.created_at > @shownSince)
+              and not exists (select 1 from swipe_events e where e.kind in ('item', 'digest') and e.ref_id = i.id and e.created_at > @shownSince)
               and not (i.id = any(@exclude))
             order by coalesce(i.cluster_of, i.id), i.published_at, i.id
             """,

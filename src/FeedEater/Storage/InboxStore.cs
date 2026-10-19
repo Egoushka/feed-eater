@@ -52,7 +52,7 @@ public sealed class InboxStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
-            "update inbox set shown_count = shown_count + 1, shown_session = @sessionId where id = @id", new { id, sessionId }, cancellationToken: ct));
+            "update inbox set shown_count = shown_count + (case when shown_session is distinct from @sessionId then 1 else 0 end), shown_session = @sessionId where id = @id", new { id, sessionId }, cancellationToken: ct));
     }
 
     /// <summary>False when it was already done.</summary>

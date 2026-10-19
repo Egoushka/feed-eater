@@ -23,6 +23,7 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
 
+    // The tests rely on the serial Postgres collection.
     // One host for the class: every extra host adds a connection pool, and the shared Postgres has a low connection limit.
     private static WebApplicationFactory<Program>? app;
 
@@ -96,11 +97,35 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         var twice = await store.AddAsync(new InboxEntry("b", InboxKinds.Notice, ExpiresAt: now.AddDays(1)), now.AddHours(-2), default);
         var session = await StartSessionAsync();
         await store.MarkShownAsync(twice, session, default);
-        await store.MarkShownAsync(twice, session, default);
+        await store.MarkShownAsync(twice, await StartSessionAsync(), default);
         var once = await store.AddAsync(new InboxEntry("c", InboxKinds.Notice, ExpiresAt: now.AddDays(1)), now.AddHours(-1), default);
         await store.MarkShownAsync(once, session, default);
 
         Assert.Equal([open, once], (await store.EligibleAsync(now, 10, default)).Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task Rendering_the_same_inbox_card_twice_in_a_session_counts_one_showing()
+    {
+        await AddAsync("notice", new JsonObject { ["text"] = "Hi" });
+        var svc = Service();
+        var card = await ShowAsync(svc);
+
+        await svc.NextAsync(card.Position, default);
+        await svc.NextAsync(card.Position, default);
+
+        Assert.Equal(1, await ScalarAsync<int>("select shown_count from inbox"));
+    }
+
+    [Fact]
+    public async Task A_digest_card_shown_before_is_not_a_ranked_candidate_later()
+    {
+        var item = await ItemAsync(1);
+        await ShownAsync(item, "digest");
+
+        var candidates = await new SwipeStore(pg.Db).CandidatesAsync(Now.AddDays(-3), Now.AddDays(-1), [], default);
+
+        Assert.DoesNotContain(candidates, c => c.Id == item);
     }
 
     [Fact]
@@ -241,7 +266,7 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
                     ["urgent"] = false,
                 });
                 (title, feed, why, url) = ("grafana 11.1 → 11.2", "release", "Fixes", "https://example.com/r");
-                detail = [("breaking", "true"), ("urgent", "false")];
+                detail = [("breaking", "true"), ("urgent", null)];
                 break;
             case "idea":
                 await AddAsync("idea", new JsonObject
