@@ -44,10 +44,11 @@ public sealed class LibraryStore(FeedDb db)
         return await c.ExecuteScalarAsync<bool>(new CommandDefinition("select exists (select 1 from saved where item_id = @itemId)", new { itemId }, cancellationToken: ct));
     }
 
+    /// <summary>Keeps an id already stored.</summary>
     public async Task SetKarakeepIdAsync(long itemId, string id, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
-        await c.ExecuteAsync(new CommandDefinition("update saved set karakeep_id = @id where item_id = @itemId", new { itemId, id }, cancellationToken: ct));
+        await c.ExecuteAsync(new CommandDefinition("update saved set karakeep_id = @id where item_id = @itemId and karakeep_id is null", new { itemId, id }, cancellationToken: ct));
     }
 
     public async Task<bool> MarkReadAsync(long itemId, bool read, DateTimeOffset at, CancellationToken ct)

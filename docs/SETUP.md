@@ -149,6 +149,26 @@ Anonymous requests are rate limited. The machine-readable description is at `/ap
 - **Errors are problems.** Every error inside `/api/v1`, including an unknown route (404), a wrong method (405), a body over
   64 KB (413) and JSON that does not parse (400), is `application/problem+json` with a `title`.
 
+## Library
+
+Saving an item (swipe right, 📌 in Telegram, Save in `/ui`) puts it in your own library, `/ui/library`, and counts as a like in
+the ranking. The library needs no other service. It holds links and articles; a note can be added to a saved item.
+
+**From the phone.** Share a link to the paired app, or call `POST /api/v1/library` with `{"url": "...", "title": "...", "text": "..."}`
+(only `url` is required; http and https only). The link is saved at once, also when nothing else is reachable.
+
+**Enrichment.** After a save, a background loop fetches the page's full text, writes the read and computes the embedding, so the
+item is readable offline and found by search. Each step is retried on later passes, up to 5 times; after that the item stays saved,
+searchable by title and shown as "not enriched". Tune the batch and the idle wait with `FeedEater__Library__*` (see CONFIG.md).
+
+**Resurface.** On Sundays at 10:00 (local time) up to 3 saved items still unread after 14 days come back as cards in the swipe inbox,
+at most once every 30 days each: keep, remove, mark read or open.
+
+**Karakeep.** `FeedEater__Karakeep__Mirror=true` (with the Karakeep URL and key, see below) also copies each new save to Karakeep as a
+bookmark. A Karakeep outage never fails a save. To bring existing bookmarks in once, run
+`docker compose run --rm feed-eater import-karakeep`: every link bookmark is saved (without a vote, since bookmarks already count
+as likes), non-links are skipped, and the counts are printed. Running it again saves nothing new.
+
 ## Optional integrations
 
 Each one is off until its settings are filled: no background work, no button, no call. Add the keys to `.env`, run
@@ -164,7 +184,7 @@ project named in the profile entry (`"plane": "<identifier>"`), else of `FeedEat
 on those projects. `FeedEater__Ideas__Sink=local` keeps ideas local even with Plane configured.
 
 **Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). Items get a 📌 button that bookmarks the link,
-and your Karakeep bookmarks count as liked items in the ranking.
+and your Karakeep bookmarks count as liked items in the ranking. See "Library" for the mirror and the one-time import.
 
 **GitHub stars.** Set `FeedEater__GitHub__User`. The public stars of that user count as liked items. A token is optional
 (`FeedEater__GitHub__Token`, no scopes needed): without it GitHub allows 60 requests an hour, which is enough for the stars.
