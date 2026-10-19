@@ -32,6 +32,10 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private int _triageCalls;
     private bool _llmDown;
     private bool _readsDown;
+    private bool _vetoA;
+    private bool _marginalA;
+    private bool _vetoAll;
+    private int _readCap = 12;
     private bool _learn;
     private string _profilePath = "Fixtures/profile.json";
     private bool _miniflux = true;
@@ -77,6 +81,21 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         _readPrompts.Add(body);
 
+        if (_vetoAll)
+        {
+            return StubHandler.Json(Chat("""{"relevance":0,"summary":"A beginner question.","why":"Not relevant.","kind":"fyi","project":null,"suggestion":null}"""));
+        }
+
+        if (_marginalA && body.Contains("Title: Keep A", StringComparison.Ordinal))
+        {
+            return StubHandler.Json(Chat("""{"relevance":1,"summary":"A is a showcase.","why":"Loosely related.","kind":"new","project":"homelab","suggestion":"Turn A on."}"""));
+        }
+
+        if (_vetoA && body.Contains("Title: Keep A", StringComparison.Ordinal))
+        {
+            return StubHandler.Json(Chat("""{"relevance":0,"summary":"A is a beginner question.","why":"Not relevant.","kind":"fyi","project":null,"suggestion":null}"""));
+        }
+
         if (body.Contains("Title: Keep A", StringComparison.Ordinal))
         {
             return StubHandler.Json(Chat("""{"summary":"A is new.","why":"Box runs it.","kind":"improve","project":"homelab","suggestion":"Turn A on."}"""));
@@ -101,7 +120,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private (DigestRun Run, DigestStore Digests, StubHandler Miniflux) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Telegram = new TelegramOptions { AllowedUserId = _allowedUser }, Taste = new TasteOptions { Learn = _learn } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Telegram = new TelegramOptions { AllowedUserId = _allowedUser }, Taste = new TasteOptions { Learn = _learn }, Caps = new CapsOptions { Read = _readCap } });
         var time = new FakeTimeProvider(Now);
         var miniflux = new StubHandler((_, _) => StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{LongText}</p>" })));
         var llm = new StubHandler((_, body) => body.Contains("\"input\"", StringComparison.Ordinal)
@@ -175,6 +194,48 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(chatCalls, _chatCalls);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
         Assert.Single(miniflux.Calls, c => c.Uri.Contains("/v1/entries/202/fetch-content", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_item_the_reader_model_vetoes_after_reading_is_dropped_and_the_next_candidate_takes_its_slot()
+    {
+        _vetoA = true;
+        _readCap = 1;
+        await SeedAsync();
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.DoesNotContain(_sent, s => s.Contains("Keep A", StringComparison.Ordinal));
+        Assert.Contains(_sent, s => s.Contains("Keep B", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_item_the_reader_model_calls_marginal_is_kept_after_the_ones_worth_reading()
+    {
+        _marginalA = true;
+        await SeedAsync();
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Equal(3, _sent.Count);
+        Assert.Contains("Keep B", _sent[1], StringComparison.Ordinal);
+        Assert.Contains("Keep A", _sent[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task When_the_reader_model_vetoes_every_item_the_no_digest_message_says_so()
+    {
+        _vetoAll = true;
+        await SeedAsync();
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        var message = Assert.Single(_sent);
+        Assert.Contains("No digest today", message, StringComparison.Ordinal);
+        Assert.Contains("the reader model rated all 2 items it read below 1", message, StringComparison.Ordinal);
     }
 
     [Fact]

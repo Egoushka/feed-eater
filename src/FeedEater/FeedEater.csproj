@@ -7,6 +7,7 @@
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <PackageReference Include="Switchknife.McpGuard" Version="0.1.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -17,6 +18,11 @@
     <!-- Embedded as FeedEater.Migrations.<file>; DatabaseMigrator filters on ".Migrations." -->
     <EmbeddedResource Include="../../db/migrations/*.sql" LinkBase="Migrations" />
     <EmbeddedResource Include="Ui/assets/app.css" LogicalName="FeedEater.Ui.app.css" />
+    <EmbeddedResource Include="Ui/assets/swipe.js" LogicalName="FeedEater.Ui.swipe.js" />
+    <EmbeddedResource Include="Ui/assets/swipe.css" LogicalName="FeedEater.Ui.swipe.css" />
+    <EmbeddedResource Include="Ui/assets/swipe.webmanifest" LogicalName="FeedEater.Ui.swipe.webmanifest" />
+    <EmbeddedResource Include="Ui/assets/swipe-sw.js" LogicalName="FeedEater.Ui.swipe-sw.js" />
+    <EmbeddedResource Include="Ui/assets/swipe-icon.svg" LogicalName="FeedEater.Ui.swipe-icon.svg" />
     <!-- The interests used until the reader writes their own profile.json. -->
     <EmbeddedResource Include="../../profile.example.json" LogicalName="FeedEater.profile.example.json" />
     <InternalsVisibleTo Include="FeedEater.Tests" />

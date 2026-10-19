@@ -1,0 +1,10 @@
+{
+  "name": "feed-eater swipe",
+  "short_name": "Swipe",
+  "start_url": "/swipe",
+  "scope": "/swipe/",
+  "display": "standalone",
+  "background_color": "#14161a",
+  "theme_color": "#14161a",
+  "icons": [{ "src": "/swipe/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

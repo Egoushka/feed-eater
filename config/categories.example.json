@@ -1,0 +1,6 @@
+{
+  "categories": [
+    { "key": "work", "description": "Software engineering, tools and projects I am building.", "share": 0.3, "seed": true },
+    { "key": "humour", "description": "Memes and jokes that make me laugh and that I would send to a friend.", "share": 0.3, "events": ["share", "like"] }
+  ]
+}

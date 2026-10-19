@@ -28,7 +28,7 @@ public sealed record DigestHeader(
     DateOnly Date, int Shown, int Candidates, IReadOnlyList<(string Key, int Count)> ByProject,
     int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes, IReadOnlyList<string>? Releases = null, int UnpricedCalls = 0);
 
-/// <summary>Which optional buttons a surface offers: 📌 needs Karakeep, and 💡 says where the idea goes.</summary>
+/// <summary>Which optional buttons a surface offers: 📌 needs Karakeep, and the filed-idea label says where the idea went.</summary>
 public sealed record ButtonStyle(bool CanSave, bool ToPlane)
 {
     public static readonly ButtonStyle Default = new(true, true);
@@ -108,7 +108,7 @@ public static class DigestFormatter
             }
         }
 
-        return new OutMessage(html.ToString(), Buttons(i.Id, i.Suggestion is not null, vote, filedIn, style: style, follow: follow));
+        return new OutMessage(html.ToString(), Buttons(i.Id, vote, filedIn, style: style, follow: follow));
     }
 
     /// <summary>One search hit as its own message, with the same buttons as a digest item.</summary>
@@ -123,11 +123,11 @@ public static class DigestFormatter
             html.Append("\n\n").Append(E(Clip(h.Summary.Trim(), 240)));
         }
 
-        return new OutMessage(html.ToString(), Buttons(h.Id, h.HasSuggestion, (short?)h.Vote, h.FiledIn, h.Saved, style, follow));
+        return new OutMessage(html.ToString(), Buttons(h.Id, (short?)h.Vote, h.FiledIn, h.Saved, style, follow));
     }
 
     /// <summary><paramref name="follow"/> adds 🧵, which follows the item's story; off, the buttons are as before.</summary>
-    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, bool hasSuggestion, short? vote, string? filedIn, bool saved = false, ButtonStyle? style = null, bool follow = false)
+    public static IReadOnlyList<IReadOnlyList<Button>> Buttons(long id, short? vote, string? filedIn, bool saved = false, ButtonStyle? style = null, bool follow = false)
     {
         style ??= ButtonStyle.Default;
         var first = new List<Button>
@@ -149,10 +149,6 @@ public static class DigestFormatter
         if (filedIn is not null)
         {
             rows.Add(new[] { new Button(style.ToPlane ? $"✓ Filed in {filedIn}" : "✓ Saved as an idea", CallbackData.Noop) });
-        }
-        else if (hasSuggestion)
-        {
-            rows.Add(new[] { new Button(style.ToPlane ? "💡 To Plane" : "💡 Save idea", CallbackData.Idea(id)) });
         }
 
         return rows;

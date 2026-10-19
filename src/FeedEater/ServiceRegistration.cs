@@ -22,8 +22,10 @@ using FeedEater.Setup;
 using FeedEater.Signals;
 using FeedEater.Sources;
 using FeedEater.Storage;
+using FeedEater.Swipe;
 using FeedEater.Telegram;
 using FeedEater.Ui;
+using FeedEater.WeeklyIdeas;
 
 namespace FeedEater;
 
@@ -118,6 +120,12 @@ public static class ServiceRegistration
         // The client carries the PINS bearer token, so it must never follow a redirect to another host.
         services.AddHttpClient<WatchSource>().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
+        services.AddHttpClient<NotesClient>((sp, http) =>
+        {
+            var o = Settings(sp).Swipe.Notes;
+            BaseAddress(http, o.BaseUrl.Length > 0 ? o.BaseUrl.TrimEnd('/') + "/" : "");
+            Bearer(http, o.Token);
+        });
         services.AddHttpClient<HindsightClient>((sp, http) =>
         {
             var o = Settings(sp).Hindsight;
@@ -132,6 +140,8 @@ public static class ServiceRegistration
             ? sp.GetRequiredService<PlaneIdeaSink>()
             : sp.GetRequiredService<LocalIdeaSink>());
         services.AddSingleton<IdeaFiler>();
+        services.AddSingleton<WeeklyIdeaStore>();
+        services.AddHttpClient<BacklogClient>();
         services.AddSingleton<CallbackHandler>();
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ArchiveAnswer>();
@@ -146,6 +156,15 @@ public static class ServiceRegistration
         {
             services.AddHostedService<Ingestor>();
             services.AddHostedService<ProfileBuilder>();
+            if (settings.Swipe.Enabled)
+            {
+                services.AddHostedService<CategoryBuilder>();
+                if (settings.Swipe.Recall.Enabled || settings.Swipe.Seeds.Enabled)
+                {
+                    services.AddHostedService<SwipeContentJob>();
+                }
+            }
+
             if (settings.Karakeep.Enabled || settings.GitHub.Enabled)
             {
                 services.AddHostedService<SignalJob>();
@@ -171,6 +190,11 @@ public static class ServiceRegistration
             if (telegram)
             {
                 services.AddHostedService<WeeklyReview>();
+                if (settings.WeeklyIdeas.Enabled && settings.Plane.Enabled)
+                {
+                    services.AddHostedService<WeeklyIdeasJob>();
+                }
+
                 if (settings.Duel.Enabled)
                 {
                     services.AddHostedService<DuelJob>();
@@ -197,6 +221,12 @@ public static class ServiceRegistration
         services.AddSingleton<MapStore>();
         services.AddSingleton<TasteMap>();
         services.AddSingleton<MapHandler>();
+        services.AddSingleton<SwipeStore>();
+        services.AddSingleton<RecallStore>();
+        services.AddSingleton<CategoryStore>();
+        services.AddSingleton<SwipeYield>();
+        services.AddSingleton<SwipeService>();
+        services.AddSingleton<SwipeReportHandler>();
 
         services.AddSetupChecks();
         services.AddFeedEaterMcp();

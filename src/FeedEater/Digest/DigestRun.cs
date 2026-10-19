@@ -191,7 +191,6 @@ public sealed class DigestRun(
         var picked = triaged
             .Where(x => x.Triage.Relevance >= o.Caps.MinRelevance)
             .OrderByDescending(x => x.Triage.Relevance).ThenByDescending(x => x.Score.Score)
-            .Take(o.Caps.Read)
             .ToList();
 
         var repoFacts = new Dictionary<(string, string), string?>();
@@ -199,6 +198,12 @@ public sealed class DigestRun(
         int readCalls = 0, readTransportFailures = 0, readsCached = 0;
         foreach (var (s, t) in picked)
         {
+            // Items the reader model vetoes after reading are skipped and the next candidate takes the slot, up to a bounded extra spend.
+            if (read.Count >= o.Caps.Read || readCalls >= o.Caps.Read * 2)
+            {
+                break;
+            }
+
             var r = await analysis.GetReadAsync(s.ItemId, ct);
             if (r is not null)
             {
@@ -234,7 +239,7 @@ public sealed class DigestRun(
                 }
             }
 
-            if (r is not null)
+            if (r is not null && (r.Relevance ?? o.Caps.MinRelevance) >= o.Caps.MinReadRelevance)
             {
                 read.Add((s, t, r));
             }
@@ -245,8 +250,16 @@ public sealed class DigestRun(
             throw new InvalidOperationException($"All {readCalls} reads failed; the LLM looks unreachable");
         }
 
+        var readsDone = readCalls - readTransportFailures + readsCached;
+        if (read.Count == 0 && readsDone > 0)
+        {
+            notes.Add($"the reader model rated all {readsDone} items it read below {o.Caps.MinReadRelevance}");
+        }
+
+        // Items the reader called marginal fill the slots left after the ones it called worth reading.
         var ordered = read
-            .OrderBy(x => x.Read.Suggestion is null ? 1 : 0)
+            .OrderBy(x => (x.Read.Relevance ?? o.Caps.MinRelevance) < o.Caps.MinRelevance ? 1 : 0)
+            .ThenBy(x => x.Read.Suggestion is null ? 1 : 0)
             .ThenByDescending(x => x.Triage.Relevance)
             .ThenByDescending(x => x.Score.Score)
             .Select(x => x.Score.ItemId)

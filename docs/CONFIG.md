@@ -43,11 +43,12 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Caps:CandidateDays` | `3` | Days back an item can still be a digest candidate. |
 | `FeedEater:Caps:Centroid` | `500` | Most recent liked and disliked items used for the taste centroids. |
 | `FeedEater:Caps:EmbedChars` | `8000` | Characters of an item embedded. |
+| `FeedEater:Caps:MinReadRelevance` | `1` | Lowest relevance (0 to 3) the reader model can give an item after reading it and keep it in the digest. Items below MinRelevance but at or above this go last. |
 | `FeedEater:Caps:MinRelevance` | `2` | Lowest triage relevance (0 to 3) that can reach the digest. |
 | `FeedEater:Caps:Read` | `12` | Items the stronger model reads in full per digest. |
 | `FeedEater:Caps:ReadChars` | `24000` | Characters of an item given to the read. |
 | `FeedEater:Caps:ShortContentChars` | `1500` | Items with less text than this many characters get their full text fetched before reading. |
-| `FeedEater:Caps:Triage` | `60` | Candidates the small model triages per digest. |
+| `FeedEater:Caps:Triage` | `400` | Candidates the small model triages per digest. |
 | `FeedEater:Caps:TriageChars` | `2000` | Characters of an item given to triage. |
 
 ## Cluster
@@ -161,11 +162,36 @@ An integration is off until its required settings are filled. An off integration
 | Key | Default | Description |
 |---|---|---|
 | `FeedEater:Source:AllowedHosts` | (empty) | Exact host names a configured feed URL may point at although they are private (self-hosted RSSHub, Nitter); any port. Applies to feed URLs only, never to article or linked-page fetches. |
-| `FeedEater:Source:BackfillDays` | `14` | The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories. |
+| `FeedEater:Source:BackfillDays` | `14` | The first fetch of a feed keeps only entries published this many days back, so a new instance does not embed whole histories. With Miniflux, older entries are archived and searchable but not embedded, so they never become digest candidates. |
 | `FeedEater:Source:FeedInterval` | `00:30:00` | How often each feed is fetched; repeated failures double the wait up to MaxBackoff. |
 | `FeedEater:Source:Kind` | `builtin` | Where entries come from: builtin (feed-eater reads the feeds itself) or miniflux (copies entries from Miniflux). Switching on a populated database is unsupported. |
 | `FeedEater:Source:MaxBackoff` | `1.00:00:00` | The longest wait between fetches of a feed that keeps failing. |
 | `FeedEater:Source:PollInterval` | `00:01:00` | How often the ingest loop looks for feeds that are due. |
+
+## Swipe
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Swipe:CandidateDays` | `14` | Items published in the last this many days can be shown. |
+| `FeedEater:Swipe:Cards` | `40` | Cards in one session; the summary card follows the last one. |
+| `FeedEater:Swipe:CategoriesPath` | `/config/categories.json` | Your categories (what counts as a good use of attention: shares, events, seed flag); shape in categories.example.json. A missing file means one category, everything. |
+| `FeedEater:Swipe:CategoryFloor` | `0.2` | Cosine similarity below which an item belongs to no category. |
+| `FeedEater:Swipe:CooldownMinutes` | `180` | Minutes after a session ends before the next one can start. |
+| `FeedEater:Swipe:Enabled` | `false` | Swipe mode: a phone page at /swipe showing one card per screen, with a hard cap per session. Off by default; needs Mcp:Token for the sign-in. |
+| `FeedEater:Swipe:Epsilon` | `0.2` | Share of cards chosen for exploration: a random item from outside the best-ranked part that is unlike the rest of the session. Its yield is the only honest test of the ranking. |
+| `FeedEater:Swipe:Minutes` | `15` | Minutes after which a session ends with the summary card, whatever the card count. |
+| `FeedEater:Swipe:Notes:BaseUrl` | (empty) | Server that lists your notes at GET /api/v1/notes (items with id, topic, points, createdAt), for recall cards. Empty means no notes. |
+| `FeedEater:Swipe:Notes:Token` | (empty) | Bearer token for the notes server. |
+| `FeedEater:Swipe:Recall:Enabled` | `true` | Recall cards: questions made from the items you liked or saved (and from your notes) come back at growing intervals. False turns generating and showing them off. |
+| `FeedEater:Swipe:Recall:PerDay` | `10` | Most liked or saved items turned into questions per local day (one small-model call each). |
+| `FeedEater:Swipe:Recall:PerSession` | `12` | Most recall cards in one session; due cards come first, so a backlog never takes the whole session. |
+| `FeedEater:Swipe:RepeatDays` | `30` | An item shown in swipe mode is not shown again for this many days. |
+| `FeedEater:Swipe:Seeds:Enabled` | `true` | Post seeds: a one-line angle for a post, drafted from an item you liked or saved, with a send button that files it as an idea. False turns generating and showing them off. |
+| `FeedEater:Swipe:Seeds:PerDay` | `3` | Most seeds drafted per local day (one small-model call each). |
+| `FeedEater:Swipe:Seeds:PerSession` | `2` | Most seeds in one session. |
+| `FeedEater:Swipe:SessionsPerDay` | `3` | Most sessions that can start per local day. |
+| `FeedEater:Swipe:Yield` | `1` | Weight of the yield model's (probability - 0.5) next to the taste score, once it has enough examples. |
+| `FeedEater:Swipe:YieldMinEvents` | `30` | Good and not-good examples (each) the yield model needs before it adds to the ranking. |
 
 ## Taste
 
@@ -190,6 +216,17 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Watch:MapPath` | (empty) | JSON map from container image to upstream GitHub repo; empty uses config/watch-map.json beside the app. |
 | `FeedEater:Watch:Source` | (empty) | Release watch: what you run, as a PINS.md file path or an https URL (for a private GitHub repo, the contents API URL plus Watch:Token). Empty uses FallbackPath. |
 | `FeedEater:Watch:Token` | (empty) | Bearer token for Watch:Source; empty for a public URL. |
+
+## WeeklyIdeas
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:WeeklyIdeas:At` | `09:00:00` | Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start. |
+| `FeedEater:WeeklyIdeas:BacklogToken` | (empty) | GitHub token that can read the backlog file; empty for a public repository. |
+| `FeedEater:WeeklyIdeas:BacklogUrl` | (empty) | GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; Plane items and earlier shortlists still are. |
+| `FeedEater:WeeklyIdeas:Enabled` | `true` | Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Needs Plane and the Telegram bot. False turns the job off. |
+| `FeedEater:WeeklyIdeas:MaxFiled` | `5` | Most ideas filed in Plane per week. |
+| `FeedEater:WeeklyIdeas:TopInMessage` | `3` | Ideas listed in the Telegram message, best first. |
 
 ## Weights
 

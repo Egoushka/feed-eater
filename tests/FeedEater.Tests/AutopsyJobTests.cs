@@ -45,7 +45,9 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
         _telegramDown = telegramFails;
         var options = Options.Create(new FeedEaterOptions
         {
-            TimeZone = "Europe/Kyiv", Telegram = new TelegramOptions { AllowedUserId = 42 }, GitHub = new GitHubOptions { User = "octocat", Token = token },
+            TimeZone = "Europe/Kyiv",
+            Telegram = new TelegramOptions { AllowedUserId = 42 },
+            GitHub = new GitHubOptions { User = "octocat", Token = token },
         });
         var stub = new StubHandler((_, body) =>
         {
@@ -96,7 +98,10 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
 
     private static readonly Dictionary<string, (int, int, bool)> Mixed = new()
     {
-        ["acme/grew"] = (150, 3, false), ["acme/alive"] = (100, 5, false), ["acme/quiet"] = (100, 100, false), ["acme/archived"] = (500, 1, true),
+        ["acme/grew"] = (150, 3, false),
+        ["acme/alive"] = (100, 5, false),
+        ["acme/quiet"] = (100, 100, false),
+        ["acme/archived"] = (500, 1, true),
     };
 
     private async Task<long[]> SeedMixedAsync() =>

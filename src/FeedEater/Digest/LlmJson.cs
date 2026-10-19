@@ -18,6 +18,9 @@ public sealed record ReadResult
     public string Kind { get; init; } = "fyi";
     public string? Project { get; init; }
     public string? Suggestion { get; init; }
+
+    /// <summary>The model's verdict after reading the item, 0-3; null when it gave none (older rows, or a reply without the field).</summary>
+    public int? Relevance { get; init; }
 }
 
 public sealed record ReleaseNote(string Changes, string Breaking, string? Evidence);
@@ -62,6 +65,7 @@ public static class LlmJson
             Kind = kind,
             Project = Key(e, keys),
             Suggestion = kind == "fyi" ? null : Text(e, "suggestion"),
+            Relevance = Relevance(e) is { } r ? Math.Clamp(r, 0, 3) : null,
         };
     }
 

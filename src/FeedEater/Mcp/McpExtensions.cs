@@ -1,5 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
+using Switchknife.McpGuard;
 
 namespace FeedEater.Mcp;
 
@@ -18,28 +17,7 @@ public static class McpExtensions
     /// </summary>
     public static IEndpointRouteBuilder MapFeedEaterMcp(this IEndpointRouteBuilder app, string? token)
     {
-        var expected = Encoding.UTF8.GetBytes($"Bearer {token}");
-        app.MapMcp("/mcp").Add(builder =>
-        {
-            var next = builder.RequestDelegate!;
-            builder.RequestDelegate = context =>
-            {
-                if (context.Request.Headers.ContainsKey("Origin"))
-                {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    return Task.CompletedTask;
-                }
-
-                var given = Encoding.UTF8.GetBytes(context.Request.Headers.Authorization.ToString());
-                if (string.IsNullOrEmpty(token) || !CryptographicOperations.FixedTimeEquals(given, expected))
-                {
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    return Task.CompletedTask;
-                }
-
-                return next(context);
-            };
-        });
+        app.MapMcp("/mcp").RequireMcpGuard(token);
         return app;
     }
 }

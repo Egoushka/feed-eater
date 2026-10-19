@@ -131,7 +131,11 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
         await new AnalysisStore(pg.Db).SaveReadAsync(id, new ReadResult
         {
-            Summary = "A summary.", Why = "It matters.", Kind = "improve", Project = "homelab", Suggestion = suggestion,
+            Summary = "A summary.",
+            Why = "It matters.",
+            Kind = "improve",
+            Project = "homelab",
+            Suggestion = suggestion,
         }, "m", default);
         var today = new DigestTrigger(new CursorStore(pg.Db), Microsoft.Extensions.Options.Options.Create(new FeedEaterOptions()), TimeProvider.System).Today();
         await using var d = await pg.Db.DataSource.OpenConnectionAsync();
@@ -901,8 +905,16 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         var store = new ReleaseStore(pg.Db);
         await store.AddAsync(new ReleaseRow
         {
-            Repo = "juanfont/headscale", Tag = "v9.0.0", Version = "9.0.0", Title = "t", Url = "javascript:alert(1)", Newer = true, Urgent = true,
-            Summary = $"{Hostile} summary", Breaking = "yes", Evidence = $"{Hostile} evidence",
+            Repo = "juanfont/headscale",
+            Tag = "v9.0.0",
+            Version = "9.0.0",
+            Title = "t",
+            Url = "javascript:alert(1)",
+            Newer = true,
+            Urgent = true,
+            Summary = $"{Hostile} summary",
+            Breaking = "yes",
+            Evidence = $"{Hostile} evidence",
         }, default);
         var cookie = await LoginAsync();
 

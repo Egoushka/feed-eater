@@ -190,7 +190,7 @@ public sealed class CallbackHandler(
         try
         {
             await telegram.EditButtonsAsync(callback.ChatId, callback.MessageId,
-                DigestFormatter.Buttons(itemId, item.Suggestion is not null, (short?)item.Vote, item.FiledIn, item.Saved, ButtonStyle.From(options.Value), follow), ct);
+                DigestFormatter.Buttons(itemId, (short?)item.Vote, item.FiledIn, item.Saved, ButtonStyle.From(options.Value), follow), ct);
         }
         catch (TelegramException ex) when (ex.Message.Contains("not modified", StringComparison.OrdinalIgnoreCase))
         {

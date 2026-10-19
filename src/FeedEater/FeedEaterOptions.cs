@@ -35,6 +35,7 @@ public sealed class FeedEaterOptions
     public WeightsOptions Weights { get; set; } = new();
     public TelegramOptions Telegram { get; set; } = new();
     public IdeasOptions Ideas { get; set; } = new();
+    public WeeklyIdeasOptions WeeklyIdeas { get; set; } = new();
     public PlaneOptions Plane { get; set; } = new();
     public KarakeepOptions Karakeep { get; set; } = new();
     public GitHubOptions GitHub { get; set; } = new();
@@ -46,6 +47,7 @@ public sealed class FeedEaterOptions
     public QuietOptions Quiet { get; set; } = new();
     public DuelOptions Duel { get; set; } = new();
     public FollowOptions Follow { get; set; } = new();
+    public SwipeOptions Swipe { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -179,6 +181,87 @@ public sealed class FollowOptions
     public int MaxMessages { get; set; } = 50;
 }
 
+public sealed class SwipeOptions
+{
+    [Description("Swipe mode: a phone page at /swipe showing one card per screen, with a hard cap per session. Off by default; needs Mcp:Token for the sign-in.")]
+    public bool Enabled { get; set; }
+
+    [Description("Cards in one session; the summary card follows the last one.")]
+    public int Cards { get; set; } = 40;
+
+    [Description("Minutes after which a session ends with the summary card, whatever the card count.")]
+    public int Minutes { get; set; } = 15;
+
+    [Description("Minutes after a session ends before the next one can start.")]
+    public int CooldownMinutes { get; set; } = 180;
+
+    [Description("Most sessions that can start per local day.")]
+    public int SessionsPerDay { get; set; } = 3;
+
+    [Description("Items published in the last this many days can be shown.")]
+    public int CandidateDays { get; set; } = 14;
+
+    [Description("An item shown in swipe mode is not shown again for this many days.")]
+    public int RepeatDays { get; set; } = 30;
+
+    [Description("Your categories (what counts as a good use of attention: shares, events, seed flag); shape in categories.example.json. A missing file means one category, everything.")]
+    public string CategoriesPath { get; set; } = "/config/categories.json";
+
+    [Description("Cosine similarity below which an item belongs to no category.")]
+    public double CategoryFloor { get; set; } = 0.2;
+
+    [Description("Share of cards chosen for exploration: a random item from outside the best-ranked part that is unlike the rest of the session. Its yield is the only honest test of the ranking.")]
+    public double Epsilon { get; set; } = 0.2;
+
+    [Description("Good and not-good examples (each) the yield model needs before it adds to the ranking.")]
+    public int YieldMinEvents { get; set; } = 30;
+
+    [Description("Weight of the yield model's (probability - 0.5) next to the taste score, once it has enough examples.")]
+    public double Yield { get; set; } = 1.0;
+
+    public SwipeRecallOptions Recall { get; set; } = new();
+    public SwipeSeedOptions Seeds { get; set; } = new();
+    public SwipeNotesOptions Notes { get; set; } = new();
+
+    public TimeSpan Cap => TimeSpan.FromMinutes(Minutes);
+}
+
+public sealed class SwipeRecallOptions
+{
+    [Description("Recall cards: questions made from the items you liked or saved (and from your notes) come back at growing intervals. False turns generating and showing them off.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("Most recall cards in one session; due cards come first, so a backlog never takes the whole session.")]
+    public int PerSession { get; set; } = 12;
+
+    [Description("Most liked or saved items turned into questions per local day (one small-model call each).")]
+    public int PerDay { get; set; } = 10;
+}
+
+public sealed class SwipeSeedOptions
+{
+    [Description("Post seeds: a one-line angle for a post, drafted from an item you liked or saved, with a send button that files it as an idea. False turns generating and showing them off.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("Most seeds in one session.")]
+    public int PerSession { get; set; } = 2;
+
+    [Description("Most seeds drafted per local day (one small-model call each).")]
+    public int PerDay { get; set; } = 3;
+}
+
+public sealed class SwipeNotesOptions
+{
+    public bool Enabled => BaseUrl.Length > 0 && Token.Length > 0;
+
+    [Description("Server that lists your notes at GET /api/v1/notes (items with id, topic, points, createdAt), for recall cards. Empty means no notes.")]
+    public string BaseUrl { get; set; } = "";
+
+    [Secret]
+    [Description("Bearer token for the notes server.")]
+    public string Token { get; set; } = "";
+}
+
 public sealed class TasteOptions
 {
     /// <summary>
@@ -260,7 +343,7 @@ public sealed class ModelPrice
 public sealed class CapsOptions
 {
     [Description("Candidates the small model triages per digest.")]
-    public int Triage { get; set; } = 60;
+    public int Triage { get; set; } = 400;
 
     [Description("Items the stronger model reads in full per digest.")]
     public int Read { get; set; } = 12;
@@ -270,6 +353,9 @@ public sealed class CapsOptions
 
     [Description("Lowest triage relevance (0 to 3) that can reach the digest.")]
     public int MinRelevance { get; set; } = 2;
+
+    [Description("Lowest relevance (0 to 3) the reader model can give an item after reading it and keep it in the digest. Items below MinRelevance but at or above this go last.")]
+    public int MinReadRelevance { get; set; } = 1;
 
     [Description("Items with less text than this many characters get their full text fetched before reading.")]
     public int ShortContentChars { get; set; } = 1500;
@@ -318,6 +404,28 @@ public sealed class TelegramOptions
     /// <summary>The owner's Telegram user id: the only sender whose button presses count, and the chat digests go to.</summary>
     [Description("Your numeric Telegram user id: the only sender the bot answers, and the chat digests go to.")]
     public long AllowedUserId { get; set; }
+}
+
+public sealed class WeeklyIdeasOptions
+{
+    [Description("Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Needs Plane and the Telegram bot. False turns the job off.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start.")]
+    public TimeSpan At { get; set; } = new(9, 0, 0);
+
+    [Description("Most ideas filed in Plane per week.")]
+    public int MaxFiled { get; set; } = 5;
+
+    [Description("Ideas listed in the Telegram message, best first.")]
+    public int TopInMessage { get; set; } = 3;
+
+    [Description("GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; Plane items and earlier shortlists still are.")]
+    public string BacklogUrl { get; set; } = "";
+
+    [Secret]
+    [Description("GitHub token that can read the backlog file; empty for a public repository.")]
+    public string BacklogToken { get; set; } = "";
 }
 
 public sealed class PlaneOptions
