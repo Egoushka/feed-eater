@@ -6,7 +6,9 @@ namespace FeedEater.Swipe;
 
 public sealed record NextBody(string? Csrf, int? Position);
 
-public sealed record ActBody(string? Csrf, long Session, int Position, string? Act);
+public sealed record ActBody(string? Csrf, long Session, int Position, string? Act, string? ClientId);
+
+public sealed record UndoBody(string? Csrf, long Session, int Position, string? ClientId);
 
 public sealed record EventBody(string? Csrf, long Session, int Position, long? ShownAt, long? DwellMs, string? Direction);
 
@@ -71,7 +73,11 @@ public static class SwipeEndpoints
         secured.MapPost("/next", async (NextBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
             Allowed(c, session, b.Csrf) ? Results.Json(await svc.NextAsync(b.Position, ct)) : Results.StatusCode(StatusCodes.Status403Forbidden));
         secured.MapPost("/act", async (ActBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
-            Allowed(c, session, b.Csrf) ? Results.Json(await svc.ActAsync(b.Session, b.Position, b.Act ?? "", ct)) : Results.StatusCode(StatusCodes.Status403Forbidden));
+            Allowed(c, session, b.Csrf) ? Results.Json(await svc.ActAsync(b.Session, b.Position, b.Act ?? "", Guid.TryParse(b.ClientId, out var id) ? id : null, ct)) : Results.StatusCode(StatusCodes.Status403Forbidden));
+        secured.MapPost("/undo", async (UndoBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
+            Allowed(c, session, b.Csrf)
+                ? Results.Json(Guid.TryParse(b.ClientId, out var id) ? await svc.UndoAsync(b.Session, b.Position, id, ct) : new ActResult(false, "Nothing to do."))
+                : Results.StatusCode(StatusCodes.Status403Forbidden));
         secured.MapPost("/event", async (EventBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
             Allowed(c, session, b.Csrf) ? Results.Json(new { ok = await svc.EventAsync(b.Session, b.Position, b.ShownAt, b.DwellMs, b.Direction, ct) }) : Results.StatusCode(StatusCodes.Status403Forbidden));
         secured.MapPost("/felt", async (FeltBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>

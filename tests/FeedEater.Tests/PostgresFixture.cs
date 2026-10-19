@@ -10,7 +10,8 @@ public sealed class PostgresFixture : IAsyncLifetime
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("pgvector/pgvector:0.8.7-pg18-trixie").Build();
 
     public FeedDb Db { get; private set; } = null!;
-    public string ConnectionString => _container.GetConnectionString();
+    // Hosts built per test leave their pools behind (the app registers its data source as an instance), so idle connections are pruned fast.
+    public string ConnectionString => _container.GetConnectionString() + ";Connection Idle Lifetime=3;Connection Pruning Interval=1";
 
     public async Task InitializeAsync()
     {

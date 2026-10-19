@@ -87,4 +87,12 @@ public sealed class WeeklyIdeaStore(FeedDb db)
             on conflict (canonical_url) do nothing
             """, new { canonicalUrl, week, title, project }, cancellationToken: ct));
     }
+
+    /// <summary>Takes back <see cref="DropAsync"/>; a filed idea is left alone.</summary>
+    public async Task UndropAsync(string canonicalUrl, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        await c.ExecuteAsync(new CommandDefinition(
+            "delete from weekly_ideas where canonical_url = @canonicalUrl and outcome = 'dropped'", new { canonicalUrl }, cancellationToken: ct));
+    }
 }

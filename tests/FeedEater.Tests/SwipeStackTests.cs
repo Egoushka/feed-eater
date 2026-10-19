@@ -327,7 +327,7 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         return next.Card!;
     }
 
-    private static Task<ActResult> ActAsync(SwipeService svc, CardView card, string act) => svc.ActAsync(card.Session, card.Position, act, default);
+    private static Task<ActResult> ActAsync(SwipeService svc, CardView card, string act) => svc.ActAsync(card.Session, card.Position, act, null, default);
 
     private async Task<long> DoneCountAsync() => await ScalarAsync<long>("select count(*) from inbox where done_at is not null");
 
