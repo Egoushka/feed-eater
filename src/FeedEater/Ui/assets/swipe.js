@@ -15,7 +15,7 @@
   let busy = false;
   let lastTap = 0;
   let toastTimer = 0;
-  let lastAct = null;    // {session, position, clientId} of the latest successful act: the only one Undo may reverse
+  let lastAct = null;    // {session, position, clientId, advancesLeft} of the latest successful act: the only one Undo may reverse; a swipe's own advance keeps it
 
   async function post(path, body) {
     const response = await fetch('/swipe/' + path, {
@@ -69,6 +69,8 @@
 
   function render(result) {
     card = null;
+    if (result.type !== 'card') lastAct = null;
+    syncUndo();
     bar.hidden = true;
     stage.replaceChildren();
     if (result.type === 'card') return renderCard(result.card);
@@ -84,7 +86,8 @@
     const box = el('article', 'card');
     box.append(el('p', 'meta', meta), el('h1', '', c.title));
     if (c.why) box.append(el('p', '', c.why));
-    for (const value of Object.values(c.detail || {})) if (value) box.append(el('p', 'meta', value));
+    const shownInButtons = c.kind === 'duel' ? ['aTitle', 'bTitle', 'aUrl', 'bUrl'] : [];
+    for (const [key, value] of Object.entries(c.detail || {})) if (value && !shownInButtons.includes(key)) box.append(el('p', 'meta', value));
     if (c.kind === 'recall') box.append(Object.assign(el('p', 'answer', c.back), { id: 'answer', hidden: true }));
     stage.append(box, el('p', 'count', (c.position + 1) + ' / ' + c.total));
     bar.hidden = false;
@@ -109,7 +112,7 @@
 
   function syncUndo() {
     const b = bar.querySelector('[data-do=undo]');
-    b.hidden = !(lastAct && card && lastAct.session === card.session && lastAct.position === card.position);
+    b.hidden = !lastAct;
   }
 
   async function undo() {
@@ -170,13 +173,14 @@
     stage.append(box);
   }
 
-  async function act(name) {
+  async function act(name, viaSwipe = false) {
     if (!card) return false;
+    const { session, position } = card;
     try {
       const clientId = crypto.randomUUID();
-      const result = await post('act', { session: card.session, position: card.position, act: name, clientId });
+      const result = await post('act', { session, position, act: name, clientId });
       toast(result.message);
-      lastAct = result.ok ? { session: card.session, position: card.position, clientId } : null;
+      lastAct = result.ok ? { session, position, clientId, advancesLeft: viaSwipe ? 1 : 0 } : null;
       syncUndo();
       return result.ok;
     } catch (e) {
@@ -203,6 +207,8 @@
     const { position } = card;
     if (direction === 'down' && position === 0) return;
     leave(direction);
+    if (lastAct && --lastAct.advancesLeft < 0) lastAct = null;
+    syncUndo();
     await load(direction === 'down' ? position - 1 : position + 1);
   }
 
@@ -211,17 +217,17 @@
     if (!card) return;
     if (card.kind === 'recall') {
       if (!revealed) return;
-      await act(right ? 'good' : 'again');
+      await act(right ? 'good' : 'again', true);
     } else if (card.kind === 'seed') {
-      await act(right ? 'send' : 'dismiss');
+      await act(right ? 'send' : 'dismiss', true);
     } else if (card.kind === 'follow') {
-      await act(right ? 'save' : 'stop');
+      await act(right ? 'save' : 'stop', true);
     } else if (card.kind === 'idea') {
-      await act(right ? 'keep' : 'drop');
+      await act(right ? 'keep' : 'drop', true);
     } else if (card.kind === 'duel' || setFor(card.kind) === 'info') {
       // no vote on a swipe: it only moves on
     } else {
-      await act(right ? 'save' : 'dislike');
+      await act(right ? 'save' : 'dislike', true);
     }
     return advance(right ? 'right' : 'left');
   }
@@ -229,6 +235,7 @@
   async function doAction(name) {
     if (!card) return;
     if (name === 'undo') return undo();
+    if (name === 'pick_a' || name === 'pick_b') return (await act(name, true)) && advance('right');
     if (name === 'share') return share();
     if (name === 'reveal') return reveal();
     if (name === 'good' || name === 'send') return swipeAction(true);
