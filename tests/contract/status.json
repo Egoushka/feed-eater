@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "gate": "open",
+  "gateUntil": null,
+  "gateWhy": null,
+  "digest": null,
+  "telegram": false,
+  "swipe": true
+}

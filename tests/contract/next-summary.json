@@ -1,0 +1,16 @@
+{
+  "type": "summary",
+  "card": null,
+  "summary": {
+    "session": 1,
+    "reason": "exhausted",
+    "cards": 1,
+    "minutes": 0,
+    "acts": {
+      "like": 1
+    },
+    "categories": [],
+    "rated": false
+  },
+  "closed": null
+}

@@ -114,6 +114,22 @@ Do not publish the port as it is: the only protection is the `Mcp__Token` passwo
 
 Any MCP client can search the archive at `/mcp` with `Authorization: Bearer <Mcp__Token>`.
 
+## Phone app
+
+The Android app talks to `/api/v1` with a bearer token. Pair a phone on `/ui/setup`: in the **Phone app** section enter a name
+and press **Pair a phone**. The next page shows a QR code and the token once; scan it with the app, because the token is not
+shown again and only its hash is stored. The same section lists the paired phones (created, last used) and revokes one.
+
+The QR carries the address the phone will call. Set `FeedEater__Api__BaseUrl=https://feed.example.com` (the address behind your
+reverse proxy, see "Reaching it from elsewhere"); empty uses the address you opened the setup page on, which is wrong when you
+paired from `localhost`.
+
+Without a browser, use the CLI: `docker compose run --rm feed-eater token create <name>` prints a token once;
+`token list` and `token revoke <id>` manage them.
+
+The API refuses browsers: any request with an `Origin` header gets 403, so a web page cannot call it even with a stolen token.
+Anonymous requests are rate limited. The machine-readable description is at `/api/v1/openapi.json`.
+
 ## Optional integrations
 
 Each one is off until its settings are filled: no background work, no button, no call. Add the keys to `.env`, run

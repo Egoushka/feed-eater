@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "title": "Feed 1",
+    "category": null,
+    "siteUrl": null,
+    "feedUrl": null,
+    "muted": false,
+    "items30d": 3,
+    "shown30d": 0,
+    "up30d": 1,
+    "down30d": 0,
+    "upRate": 1,
+    "failCount": null,
+    "lastError": null
+  }
+]

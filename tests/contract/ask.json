@@ -1,0 +1,19 @@
+{
+  "answer": "Nightly [1].",
+  "citations": [
+    {
+      "number": 1,
+      "hit": {
+        "id": 1,
+        "title": "Quokka backups",
+        "url": "https://example.com/639f35d382c44de6942b584655119b46",
+        "feed": "Feed 1",
+        "publishedAt": "2026-10-19T09:03:04.506535\u002B00:00",
+        "summary": "s",
+        "project": "homelab",
+        "kind": "improve",
+        "vote": 1
+      }
+    }
+  ]
+}

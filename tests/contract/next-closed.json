@@ -1,0 +1,9 @@
+{
+  "type": "closed",
+  "card": null,
+  "summary": null,
+  "closed": {
+    "until": null,
+    "why": "not-started"
+  }
+}

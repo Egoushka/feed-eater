@@ -1,0 +1,6 @@
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.2",
+  "title": "Token not accepted",
+  "status": 401,
+  "traceId": "00-17f4f0daa33971f4ed84c71e09427365-7e5fd03fa4224b0c-00"
+}
