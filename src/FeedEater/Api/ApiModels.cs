@@ -24,7 +24,7 @@ public sealed record ItemResponse(
 public sealed record AskRequest(string? Question);
 
 /// <summary>A search result as the API shows it: no ranking internals, UTC time with an offset, a safe URL.</summary>
-public sealed record ApiHit(long Id, string Title, string? Url, string Feed, DateTimeOffset PublishedAt, string? Summary, string? Project, string? Kind, short? Vote);
+public sealed record ApiHit(long Id, string Title, string? Url, string Feed, DateTimeOffset PublishedAt, string? Summary, string? Project, string? Kind, short? Vote, bool Saved);
 
 /// <summary><c>Number</c> is the [n] marker in the answer that cites this item.</summary>
 public sealed record AskCitation(int Number, ApiHit Hit);
@@ -56,3 +56,17 @@ public sealed record SettingsResponse(bool QuietNow, string QuietText, bool Quie
 public sealed record SettingsBody(bool? Quiet, bool? Learn);
 
 public sealed record RunDigestBody(bool? Resend);
+
+/// <summary><c>Url</c> is a link shared from the phone; <c>Title</c> (up to 500 characters) and <c>Text</c> (up to 60,000) are what the sharing app knew of the page.</summary>
+public sealed record LibrarySaveBody(string? Url, string? Title, string? Text);
+
+/// <summary><c>Existing</c> is true when the item was already in the library; nothing was written then.</summary>
+public sealed record LibrarySaveResponse(long ItemId, bool Existing);
+
+public sealed record LibraryEntry(
+    long ItemId, string Title, string? Url, string Feed, DateTimeOffset PublishedAt, DateTimeOffset SavedAt, DateTimeOffset? ReadAt, string? Note,
+    string Source, string? Summary, bool FullText, bool Enriched);
+
+public sealed record LibraryReadBody(bool? Read);
+
+public sealed record LibraryNoteBody(string? Note);

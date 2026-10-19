@@ -16,8 +16,8 @@ public sealed class SearchTests(PostgresFixture pg) : IAsyncLifetime
         var byWord = await Seed.ItemAsync(pg, 1, "HNSW in pgvector 0.8", TestVectors.OneHot(2));
         await Seed.ItemAsync(pg, 1, "Unrelated", TestVectors.OneHot(3));
 
-        var both = await store.SearchAsync(TestVectors.OneHot(1), "hnsw", null, null, null, null, 2, default);
-        var wordsOnly = await store.SearchAsync(null, "hnsw", null, null, null, null, 10, default);
+        var both = await store.SearchAsync(TestVectors.OneHot(1), "hnsw", null, null, null, null, null, 2, default);
+        var wordsOnly = await store.SearchAsync(null, "hnsw", null, null, null, null, null, 10, default);
 
         Assert.Equal([byMeaning, byWord], both.Select(h => h.Id).Order());
         Assert.Equal([byWord], wordsOnly.Select(h => h.Id));
@@ -30,7 +30,7 @@ public sealed class SearchTests(PostgresFixture pg) : IAsyncLifetime
         await Seed.ItemAsync(pg, 1, "hnsw old", TestVectors.OneHot(1), new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         var recent = await Seed.ItemAsync(pg, 1, "hnsw new", TestVectors.OneHot(1), new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc));
 
-        var hits = await store.SearchAsync(null, "hnsw", null, null, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), null, 10, default);
+        var hits = await store.SearchAsync(null, "hnsw", null, null, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), null, null, 10, default);
 
         Assert.Equal([recent], hits.Select(h => h.Id));
     }
@@ -44,8 +44,8 @@ public sealed class SearchTests(PostgresFixture pg) : IAsyncLifetime
         await Seed.ReadAsync(pg, lab, "homelab", "improve");
         await Seed.ReadAsync(pg, other, "chargehand", "fyi");
 
-        var byProject = await store.SearchAsync(null, "hnsw", "homelab", null, null, null, 10, default);
-        var byKind = await store.SearchAsync(TestVectors.OneHot(1), "hnsw", null, "fyi", null, null, 10, default);
+        var byProject = await store.SearchAsync(null, "hnsw", "homelab", null, null, null, null, 10, default);
+        var byKind = await store.SearchAsync(TestVectors.OneHot(1), "hnsw", null, "fyi", null, null, null, 10, default);
 
         Assert.Equal([lab], byProject.Select(h => h.Id));
         Assert.Equal([other], byKind.Select(h => h.Id));
@@ -63,12 +63,12 @@ public sealed class SearchTests(PostgresFixture pg) : IAsyncLifetime
         var old = await Seed.ItemAsync(pg, 1, "hnsw backfilled", TestVectors.Blend(1, 5, 0.2f));
         var lab = await Seed.ItemAsync(pg, 1, "hnsw backfilled too", TestVectors.OneHot(0));
 
-        Assert.Empty(await store.SearchAsync(null, "hnsw", "chargehand", null, null, null, 10, default));
+        Assert.Empty(await store.SearchAsync(null, "hnsw", "chargehand", null, null, null, null, 10, default));
         Assert.Equal(2, await store.AssignProfileKeysAsync(default));
         Assert.Equal(0, await store.AssignProfileKeysAsync(default));
 
-        Assert.Equal([old], (await store.SearchAsync(null, "hnsw", "chargehand", null, null, null, 10, default)).Select(h => h.Id));
-        Assert.Equal([lab], (await store.SearchAsync(null, "hnsw", "homelab", null, null, null, 10, default)).Select(h => h.Id));
+        Assert.Equal([old], (await store.SearchAsync(null, "hnsw", "chargehand", null, null, null, null, 10, default)).Select(h => h.Id));
+        Assert.Equal([lab], (await store.SearchAsync(null, "hnsw", "homelab", null, null, null, null, 10, default)).Select(h => h.Id));
     }
 
     [Fact]

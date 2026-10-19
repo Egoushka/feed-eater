@@ -10,7 +10,7 @@ public sealed class ArchiveSearch(ItemStore items, LiteLlmClient llm)
     internal static TimeSpan EmbedTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     public async Task<IReadOnlyList<SearchHit>> SearchAsync(
-        string query, string? project, string? kind, DateTimeOffset? from, DateTimeOffset? to, int limit, CancellationToken ct)
+        string query, string? project, string? kind, DateTimeOffset? from, DateTimeOffset? to, bool? saved, int limit, CancellationToken ct)
     {
         float[]? vector = null;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -25,6 +25,6 @@ public sealed class ArchiveSearch(ItemStore items, LiteLlmClient llm)
             // Keyword search still answers.
         }
 
-        return await items.SearchAsync(vector, query, project, kind, from, to, limit, ct);
+        return await items.SearchAsync(vector, query, project, kind, from, to, saved, limit, ct);
     }
 }

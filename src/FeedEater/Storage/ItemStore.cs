@@ -534,7 +534,7 @@ public sealed class ItemStore(FeedDb db)
     /// A null vector searches keywords only.
     /// </summary>
     public async Task<IReadOnlyList<SearchHit>> SearchAsync(
-        float[]? vector, string text, string? project, string? kind, DateTimeOffset? from, DateTimeOffset? to, int limit, CancellationToken ct)
+        float[]? vector, string text, string? project, string? kind, DateTimeOffset? from, DateTimeOffset? to, bool? saved, int limit, CancellationToken ct)
     {
         const string Filter =
             """
@@ -544,6 +544,7 @@ public sealed class ItemStore(FeedDb db)
             and (@kind::text is null or exists (select 1 from reads r where r.item_id = i.id and r.kind = @kind))
             and (@from::timestamptz is null or i.published_at >= @from)
             and (@to::timestamptz is null or i.published_at < @to)
+            and (@saved is not true or exists (select 1 from saved s where s.item_id = i.id))
             """;
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
@@ -581,6 +582,6 @@ public sealed class ItemStore(FeedDb db)
             order by fused.rrf desc
             limit @limit
             """,
-            new { vector, text, project, kind, from = from?.UtcDateTime, to = to?.UtcDateTime, limit }, transaction: tx, cancellationToken: ct))).ToList();
+            new { vector, text, project, kind, from = from?.UtcDateTime, to = to?.UtcDateTime, saved, limit }, transaction: tx, cancellationToken: ct))).ToList();
     }
 }

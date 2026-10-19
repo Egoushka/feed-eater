@@ -130,7 +130,7 @@ public sealed class ClusterTests(PostgresFixture pg) : IAsyncLifetime
         var view = (await items.GetAsync(second, default))!;
         var post = (await items.PostsAsync(new PostFilter(DateTimeOffset.UtcNow.AddDays(-7), null, null, null, null, false, false), null, 10, default)).ToDictionary(p => p.Id);
         var enriched = await items.WithMembersAsync([post[second], post[solo]], default);
-        var hits = await items.SearchAsync(null, "story", null, null, null, null, 10, default);
+        var hits = await items.SearchAsync(null, "story", null, null, null, null, null, 10, default);
         var digest = await items.DigestItemsAsync([first], default);
 
         Assert.Equal(2, view.Also);

@@ -114,7 +114,7 @@ public sealed class UiHandlers(
         IReadOnlyList<SearchHit>? hits = null;
         if (q.Text.Length > 0)
         {
-            hits = await search.SearchAsync(q.Text, q.Project, q.Kind is "improve" or "new" or "fyi" ? q.Kind : null, Day(q.From, false), Day(q.To, true), SearchLimit, ct);
+            hits = await search.SearchAsync(q.Text, q.Project, q.Kind is "improve" or "new" or "fyi" ? q.Kind : null, Day(q.From, false), Day(q.To, true), null, SearchLimit, ct);
         }
 
         return Html(UiPages.Search(Context(ctx), q, keys, hits));
