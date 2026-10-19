@@ -33,6 +33,7 @@ public static class ApiEndpoints
             .WithName("GetStatus")
             .Produces<StatusResponse>();
         group.MapSwipeApi();
+        group.MapItemsApi();
 
         return group;
     }

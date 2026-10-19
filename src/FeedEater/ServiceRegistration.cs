@@ -147,6 +147,8 @@ public static class ServiceRegistration
         services.AddSingleton<CallbackHandler>();
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<ArchiveAnswer>();
+        services.AddSingleton<ItemAnswer>();
+        services.AddSingleton<ItemText>();
         services.AddSingleton<StoryFollower>();
         services.AddSingleton<InboxStore>();
         services.AddSingleton<IInbox, InboxService>();

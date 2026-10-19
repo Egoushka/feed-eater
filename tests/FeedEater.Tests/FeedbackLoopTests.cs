@@ -83,7 +83,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
         });
         var llm = new FeedEater.Llm.LiteLlmClient(embedder.Client("http://llm/"), new UsageStore(pg.Db), options);
         var search = new FeedEater.Search.ArchiveSearch(items, llm);
-        var replies = new ReplyHandler(telegram, handler, items, new ProfileStore(pg.Db), llm, sink, options, NullLogger<ReplyHandler>.Instance);
+        var replies = new ReplyHandler(telegram, handler, items, new ProfileStore(pg.Db), llm, new FeedEater.Search.ItemAnswer(items, llm, options), sink, options, NullLogger<ReplyHandler>.Instance);
         var commands = new CommandHandler(
             telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new QuietHours(new CursorStore(pg.Db), options, TimeProvider.System),
             search, new FeedEater.Search.ArchiveAnswer(search, items, llm, options), replies,

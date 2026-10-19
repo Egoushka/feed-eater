@@ -26,8 +26,8 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 /// </summary>
 public sealed class DigestRun(
     ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
-    LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, IInbox inbox, InboxStore inboxStore, LoopHealth health, TasteSwitch tasteSwitch,
-    IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null, ArticleText? articles = null)
+    LiteLlmClient llm, ItemText itemText, GitHubStarsClient github, TelegramClient telegram, IInbox inbox, InboxStore inboxStore, LoopHealth health, TasteSwitch tasteSwitch,
+    IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null)
 {
     private const int TriageMaxTokens = 200;
     private const int ReadMaxTokens = 600;
@@ -226,7 +226,7 @@ public sealed class DigestRun(
                 var c = byId[s.ItemId];
                 try
                 {
-                    var text = await FullTextAsync(c, ct);
+                    var text = await itemText.FullTextAsync(c, ct);
                     var match = profileList.FirstOrDefault(p => p.Key == (t.Project ?? s.ProfileKey));
                     var facts = await RepoFactsAsync(repoFacts, c.Url, text, ct);
                     var (system, user) = Prompts.Read(about, profileList, match, c.Title, c.Url, c.FeedTitle, text, o.Caps.ReadChars, facts, Clip(c.ExtraText, o.Fetch.PageChars));
@@ -315,36 +315,6 @@ public sealed class DigestRun(
         $"{r.Repo} {r.Version} is out (breaking: {r.Breaking ?? "unknown"}){(r.Summary is null ? "" : ": " + r.Summary)}";
 
     private static string? Clip(string? text, int max) => text is null || text.Length <= max ? text : text[..max];
-
-    private async Task<string> FullTextAsync(Candidate c, CancellationToken ct)
-    {
-        if (articles is not null)
-        {
-            return c.Content.Length >= options.Value.Caps.ShortContentChars ? c.Content : await articles.FullTextAsync(c, ct);
-        }
-
-        if (c.Content.Length >= options.Value.Caps.ShortContentChars || !options.Value.Miniflux.Enabled || c.MinifluxEntryId is not { } entryId)
-        {
-            return c.Content;
-        }
-
-        try
-        {
-            var text = HtmlText.ToPlain(await miniflux.FetchContentAsync(entryId, ct));
-            if (text.Length <= c.Content.Length)
-            {
-                return c.Content;
-            }
-
-            await items.SetContentAsync(c.Id, text, ct);
-            return text;
-        }
-        catch (HttpRequestException ex)
-        {
-            logger.LogWarning(ex, "Full text for item {Item} unavailable; using the feed text", c.Id);
-            return c.Content;
-        }
-    }
 
     private async Task SendAsync(DigestRow digest, CancellationToken ct)
     {

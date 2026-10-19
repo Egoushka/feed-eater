@@ -18,7 +18,7 @@ namespace FeedEater.Tests;
 /// <summary>One host per class: every extra host adds a connection pool, and the shared Postgres has a low connection limit.</summary>
 internal static class ApiHost
 {
-    public static WebApplicationFactory<Program> Create(string connectionString) =>
+    public static WebApplicationFactory<Program> Create(string connectionString, Action<IServiceCollection>? configure = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             (string Key, string Value)[] settings =
@@ -34,7 +34,11 @@ internal static class ApiHost
                 b.UseSetting(key, value);
             }
 
-            b.ConfigureTestServices(s => s.RemoveAll<IHostedService>());
+            b.ConfigureTestServices(s =>
+            {
+                s.RemoveAll<IHostedService>();
+                configure?.Invoke(s);
+            });
         });
 
     public static async Task<string> TokenAsync(WebApplicationFactory<Program> app) =>
@@ -72,7 +76,18 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
     private static WebApplicationFactory<Program>? app;
     private static HttpClient? http;
 
-    private WebApplicationFactory<Program> App => app ??= ApiHost.Create(pg.ConnectionString);
+    // Embeddings fail (search falls back to keywords), chat answers with Chat, article fetches fail.
+    private static string Chat = "";
+
+    private WebApplicationFactory<Program> App => app ??= ApiHost.Create(pg.ConnectionString, s =>
+    {
+        var model = new StubHandler((request, _) => request.RequestUri!.AbsolutePath.EndsWith("chat/completions", StringComparison.Ordinal)
+            ? StubHandler.Json(JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = Chat } } }, usage = new { prompt_tokens = 10, completion_tokens = 5 } }))
+            : StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable));
+        s.AddHttpClient<FeedEater.Llm.LiteLlmClient>().ConfigurePrimaryHttpMessageHandler(() => model);
+        s.AddHttpClient(FeedEater.Fetch.SafeFetcher.ClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.NotFound)));
+    });
     private HttpClient Http => http ??= App.CreateClient();
 
     private Task<string> TokenAsync() => ApiHost.TokenAsync(App);
@@ -298,6 +313,76 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.DoesNotContain("\"/swipe", doc);
         Assert.Contains("/api/v1/swipe/next", doc);
         Assert.DoesNotContain("/healthz", doc);
+    }
+
+    [Fact]
+    public async Task An_item_is_returned_with_its_read_and_not_marked_full_text_when_the_page_cannot_be_fetched()
+    {
+        var id = await Seed.ItemAsync(pg, 1, "Quokka backups", TestVectors.OneHot(1), content: "Short teaser.");
+        await Seed.ReadAsync(pg, id, "homelab", "improve");
+
+        var item = await GetAsync<ItemResponse>($"/api/v1/items/{id}");
+
+        Assert.Equal(id, item.Id);
+        Assert.Equal("Quokka backups", item.Title);
+        Assert.Equal("Feed 1", item.Feed);
+        Assert.Equal("Short teaser.", item.Text);
+        Assert.False(item.FullText);
+        Assert.Equal("homelab", item.Project);
+        Assert.Equal("improve", item.Kind);
+        Assert.False(item.Saved);
+    }
+
+    [Fact]
+    public async Task A_missing_item_is_a_404_problem_and_an_empty_question_a_400()
+    {
+        var auth = "Bearer " + await TokenAsync();
+        var missing = await RawAsync(HttpMethod.Get, "/api/v1/items/999999", auth);
+        var empty = await RawAsync(HttpMethod.Post, "/api/v1/ask", auth, body: """{"question":"  "}""");
+
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal("application/problem+json", missing.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
+    }
+
+    [Fact]
+    public async Task Asking_the_archive_returns_the_answer_with_cited_items_that_exist()
+    {
+        var id = await Seed.ItemAsync(pg, 1, "Quokka backups", TestVectors.OneHot(1), content: "Quokka backups run nightly.");
+        Chat = "Nightly [1], per nobody [7].";
+
+        var result = await PostAsync<AskResponse>("/api/v1/ask", new { question = "quokka" });
+
+        Assert.Equal("Nightly [1], per nobody .", result.Answer);
+        Assert.Equal([id], result.Citations.Select(c => c.Id));
+    }
+
+    [Fact]
+    public async Task Asking_about_an_item_returns_the_trimmed_answer_and_a_missing_item_is_a_404()
+    {
+        var id = await Seed.ItemAsync(pg, 1, "Quokka backups", TestVectors.OneHot(1), content: "Quokka backups run nightly.");
+        Chat = "  Nightly.  ";
+
+        var result = await PostAsync<ItemAskResponse>($"/api/v1/items/{id}/ask", new { question = "when?" });
+        var missing = await RawAsync(HttpMethod.Post, "/api/v1/items/999999/ask", "Bearer " + await TokenAsync(), body: """{"question":"when?"}""");
+
+        Assert.Equal("Nightly.", result.Answer);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task Search_filters_by_kind()
+    {
+        var improve = await Seed.ItemAsync(pg, 1, "Quokka backups", TestVectors.OneHot(1));
+        var learn = await Seed.ItemAsync(pg, 1, "Quokka habitat", TestVectors.OneHot(2));
+        await Seed.ReadAsync(pg, improve, "homelab", "improve");
+        await Seed.ReadAsync(pg, learn, "homelab", "learn");
+
+        var all = await GetAsync<List<SearchHit>>("/api/v1/search?q=quokka");
+        var learning = await GetAsync<List<SearchHit>>("/api/v1/search?q=quokka&kind=learn&limit=500");
+
+        Assert.Equal(2, all.Count);
+        Assert.Equal([learn], learning.Select(h => h.Id));
     }
 }
 
