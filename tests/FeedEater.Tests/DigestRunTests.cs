@@ -41,6 +41,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private string _profilePath = "Fixtures/profile.json";
     private bool _miniflux = true;
     private long _allowedUser = 42;
+    private string _token = "T";
     private System.Net.HttpStatusCode _githubStatus = HttpStatusCode.NotFound;
     private readonly List<string> _readPrompts = [];
     private readonly List<string> _githubCalls = [];
@@ -121,7 +122,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private (DigestRun Run, DigestStore Digests, StubHandler Miniflux) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Telegram = new TelegramOptions { AllowedUserId = _allowedUser }, Taste = new TasteOptions { Learn = _learn }, Caps = new CapsOptions { Read = _readCap } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Telegram = new TelegramOptions { Token = _token, AllowedUserId = _allowedUser }, Taste = new TasteOptions { Learn = _learn }, Caps = new CapsOptions { Read = _readCap } });
         var time = new FakeTimeProvider(Now);
         var miniflux = new StubHandler((_, _) => StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{LongText}</p>" })));
         var llm = new StubHandler((_, body) => body.Contains("\"input\"", StringComparison.Ordinal)
@@ -135,6 +136,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
             new MinifluxClient(miniflux.Client("http://miniflux/")),
             new GitHubStarsClient(new StubHandler((request, _) => GitHub(request)).Client("http://github/"), options),
             new TelegramClient(telegram.Client("http://tg/botT/")),
+            new InboxService(new InboxStore(pg.Db), new TelegramClient(telegram.Client("http://tg/botT/")), options, time), new InboxStore(pg.Db),
             _health, new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), options, time, NullLogger<DigestRun>.Instance);
         return (run, digests, miniflux);
     }
@@ -174,6 +176,56 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await Seed.ItemAsync(pg, 2, "Drop C", TestVectors.Blend(0, 2, 0.6f), hourAgo, hourAgo, LongText, 203);
         // Backfilled today but published a month ago: archived, never a candidate.
         await Seed.ItemAsync(pg, 2, "Keep Old", TestVectors.OneHot(0), Now.UtcDateTime.AddDays(-30), hourAgo, LongText, 204);
+    }
+
+    private async Task<T?> ScalarAsync<T>(string sql, object args)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return await c.ExecuteScalarAsync<T>(sql, args);
+    }
+
+    [Fact]
+    public async Task Without_Telegram_the_digest_is_selected_and_marked_sent_without_sending()
+    {
+        _token = "";
+        _allowedUser = 0;
+        await SeedAsync();
+        var (run, digests, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        var d = await digests.GetAsync(Today, default);
+        Assert.Equal("sent", d!.Status);
+        Assert.Equal(2, d.ItemIds.Length);
+        Assert.Equal(d.ItemIds.Length, d.SentCount);
+        Assert.Empty(_sent);
+    }
+
+    [Fact]
+    public async Task No_digest_today_is_a_notice_card()
+    {
+        _token = "";
+        _allowedUser = 0;
+        var (run, digests, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Equal("notice", await ScalarAsync<string>("select kind from inbox where key = @k", new { k = $"notice:digest:{Today}:none" }));
+        Assert.Equal("failed", (await digests.GetAsync(Today, default))!.Status);
+        Assert.Empty(_sent);
+    }
+
+    [Fact]
+    public async Task Selection_notes_are_stored_as_a_notice_and_still_in_the_Telegram_header()
+    {
+        await SeedAsync();
+        _health.Failed(Ingestor.LoopName, "refused");
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Contains("unreachable", await ScalarAsync<string>("select payload->>'text' from inbox where key = @k", new { k = $"notice:digest:{Today}:notes" }), StringComparison.Ordinal);
+        Assert.Contains("unreachable", _sent[0], StringComparison.Ordinal);
     }
 
     [Fact]

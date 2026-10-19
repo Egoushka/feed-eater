@@ -173,9 +173,10 @@ public static class ServiceRegistration
                 services.AddHostedService<SignalJob>();
             }
 
-            // Without a bot token a digest would pay for triage and then fail to send.
             var telegram = settings.Telegram.Token.Length > 0;
-            if (telegram)
+            // Inbox entries reach the owner through Telegram or a swipe session.
+            var delivers = telegram || settings.Swipe.Enabled;
+            if (delivers)
             {
                 services.AddHostedService<DigestJob>();
             }
@@ -190,8 +191,6 @@ public static class ServiceRegistration
                 services.AddHostedService<ReleaseWatcher>();
             }
 
-            // Inbox entries reach the owner through Telegram or a swipe session.
-            var delivers = telegram || settings.Swipe.Enabled;
             if (delivers)
             {
                 services.AddHostedService<WeeklyReview>();
