@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Net;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using FeedEater.Ingest;
+using FeedEater.Inbox;
 using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Profiles;
@@ -24,7 +26,7 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 /// </summary>
 public sealed class DigestRun(
     ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
-    LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, LoopHealth health, TasteSwitch tasteSwitch,
+    LiteLlmClient llm, MinifluxClient miniflux, GitHubStarsClient github, TelegramClient telegram, IInbox inbox, InboxStore inboxStore, LoopHealth health, TasteSwitch tasteSwitch,
     IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null, ArticleText? articles = null)
 {
     private const int TriageMaxTokens = 200;
@@ -32,7 +34,7 @@ public sealed class DigestRun(
 
     public async Task RunAsync(string date, CancellationToken ct)
     {
-        if (options.Value.Telegram.AllowedUserId == 0)
+        if (options.Value.Telegram.Token.Length > 0 && options.Value.Telegram.AllowedUserId == 0)
         {
             // Before any model call: a digest that cannot be sent is not worth paying for.
             throw new InvalidOperationException("FeedEater:Telegram:AllowedUserId is 0; send /start to the bot to get your id");
@@ -52,13 +54,21 @@ public sealed class DigestRun(
             if (selection.ItemIds.Count == 0)
             {
                 var why = selection.Notes.Count > 0 ? string.Join("; ", selection.Notes) : $"none of {selection.Candidates} new items passed triage";
-                await telegram.SendAsync(options.Value.Telegram.AllowedUserId, new OutMessage($"No digest today: {WebUtility.HtmlEncode(why)}"), ct);
+                await inbox.AddAsync(new InboxEntry($"notice:digest:{date}:none", InboxKinds.Notice, Payload: new JsonObject { ["text"] = $"No digest today: {why}" },
+                    ExpiresAt: time.GetUtcNow().AddDays(2)), new OutMessage($"No digest today: {WebUtility.HtmlEncode(why)}"), ct);
                 await digests.MarkFailedAsync(date, why, ct);
                 return;
             }
 
             await digests.SetSelectionAsync(date, selection.Candidates, selection.Triaged, [.. selection.ItemIds],
                 selection.Notes.Count == 0 ? null : string.Join('\n', selection.Notes), ct);
+            if (selection.Notes.Count > 0)
+            {
+                // The Telegram header carries the notes; the stack has no header, so they are stored as a card.
+                await inboxStore.AddAsync(new InboxEntry($"notice:digest:{date}:notes", InboxKinds.Notice,
+                    Payload: new JsonObject { ["text"] = string.Join('\n', selection.Notes) }, ExpiresAt: time.GetUtcNow().AddDays(2)), time.GetUtcNow(), ct);
+            }
+
             digest = (await digests.GetAsync(date, ct))!;
         }
 
@@ -338,6 +348,14 @@ public sealed class DigestRun(
 
     private async Task SendAsync(DigestRow digest, CancellationToken ct)
     {
+        if (options.Value.Telegram.Token.Length == 0)
+        {
+            // Delivered to the stack, which reads the digest's items itself.
+            await digests.SetSentCountAsync(digest.LocalDate, digest.ItemIds.Length, ct);
+            await digests.MarkSentAsync(digest.LocalDate, time.GetUtcNow(), ct);
+            return;
+        }
+
         var chat = options.Value.Telegram.AllowedUserId;
         var messages = await BuildMessagesAsync(digest, ct);
         for (var i = digest.SentCount; i < messages.Count; i++)

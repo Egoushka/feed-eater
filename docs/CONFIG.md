@@ -206,7 +206,7 @@ An integration is off until its required settings are filled. An off integration
 |---|---|---|
 | `FeedEater:Telegram:AllowedUserId` | `0` | Your numeric Telegram user id: the only sender the bot answers, and the chat digests go to. |
 | `FeedEater:Telegram:BaseUrl` | `https://api.telegram.org/` | Telegram Bot API URL. |
-| `FeedEater:Telegram:Token` | (empty) | Bot token from @BotFather. Without it the digest and the Telegram poller are off; duels, follows, the weekly review, ideas and the autopsy still run when Swipe:Enabled is true, and wait in the inbox. |
+| `FeedEater:Telegram:Token` | (empty) | Bot token from @BotFather. Without it the Telegram poller is off; the digest and the inbox jobs (duels, follows, the weekly review, ideas, the autopsy) still run when Swipe:Enabled is true, and wait in the swipe stack. |
 
 ## Watch
 

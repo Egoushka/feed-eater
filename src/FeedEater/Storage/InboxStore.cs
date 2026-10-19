@@ -39,6 +39,22 @@ public sealed class InboxStore(FeedDb db)
             new { now = now.UtcDateTime, limit }, cancellationToken: ct))).Select(r => r.ToRow()).ToList();
     }
 
+    /// <summary>What a new session may queue: not decided, not expired, shown fewer than twice; oldest first.</summary>
+    public async Task<IReadOnlyList<InboxRow>> EligibleAsync(DateTimeOffset now, int limit, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<Raw>(new CommandDefinition(
+            $"select {Columns} from inbox where done_at is null and (expires_at is null or expires_at > @now) and shown_count < 2 order by created_at, id limit @limit",
+            new { now = now.UtcDateTime, limit }, cancellationToken: ct))).Select(r => r.ToRow()).ToList();
+    }
+
+    public async Task MarkShownAsync(long id, long sessionId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        await c.ExecuteAsync(new CommandDefinition(
+            "update inbox set shown_count = shown_count + (case when shown_session is distinct from @sessionId then 1 else 0 end), shown_session = @sessionId where id = @id", new { id, sessionId }, cancellationToken: ct));
+    }
+
     /// <summary>False when it was already done.</summary>
     public async Task<bool> DoneAsync(long id, DateTimeOffset at, CancellationToken ct)
     {

@@ -54,6 +54,16 @@ public sealed class FeedbackStore(FeedDb db)
             """, new { itemId, value, weight = (float)weight }, cancellationToken: ct));
     }
 
+    public async Task<(short Value, float Weight)?> VoteOfAsync(long itemId, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        var row = await c.QuerySingleOrDefaultAsync<VoteRow>(new CommandDefinition(
+            "select value, weight from votes where item_id = @itemId", new { itemId }, cancellationToken: ct));
+        return row is null ? null : (row.Value, row.Weight);
+    }
+
+    private sealed record VoteRow(short Value, float Weight);
+
     public async Task<bool> IsSavedAsync(long itemId, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);

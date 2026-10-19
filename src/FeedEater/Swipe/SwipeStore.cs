@@ -66,7 +66,7 @@ public sealed class SwipeStore(FeedDb db)
     /// Items published after <paramref name="publishedAfter"/> that are embedded, not duplicates, not in a muted feed, not voted on and not shown
     /// in swipe mode since <paramref name="shownSince"/>; one per story (the earliest of its cluster).
     /// </summary>
-    public async Task<IReadOnlyList<SwipeCandidate>> CandidatesAsync(DateTimeOffset publishedAfter, DateTimeOffset shownSince, CancellationToken ct)
+    public async Task<IReadOnlyList<SwipeCandidate>> CandidatesAsync(DateTimeOffset publishedAfter, DateTimeOffset shownSince, IReadOnlyCollection<long> exclude, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<SwipeCandidate>(new CommandDefinition(
@@ -76,10 +76,26 @@ public sealed class SwipeStore(FeedDb db)
             where i.published_at > @publishedAfter and i.duplicate_of is null and i.embedding is not null
               and not coalesce(f.muted, false)
               and not exists (select 1 from votes v where v.item_id = i.id)
-              and not exists (select 1 from swipe_events e where e.kind = 'item' and e.ref_id = i.id and e.created_at > @shownSince)
+              and not exists (select 1 from swipe_events e where e.kind in ('item', 'digest') and e.ref_id = i.id and e.created_at > @shownSince)
+              and not (i.id = any(@exclude))
             order by coalesce(i.cluster_of, i.id), i.published_at, i.id
             """,
-            new { publishedAfter = publishedAfter.UtcDateTime, shownSince = shownSince.UtcDateTime }, cancellationToken: ct))).ToList();
+            new { publishedAfter = publishedAfter.UtcDateTime, shownSince = shownSince.UtcDateTime, exclude = exclude.ToArray() }, cancellationToken: ct))).ToList();
+    }
+
+    /// <summary>Items of the latest sent digest, in digest order, that are not voted on and were not shown as an item or a digest card in any session.</summary>
+    public async Task<IReadOnlyList<long>> DigestSlotsAsync(DateTimeOffset sentAfter, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<long>(new CommandDefinition(
+            """
+            with latest as (
+                select item_ids from digests where status = 'sent' and sent_at > @sentAfter order by local_date desc limit 1)
+            select d.id from latest, unnest(latest.item_ids) with ordinality as d(id, n)
+            where not exists (select 1 from votes v where v.item_id = d.id)
+              and not exists (select 1 from swipe_events e where e.kind in ('item', 'digest') and e.ref_id = d.id)
+            order by d.n
+            """, new { sentAfter = sentAfter.UtcDateTime }, cancellationToken: ct))).ToList();
     }
 
     public async Task<SessionRow?> LatestAsync(CancellationToken ct)

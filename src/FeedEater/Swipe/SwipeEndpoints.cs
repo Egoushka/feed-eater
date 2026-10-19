@@ -6,7 +6,9 @@ namespace FeedEater.Swipe;
 
 public sealed record NextBody(string? Csrf, int? Position);
 
-public sealed record ActBody(string? Csrf, long Session, int Position, string? Act);
+public sealed record ActBody(string? Csrf, long Session, int Position, string? Act, string? ClientId);
+
+public sealed record UndoBody(string? Csrf, long Session, int Position, string? ClientId);
 
 public sealed record EventBody(string? Csrf, long Session, int Position, long? ShownAt, long? DwellMs, string? Direction);
 
@@ -71,7 +73,11 @@ public static class SwipeEndpoints
         secured.MapPost("/next", async (NextBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
             Allowed(c, session, b.Csrf) ? Results.Json(await svc.NextAsync(b.Position, ct)) : Results.StatusCode(StatusCodes.Status403Forbidden));
         secured.MapPost("/act", async (ActBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
-            Allowed(c, session, b.Csrf) ? Results.Json(await svc.ActAsync(b.Session, b.Position, b.Act ?? "", ct)) : Results.StatusCode(StatusCodes.Status403Forbidden));
+            Allowed(c, session, b.Csrf) ? Results.Json(await svc.ActAsync(b.Session, b.Position, b.Act ?? "", Guid.TryParse(b.ClientId, out var id) ? id : null, ct)) : Results.StatusCode(StatusCodes.Status403Forbidden));
+        secured.MapPost("/undo", async (UndoBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
+            Allowed(c, session, b.Csrf)
+                ? Results.Json(Guid.TryParse(b.ClientId, out var id) ? await svc.UndoAsync(b.Session, b.Position, id, ct) : new ActResult(false, "Nothing to do."))
+                : Results.StatusCode(StatusCodes.Status403Forbidden));
         secured.MapPost("/event", async (EventBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
             Allowed(c, session, b.Csrf) ? Results.Json(new { ok = await svc.EventAsync(b.Session, b.Position, b.ShownAt, b.DwellMs, b.Direction, ct) }) : Results.StatusCode(StatusCodes.Status403Forbidden));
         secured.MapPost("/felt", async (FeltBody b, HttpContext c, SwipeService svc, CancellationToken ct) =>
@@ -118,6 +124,26 @@ public static class SwipeEndpoints
             <button type="button" class="wide" data-do="send">Send as an idea</button>
             <button type="button" data-do="open" aria-label="Open the source">↗</button>
           </div>
+          <div data-for="follow">
+            <button type="button" data-do="dislike" aria-label="Not for me">👎</button>
+            <button type="button" data-do="like" aria-label="Like">👍</button>
+            <button type="button" data-do="save" aria-label="Save">📌</button>
+            <button type="button" data-do="stop" aria-label="Stop following">✋</button>
+            <button type="button" data-do="open" aria-label="Open the link">↗</button>
+          </div>
+          <div data-for="duel">
+            <button type="button" class="wide" data-do="pick_a">A</button>
+            <button type="button" class="wide" data-do="pick_b">B</button>
+          </div>
+          <div data-for="idea">
+            <button type="button" data-do="drop" aria-label="Drop the idea">✖</button>
+            <button type="button" data-do="keep" aria-label="Keep the idea">✅</button>
+            <button type="button" data-do="open" aria-label="Open the link">↗</button>
+          </div>
+          <div data-for="info">
+            <button type="button" data-do="open" aria-label="Open the link">↗</button>
+          </div>
+          <button type="button" data-do="undo" aria-label="Undo the last action" hidden>↶ Undo</button>
           <button type="button" data-do="end" aria-label="I am done">✕</button>
         </nav>
         <div id="toast" role="status"></div>

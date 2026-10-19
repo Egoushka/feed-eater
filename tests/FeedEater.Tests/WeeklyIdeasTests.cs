@@ -50,6 +50,7 @@ public sealed class IdeaShortlistTests
 public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
 {
     private static readonly DateTimeOffset Monday = new(2026, 10, 19, 7, 0, 0, TimeSpan.Zero);   // 10:00 Kyiv
+    private static readonly DateTime Seeded = Monday.UtcDateTime.AddDays(-1);   // inside Monday's window, outside next Monday's, whatever the real date
 
     private string _chatReply = "";
     private string? _backlog = "| AIS-1 | Existing row |";
@@ -129,13 +130,14 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     private async Task<string> SeedAsync()
     {
         await new ProfileStore(pg.Db).ReplaceAllAsync([new Profile { Key = "homelab", Kind = "project", PlaneIdentifier = "LAB", Description = "The box", Embedding = TestVectors.OneHot(0) }], DateTimeOffset.UtcNow, default);
-        var improve = await Seed.ItemAsync(pg, 1, "Tool A adds caching", TestVectors.OneHot(1));
+        var improve = await Seed.ItemAsync(pg, 1, "Tool A adds caching", TestVectors.OneHot(1), publishedAt: Seeded);
         await Seed.ReadAsync(pg, improve, "homelab", "improve");
         var liked = await Seed.ItemAsync(pg, 1, "Tool B showcase", TestVectors.OneHot(2));
         await new FeedbackStore(pg.Db).SetVoteAsync(liked, 1, default);
         await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await c.ExecuteAsync("update votes set at = @at", new { at = Seeded });
         await c.ExecuteAsync("update reads set suggestion = 'Turn on caching in the box.' where item_id = @improve", new { improve });
-        await c.ExecuteAsync("insert into signals (source, external_id, url, title, embedding, at) values ('karakeep', 'k1', 'https://example.org/bookmarked', 'A bookmarked tool', @e::real[]::vector, now())", new { e = TestVectors.OneHot(3) });
+        await c.ExecuteAsync("insert into signals (source, external_id, url, title, embedding, at) values ('karakeep', 'k1', 'https://example.org/bookmarked', 'A bookmarked tool', @e::real[]::vector, @at)", new { e = TestVectors.OneHot(3), at = Seeded });
         return await c.ExecuteScalarAsync<string>("select url from items where id = @improve", new { improve }) ?? "";
     }
 

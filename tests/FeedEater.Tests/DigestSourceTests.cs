@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Digest;
 using FeedEater.Ingest;
+using FeedEater.Inbox;
 using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Signals;
@@ -39,7 +40,7 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
 
     private (DigestRun Run, StubHandler Miniflux, SourceKit Kit) Build(Func<HttpRequestMessage, HttpResponseMessage>? network = null)
     {
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 } });
         var kit = new SourceKit(pg, network ?? (_ => _articleStatus == HttpStatusCode.OK
             ? SourceKit.Xml($"<html><head><title>Real article</title></head><body><article>{Article}</article></body></html>", "text/html")
             : SourceKit.Status(_articleStatus)));
@@ -70,6 +71,7 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
             new MinifluxClient(miniflux.Client("http://miniflux/")),
             new GitHubStarsClient(new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.NotFound)).Client("http://github/"), options),
             new TelegramClient(telegram.Client("http://tg/botT/")),
+            new InboxService(new InboxStore(pg.Db), new TelegramClient(telegram.Client("http://tg/botT/")), options, time), new InboxStore(pg.Db),
             new LoopHealth(time), new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), options, time, NullLogger<DigestRun>.Instance,
             kit.Poller, new ArticleText(kit.Items, kit.Fetcher, options, NullLogger<ArticleText>.Instance));
         return (run, miniflux, kit);

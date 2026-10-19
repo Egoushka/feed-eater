@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using FeedEater.Inbox;
 using Microsoft.Extensions.Options;
 using FeedEater.Ranking;
 using FeedEater.Storage;
@@ -8,7 +10,7 @@ namespace FeedEater.Swipe;
 
 public sealed record CardView(
     long Session, int Position, int Total, string Title, string Feed, string? Category, string Why, string? Url, string Age, bool HasSuggestion,
-    string Kind = "item", string? Back = null);
+    string Kind = "item", string? Back = null, IReadOnlyDictionary<string, string?>? Detail = null);
 
 public sealed record SummaryView(long Session, string Reason, int Cards, int Minutes, IReadOnlyDictionary<string, int> Acts, IReadOnlyList<string> Categories, bool Rated);
 
@@ -24,7 +26,7 @@ internal sealed record Queued(string Kind, long RefId, string? Category, string 
 /// <summary>Starts, resumes and ends sessions, hands out the cards and applies what the owner does with them. Every id the client names is a position in the session's own queue.</summary>
 public sealed class SwipeService(
     SwipeStore store, RecallStore recall, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
-    CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
+    InboxStore inbox, InboxCards inboxCards, SwipeActStore acts, FollowStore follows, WeeklyIdeaStore ideas, CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
 {
     public static readonly string[] Acts = ["idea", "save", "share", "like", "dislike", "open"];
     private static readonly string[] RecallActs = ["good", "again"];
@@ -32,6 +34,7 @@ public sealed class SwipeService(
     private static readonly string[] Strongest = [.. Acts, .. RecallActs, .. SeedActs];
     private static readonly string[] Directions = ["up", "down", "left", "right", "none"];
     private const int MaxDwellMs = 3_600_000;
+    private static readonly TimeSpan UndoWindow = TimeSpan.FromHours(24);
     private const double SwipeVoteWeight = 0.5;
 
     private FeedEaterOptions Settings => options.Value;
@@ -82,7 +85,7 @@ public sealed class SwipeService(
         }
 
         var kind = s.QueueKinds.ElementAtOrDefault(position) ?? "item";
-        if (kind != "item")
+        if (kind is not ("item" or "digest"))
         {
             return await SpecialCardAsync(s, position, kind, now, ct);
         }
@@ -99,10 +102,11 @@ public sealed class SwipeService(
         var category = s.QueueCategories.ElementAtOrDefault(position);
         return new NextResult("card", Card: new CardView(
             s.Id, position, Math.Min(s.CardCap, s.QueueItems.Length), item.Title, item.Feed, string.IsNullOrEmpty(category) ? null : category,
-            Why(item), Html.SafeUrl(item.Url), Age(item.PublishedAt, now), item.Suggestion is not null));
+            Why(item), Html.SafeUrl(item.Url), Age(item.PublishedAt, now), item.Suggestion is not null, kind,
+            Detail: kind == "digest" ? new Dictionary<string, string?> { ["summary"] = item.Summary, ["suggestion"] = item.Suggestion } : null));
     }
 
-    /// <summary>A recall question or a post seed. One that no longer exists is skipped like a deleted item.</summary>
+    /// <summary>A recall question, a post seed or an inbox entry. One that no longer exists is skipped like a deleted item.</summary>
     private async Task<NextResult> SpecialCardAsync(SessionRow s, int position, string kind, DateTimeOffset now, CancellationToken ct)
     {
         var category = s.QueueCategories.ElementAtOrDefault(position);
@@ -115,6 +119,10 @@ public sealed class SwipeService(
         else if (kind == "seed" && await recall.SeedAsync(s.QueueItems[position], ct) is { } seed && await items.GetAsync(seed.ItemId, ct) is { } source)
         {
             view = new CardView(s.Id, position, total, seed.Angle, "post seed", Blank(category), "From: " + source.Title, Html.SafeUrl(source.Url), Age(source.PublishedAt, now), false, "seed");
+        }
+        else if (kind is not ("recall" or "seed") && await inbox.GetAsync(s.QueueItems[position], ct) is { } row)
+        {
+            view = await inboxCards.ViewAsync(row, s, position, total, now, ct);
         }
 
         await store.RaiseShownAsync(s.Id, position + 1, ct);
@@ -138,30 +146,41 @@ public sealed class SwipeService(
         return await store.GetAsync(id, ct);
     }
 
-    /// <summary>Due recall cards and seeds take their places first (up to their per-session limits); items fill the rest. Then everything is shuffled together.</summary>
+    /// <summary>
+    /// Notices, the latest digest's unhandled items and open inbox entries come first, in that order and unshuffled; then due recall cards and seeds
+    /// (up to their limits) and ranked items fill the rest, shuffled together.
+    /// </summary>
     internal async Task<IReadOnlyList<QueuedCard>> BuildQueueAsync(DateTimeOffset now, CancellationToken ct)
     {
         var o = Settings.Swipe;
+        var entries = await inbox.EligibleAsync(now, o.Cards, ct);
+        var digest = await store.DigestSlotsAsync(now.AddDays(-3), ct);
+        var head = entries.Where(e => e.Kind == InboxKinds.Notice).Select(e => new QueuedCard(e.Id, null, "notice", null, "notice"))
+            .Concat(digest.Select(id => new QueuedCard(id, null, "digest", null, "digest")))
+            .Concat(entries.Where(e => e.Kind != InboxKinds.Notice).Select(e => new QueuedCard(e.Id, null, "inbox", null, e.Kind)))
+            .Take(o.Cards).ToList();
+
         var special = new List<QueuedCard>();
-        if (o.Recall.Enabled)
+        var room = o.Cards - head.Count;
+        if (o.Recall.Enabled && room > 0)
         {
-            special.AddRange((await recall.DueAsync(now, o.Recall.PerSession, ct)).Select(c => new QueuedCard(c.Id, c.Category, "due", null, "recall")));
+            special.AddRange((await recall.DueAsync(now, Math.Min(o.Recall.PerSession, room), ct)).Select(c => new QueuedCard(c.Id, c.Category, "due", null, "recall")));
         }
 
-        if (o.Seeds.Enabled)
+        if (o.Seeds.Enabled && room - special.Count > 0)
         {
-            special.AddRange((await recall.NewSeedsAsync(o.Seeds.PerSession, ct)).Select(x => new QueuedCard(x.Id, x.Category, "seed", null, "seed")));
+            special.AddRange((await recall.NewSeedsAsync(Math.Min(o.Seeds.PerSession, room - special.Count), ct)).Select(x => new QueuedCard(x.Id, x.Category, "seed", null, "seed")));
         }
 
-        var rest = await BuildItemQueueAsync(Math.Max(0, o.Cards - special.Count), now, ct);
+        var rest = await BuildItemQueueAsync(Math.Max(0, room - special.Count), digest, now, ct);
         var random = new Random();
-        return [.. rest.Concat(special).OrderBy(_ => random.Next())];
+        return [.. head, .. rest.Concat(special).OrderBy(_ => random.Next())];
     }
 
-    private async Task<IReadOnlyList<QueuedCard>> BuildItemQueueAsync(int slots, DateTimeOffset now, CancellationToken ct)
+    private async Task<IReadOnlyList<QueuedCard>> BuildItemQueueAsync(int slots, IReadOnlyCollection<long> exclude, DateTimeOffset now, CancellationToken ct)
     {
         var o = Settings;
-        var candidates = await store.CandidatesAsync(now.AddDays(-o.Swipe.CandidateDays), now.AddDays(-o.Swipe.RepeatDays), ct);
+        var candidates = await store.CandidatesAsync(now.AddDays(-o.Swipe.CandidateDays), now.AddDays(-o.Swipe.RepeatDays), exclude, ct);
         if (candidates.Count == 0 || slots == 0)
         {
             return [];
@@ -189,7 +208,11 @@ public sealed class SwipeService(
         return SwipeQueue.Build(scored, shares, slots, Random.Shared.Next(), o.Swipe.Epsilon);
     }
 
-    public async Task<ActResult> ActAsync(long sessionId, int position, string act, CancellationToken ct)
+    /// <summary>
+    /// With a <paramref name="clientId"/> the act is claimed first: a repeat runs nothing and returns the first call's answer, also while that call is
+    /// still running. Without one it runs every time and cannot be undone.
+    /// </summary>
+    public async Task<ActResult> ActAsync(long sessionId, int position, string act, Guid? clientId, CancellationToken ct)
     {
         var queued = await QueuedAsync(sessionId, position, ct);
         if (queued is null || !ActsFor(queued.Kind).Contains(act, StringComparer.Ordinal))
@@ -197,31 +220,208 @@ public sealed class SwipeService(
             return new ActResult(false, "Nothing to do.");
         }
 
+        if (clientId is not { } id)
+        {
+            return await RunActAsync(queued, sessionId, position, act, ct);
+        }
+
+        (short Value, float Weight)? previous = null;
+        if (act is "like" or "dislike" or "save" && await VoteItemAsync(queued, ct) is { } item)
+        {
+            previous = await feedback.VoteOfAsync(item, ct);
+        }
+
+        if (await acts.ClaimAsync(id, sessionId, position, act, previous, ct) is { } stored)
+        {
+            return stored.SessionId != sessionId || stored.Position != position
+                ? new ActResult(false, "Nothing to do.")
+                : new ActResult(stored.Ok ?? true, stored.Message ?? "Already done");
+        }
+
+        ActResult result;
+        try
+        {
+            result = await RunActAsync(queued, sessionId, position, act, ct);
+        }
+        catch
+        {
+            await acts.CompleteAsync(id, false, "Could not do that.", CancellationToken.None);
+            throw;
+        }
+
+        await acts.CompleteAsync(id, result.Ok, result.Message, CancellationToken.None);
+        return result;
+    }
+
+    private async Task<ActResult> RunActAsync(Queued queued, long sessionId, int position, string act, CancellationToken ct)
+    {
+        if (queued.Kind is not ("item" or "digest" or "recall" or "seed"))
+        {
+            return await InboxActAsync(queued, sessionId, position, act, ct);
+        }
+
         var message = queued.Kind switch
         {
             "recall" => await RecallActAsync(queued.RefId, sessionId, act, ct),
             "seed" => await SeedActAsync(queued.RefId, act, ct),
-            _ => act switch
-            {
-                "like" => await VoteAsync(queued.RefId, 1, SwipeVoteWeight, "Liked", ct),
-                "dislike" => await VoteAsync(queued.RefId, -1, SwipeVoteWeight, "Not for me", ct),
-                "save" => await SaveAsync(queued.RefId, ct),
-                "idea" => await IdeaAsync(queued.RefId, ct),
-                _ => "",
-            },
+            _ => await ItemActAsync(queued.RefId, act, ct),
         };
         if (message is null)
         {
             return new ActResult(false, "Could not do that.");
         }
 
-        var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
-        var acts = existing.Acts.Append(act).Distinct(StringComparer.Ordinal).ToArray();
-        await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
+        await RecordActAsync(sessionId, position, queued, act, ct);
         return new ActResult(true, message);
     }
 
-    private static string[] ActsFor(string kind) => kind switch { "recall" => RecallActs, "seed" => SeedActs, _ => Acts };
+    /// <summary>The item a like, dislike or save on this card votes on: the item itself, or a follow card's item.</summary>
+    private async Task<long?> VoteItemAsync(Queued queued, CancellationToken ct) => queued.Kind switch
+    {
+        "item" or "digest" => queued.RefId,
+        InboxKinds.Follow => (await inbox.GetAsync(queued.RefId, ct))?.ItemId,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Takes back an act the client sent with <paramref name="clientId"/>, within 24 hours (ruling R-c): votes are restored to what they were, a stopped
+    /// follow, a done entry and a dropped idea are reopened. What reached Plane, a duel, a recall review or a post seed cannot be taken back.
+    /// </summary>
+    public async Task<ActResult> UndoAsync(long sessionId, int position, Guid clientId, CancellationToken ct)
+    {
+        var record = await acts.GetAsync(clientId, ct);
+        if (record is null || record.SessionId != sessionId || record.Position != position || await QueuedAsync(sessionId, position, ct) is not { } queued)
+        {
+            return new ActResult(false, "Nothing to do.");
+        }
+
+        if (record.Ok != true || record.UndoneAt is not null)
+        {
+            return new ActResult(false, "Can't undo that: " + (record.UndoneAt is null ? "it did not go through." : "it is already undone."));
+        }
+
+        if (time.GetUtcNow() - SessionPolicy.Utc(record.At) > UndoWindow)
+        {
+            return new ActResult(false, "Can't undo that: it was more than a day ago.");
+        }
+
+        var row = queued.Kind is "item" or "digest" or "recall" or "seed" ? null : await inbox.GetAsync(queued.RefId, ct);
+        if (record is { Act: "stop", Message: InboxCards.AlreadyStopped })
+        {
+            return new ActResult(false, "Can't undo that: the follow was already stopped.");
+        }
+
+        if (NotUndoable(queued.Kind, record.Act) is { } reason)
+        {
+            return new ActResult(false, "Can't undo that: " + reason);
+        }
+
+        if (!await acts.MarkUndoneAsync(clientId, time.GetUtcNow(), ct))
+        {
+            return new ActResult(false, "Can't undo that: it is already undone.");
+        }
+
+        if (record.Act is "like" or "dislike" or "save" && await VoteItemAsync(queued, ct) is { } item)
+        {
+            if (record.PreviousValue is { } value)
+            {
+                await feedback.SetVoteAsync(item, value, ct, record.PreviousWeight ?? 1);
+            }
+            else
+            {
+                await feedback.ClearVoteAsync(item, ct);
+            }
+        }
+
+        if (row is not null && record.Act != "open")
+        {
+            if (record is { Act: "stop" } && row.RefId is { } followId)
+            {
+                await follows.ReopenAsync(followId, ct);
+            }
+
+            if (record is { Act: "drop" } && row.Payload["url"] is JsonValue { } url && url.TryGetValue<string>(out var canonical))
+            {
+                await ideas.UndropAsync(canonical, ct);
+            }
+
+            await inbox.ReopenAsync(row.Id, ct);
+        }
+
+        if (await store.EventAsync(sessionId, position, ct) is { } existing)
+        {
+            var remaining = existing.Acts.Where(a => a != record.Act).ToArray();
+            await store.SaveEventAsync(existing with { Acts = remaining, Action = Primary(remaining, existing.Direction) }, ct);
+        }
+
+        return new ActResult(true, "Undone");
+    }
+
+    private static string? NotUndoable(string kind, string act) => (kind, act) switch
+    {
+        ("recall", _) => "the card was already reviewed.",
+        ("seed", _) => "the post seed was already handled.",
+        (_, "idea" or "keep") => "it was filed in Plane.",
+        (_, "pick_a" or "pick_b") => "the duel was answered.",
+        _ => null,
+    };
+
+    private async Task<string?> ItemActAsync(long itemId, string act, CancellationToken ct) => act switch
+    {
+        "like" => await VoteAsync(itemId, 1, SwipeVoteWeight, "Liked", ct),
+        "dislike" => await VoteAsync(itemId, -1, SwipeVoteWeight, "Not for me", ct),
+        "save" => await SaveAsync(itemId, ct),
+        "idea" => await IdeaAsync(itemId, ct),
+        _ => "",
+    };
+
+    /// <summary>An inbox card. Whatever it did, the entry is done afterwards, except for <c>open</c> and for ideas (<see cref="IdeaDecisions"/> sets that itself).</summary>
+    private async Task<ActResult> InboxActAsync(Queued queued, long sessionId, int position, string act, CancellationToken ct)
+    {
+        if (await inbox.GetAsync(queued.RefId, ct) is not { } row)
+        {
+            return new ActResult(false, "Could not do that.");
+        }
+
+        ActResult result;
+        if (row.Kind == InboxKinds.Follow && act is "save" or "like" or "dislike")
+        {
+            var message = row.ItemId is { } itemId ? await ItemActAsync(itemId, act, ct) : null;
+            result = message is null ? new ActResult(false, "Could not do that.") : new ActResult(true, message);
+        }
+        else
+        {
+            result = await inboxCards.ActAsync(row, act, ct);
+        }
+
+        if (!result.Ok)
+        {
+            return result;
+        }
+
+        if (act != "open" && row.Kind is InboxKinds.Follow or InboxKinds.Duel)
+        {
+            await inboxCards.DoneAsync(row.Id, ct);
+        }
+
+        await RecordActAsync(sessionId, position, queued, act, ct);
+        return result;
+    }
+
+    private async Task RecordActAsync(long sessionId, int position, Queued queued, string act, CancellationToken ct)
+    {
+        var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
+        var acts = existing.Acts.Append(act).Distinct(StringComparer.Ordinal).ToArray();
+        await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
+    }
+
+    private static string[] ActsFor(string kind) => kind switch
+    {
+        "item" or "digest" => Acts,
+        "recall" => RecallActs,
+        "seed" => SeedActs,
+        _ => InboxCards.ActsFor(kind),
+    };
 
     private static EventRow NewEvent(long sessionId, int position, Queued q) =>
         new() { SessionId = sessionId, Position = position, Kind = q.Kind, RefId = q.RefId, Category = q.Category, RankSource = q.Source, Predicted = q.Predicted };
@@ -311,7 +511,7 @@ public sealed class SwipeService(
     private async Task<Queued?> QueuedAsync(long sessionId, int position, CancellationToken ct)
     {
         var s = await store.GetAsync(sessionId, ct);
-        if (s is null || position < 0 || position >= s.CardsShown || position >= s.QueueItems.Length)
+        if (s is null || (s.EndedAt is { } ended && time.GetUtcNow() - SessionPolicy.Utc(ended) > UndoWindow) || position < 0 || position >= s.CardsShown || position >= s.QueueItems.Length)
         {
             return null;
         }
@@ -374,7 +574,7 @@ public sealed class SwipeService(
         return text;
     }
 
-    private static string Age(DateTime published, DateTimeOffset now)
+    internal static string Age(DateTime published, DateTimeOffset now)
     {
         var age = now - new DateTimeOffset(DateTime.SpecifyKind(published, DateTimeKind.Utc));
         return age.TotalHours < 1 ? "just now" : age.TotalDays < 1 ? $"{(int)age.TotalHours} h ago" : $"{(int)age.TotalDays} d ago";
