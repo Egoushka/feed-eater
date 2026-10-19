@@ -50,7 +50,8 @@ public static class ApiEndpoints
             {
                 Gate.Summary => "summary",
                 Gate.Closed => "closed",
-                _ => "open",
+                Gate.Resume or Gate.Expire or Gate.Start => "open",
+                var other => throw new InvalidOperationException($"Unknown gate {other}"),
             };
             until = decision.Until;
             why = decision.Why;

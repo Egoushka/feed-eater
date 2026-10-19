@@ -8,6 +8,7 @@ using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Ui;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -47,7 +48,20 @@ builder.Host.UseSerilog((context, logging) => logging
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddFeedEater(builder.Configuration);
 builder.Services.AddProblemDetails();
-builder.Services.AddOpenApi("v1");
+builder.Services.AddOpenApi("v1", o =>
+{
+    // The document is public: list the API only, not /ui, /swipe or /healthz.
+    o.ShouldInclude = d => d.RelativePath?.StartsWith("api/v1/", StringComparison.Ordinal) == true;
+    o.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Components ??= new OpenApiComponents();
+        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes["bearer"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer" };
+        document.Security ??= [];
+        document.Security.Add(new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("bearer", document)] = [] });
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddSingleton<ApiRateLimiter>();
 builder.Services.AddTransient<ApiAuth>();
 builder.Services.AddTransient<ApiErrors>();

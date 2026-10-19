@@ -52,6 +52,7 @@ internal static class ApiHost
     }
 }
 
+// Refusal cases spend the host's anonymous budget (20 a minute); keep them few or give them their own host.
 [Collection(PostgresCollection.Name)]
 public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
 {
@@ -145,6 +146,10 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
     {
         var doc = await Http.GetStringAsync("/api/v1/openapi.json");
         Assert.Contains("/api/v1/status", doc);
+        Assert.Contains("bearer", doc);
+        Assert.DoesNotContain("/ui", doc);
+        Assert.DoesNotContain("/swipe", doc);
+        Assert.DoesNotContain("/healthz", doc);
     }
 }
 
@@ -172,18 +177,30 @@ public sealed class ApiRateLimitTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.TooManyRequests, last.StatusCode);
         Assert.Equal("application/problem+json", last.Content.Headers.ContentType!.MediaType);
     }
+}
+
+[Collection(PostgresCollection.Name)]
+public sealed class ApiAnonymousLimitTests(PostgresFixture pg) : IAsyncLifetime
+{
+    public Task InitializeAsync() => pg.ResetAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    // Its own host: the anonymous budget is shared by every refusal on a host.
+    private static WebApplicationFactory<Program>? app;
 
     [Fact]
-    public async Task Unknown_tokens_share_a_budget_of_20_a_minute()
+    public async Task Unknown_tokens_share_20_a_minute_and_then_even_a_valid_token_gets_429()
     {
         app ??= ApiHost.Create(pg.ConnectionString);
         var http = app.CreateClient();
-        HttpResponseMessage last = null!;
-        for (var i = 0; i < 21; i++)
+        var token = await ApiHost.TokenAsync(app);
+        for (var i = 0; i < 20; i++)
         {
-            last = await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer fe_guess" + i);
+            var refused = await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer fe_guess" + i);
+            Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
         }
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, last.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer fe_guess")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await ApiHost.RawAsync(http, HttpMethod.Get, "/api/v1/status", "Bearer " + token)).StatusCode);
     }
 }

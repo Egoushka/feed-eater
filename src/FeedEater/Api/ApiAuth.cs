@@ -13,12 +13,19 @@ public sealed class ApiRateLimiter : IDisposable
 
     private const string Anonymous = "anonymous";
 
+    /// <summary>True once the anonymous budget is spent. Reads the window without spending a permit.</summary>
+    public bool AnonymousExhausted => limiter.GetStatistics(Anonymous)?.CurrentAvailablePermits == 0;
+
     public bool TryAcquire(long? tokenId) => limiter.AttemptAcquire(tokenId is { } id ? "token:" + id : Anonymous).IsAcquired;
 
     public void Dispose() => limiter.Dispose();
 }
 
-/// <summary>Browsers are refused, the bearer token is checked, then the per-token rate limit. No problem body repeats the token.</summary>
+/// <summary>
+/// Browsers are refused, the bearer token is checked, then the per-token rate limit. No problem body repeats the token.
+/// Only refusals spend the anonymous budget. Once it is spent every request gets 429 before any database lookup, valid tokens
+/// included: guessing stays slow and Postgres is shielded, at the price of locking the owner out for the rest of the minute.
+/// </summary>
 public sealed class ApiAuth(ApiTokenStore tokens, ApiRateLimiter limits) : IEndpointFilter
 {
     private const string Scheme = "Bearer ";
@@ -26,6 +33,11 @@ public sealed class ApiAuth(ApiTokenStore tokens, ApiRateLimiter limits) : IEndp
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var http = context.HttpContext;
+        if (limits.AnonymousExhausted)
+        {
+            return TooMany();
+        }
+
         if (http.Request.Headers.ContainsKey("Origin"))
         {
             return Refuse(StatusCodes.Status403Forbidden, "Browsers may not call the API");
@@ -45,7 +57,7 @@ public sealed class ApiAuth(ApiTokenStore tokens, ApiRateLimiter limits) : IEndp
 
         if (!limits.TryAcquire(row.Id))
         {
-            return Results.Problem(statusCode: StatusCodes.Status429TooManyRequests, title: "Too many requests");
+            return TooMany();
         }
 
         http.Items["api-token"] = row;
@@ -53,7 +65,9 @@ public sealed class ApiAuth(ApiTokenStore tokens, ApiRateLimiter limits) : IEndp
 
         IResult Refuse(int status, string title) => limits.TryAcquire(null)
             ? Results.Problem(statusCode: status, title: title)
-            : Results.Problem(statusCode: StatusCodes.Status429TooManyRequests, title: "Too many requests");
+            : TooMany();
+
+        static IResult TooMany() => Results.Problem(statusCode: StatusCodes.Status429TooManyRequests, title: "Too many requests");
     }
 }
 
@@ -65,6 +79,11 @@ public sealed class ApiErrors(ILogger<ApiErrors> logger) : IEndpointFilter
         try
         {
             return await next(context);
+        }
+        catch (BadHttpRequestException e)
+        {
+            // An oversized body surfaces here as 413.
+            return Results.Problem(statusCode: e.StatusCode, title: "The request was refused");
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
