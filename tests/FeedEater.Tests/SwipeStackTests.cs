@@ -1,4 +1,10 @@
 using Dapper;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using FeedEater.Inbox;
 using FeedEater.Storage;
 using FeedEater.Swipe;
@@ -12,6 +18,53 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
 
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
+
+    // One host for the class: every extra host adds a connection pool, and the shared Postgres has a low connection limit.
+    private static WebApplicationFactory<Program>? app;
+
+    private SwipeService Service(int cards = 20)
+    {
+        app ??= new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            (string Key, string Value)[] settings =
+            [
+                ("ConnectionStrings:FeedEater", pg.ConnectionString),
+                ("Mcp:Token", "swipe-token"),
+                ("FeedEater:RunJobs", "false"),
+                ("FeedEater:ProfilePath", "/nope/profile.json"),
+                ("FeedEater:Swipe:Enabled", "true"),
+            ];
+            foreach (var (key, value) in settings)
+            {
+                b.UseSetting(key, value);
+            }
+
+            b.ConfigureTestServices(s => s.RemoveAll<IHostedService>());
+        });
+        app.Services.GetRequiredService<IOptions<FeedEaterOptions>>().Value.Swipe.Cards = cards;
+        return app.Services.GetRequiredService<SwipeService>();
+    }
+
+    private async Task<long[]> DigestAsync(int n)
+    {
+        var ids = new List<long>();
+        for (var i = 1; i <= n; i++)
+        {
+            ids.Add(await ItemAsync(i));
+        }
+
+        await SqlAsync("insert into digests (local_date, status, item_ids, sent_at) values ('2026-10-19', 'sent', @ids, @at)",
+            new { ids = ids.ToArray(), at = Now.AddHours(-1).UtcDateTime });
+        return [.. ids];
+    }
+
+    private async Task RankedItemsAsync(int n)
+    {
+        for (var i = 0; i < n; i++)
+        {
+            await ItemAsync(100 + i);
+        }
+    }
 
     private Task<long> StartSessionAsync() =>
         new SwipeStore(pg.Db).StartAsync(20, 600, [], [], [], [], [], Now.AddHours(-2), default);
@@ -83,5 +136,39 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         await store.SetVoteAsync(item, -1, default, weight: 2);
 
         Assert.Equal(((short)-1, 2f), await store.VoteOfAsync(item, default));
+    }
+
+    [Fact]
+    public async Task The_head_is_notices_then_digest_then_inbox_unshuffled()
+    {
+        var digest = await DigestAsync(3);
+        var inbox = new InboxStore(pg.Db);
+        var follow = await inbox.AddAsync(new InboxEntry("f", InboxKinds.Follow, ItemId: digest[0], ExpiresAt: Now.AddDays(7)), Now.AddHours(-2), default);
+        var notice = await inbox.AddAsync(new InboxEntry("n", InboxKinds.Notice, ExpiresAt: Now.AddDays(1)), Now.AddHours(-1), default);
+        await RankedItemsAsync(10);
+
+        var queue = await Service().BuildQueueAsync(Now, default);
+
+        Assert.Equal(
+            [("notice", notice), ("digest", digest[0]), ("digest", digest[1]), ("digest", digest[2]), ("follow", follow)],
+            queue.Take(5).Select(q => (q.Kind, q.Id)));
+        Assert.DoesNotContain(queue.Skip(5), q => digest.Contains(q.Id) && q.Kind == "item");
+    }
+
+    [Fact]
+    public async Task Overflow_beyond_the_cap_waits_for_the_next_session()
+    {
+        var digest = await DigestAsync(5);
+        var svc = Service(cards: 3);
+
+        var first = await svc.BuildQueueAsync(Now, default);
+
+        Assert.Equal(digest.Take(3), first.Select(q => q.Id));
+        foreach (var q in first)
+        {
+            await ShownAsync(q.Id, "digest");
+        }
+
+        Assert.Equal(digest.Skip(3), await new SwipeStore(pg.Db).DigestSlotsAsync(Now.AddDays(-3), default));
     }
 }

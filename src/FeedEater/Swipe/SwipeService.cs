@@ -1,3 +1,4 @@
+using FeedEater.Inbox;
 using Microsoft.Extensions.Options;
 using FeedEater.Ranking;
 using FeedEater.Storage;
@@ -24,7 +25,7 @@ internal sealed record Queued(string Kind, long RefId, string? Category, string 
 /// <summary>Starts, resumes and ends sessions, hands out the cards and applies what the owner does with them. Every id the client names is a position in the session's own queue.</summary>
 public sealed class SwipeService(
     SwipeStore store, RecallStore recall, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
-    CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
+    InboxStore inbox, CallbackHandler callbacks, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
 {
     public static readonly string[] Acts = ["idea", "save", "share", "like", "dislike", "open"];
     private static readonly string[] RecallActs = ["good", "again"];
@@ -138,30 +139,41 @@ public sealed class SwipeService(
         return await store.GetAsync(id, ct);
     }
 
-    /// <summary>Due recall cards and seeds take their places first (up to their per-session limits); items fill the rest. Then everything is shuffled together.</summary>
+    /// <summary>
+    /// Notices, the latest digest's unhandled items and open inbox entries come first, in that order and unshuffled; then due recall cards and seeds
+    /// (up to their limits) and ranked items fill the rest, shuffled together.
+    /// </summary>
     internal async Task<IReadOnlyList<QueuedCard>> BuildQueueAsync(DateTimeOffset now, CancellationToken ct)
     {
         var o = Settings.Swipe;
+        var entries = await inbox.EligibleAsync(now, o.Cards, ct);
+        var digest = await store.DigestSlotsAsync(now.AddDays(-3), ct);
+        var head = entries.Where(e => e.Kind == InboxKinds.Notice).Select(e => new QueuedCard(e.Id, null, "notice", null, "notice"))
+            .Concat(digest.Select(id => new QueuedCard(id, null, "digest", null, "digest")))
+            .Concat(entries.Where(e => e.Kind != InboxKinds.Notice).Select(e => new QueuedCard(e.Id, null, "inbox", null, e.Kind)))
+            .Take(o.Cards).ToList();
+
         var special = new List<QueuedCard>();
-        if (o.Recall.Enabled)
+        var room = o.Cards - head.Count;
+        if (o.Recall.Enabled && room > 0)
         {
-            special.AddRange((await recall.DueAsync(now, o.Recall.PerSession, ct)).Select(c => new QueuedCard(c.Id, c.Category, "due", null, "recall")));
+            special.AddRange((await recall.DueAsync(now, Math.Min(o.Recall.PerSession, room), ct)).Select(c => new QueuedCard(c.Id, c.Category, "due", null, "recall")));
         }
 
-        if (o.Seeds.Enabled)
+        if (o.Seeds.Enabled && room - special.Count > 0)
         {
-            special.AddRange((await recall.NewSeedsAsync(o.Seeds.PerSession, ct)).Select(x => new QueuedCard(x.Id, x.Category, "seed", null, "seed")));
+            special.AddRange((await recall.NewSeedsAsync(Math.Min(o.Seeds.PerSession, room - special.Count), ct)).Select(x => new QueuedCard(x.Id, x.Category, "seed", null, "seed")));
         }
 
-        var rest = await BuildItemQueueAsync(Math.Max(0, o.Cards - special.Count), now, ct);
+        var rest = await BuildItemQueueAsync(Math.Max(0, room - special.Count), digest, now, ct);
         var random = new Random();
-        return [.. rest.Concat(special).OrderBy(_ => random.Next())];
+        return [.. head, .. rest.Concat(special).OrderBy(_ => random.Next())];
     }
 
-    private async Task<IReadOnlyList<QueuedCard>> BuildItemQueueAsync(int slots, DateTimeOffset now, CancellationToken ct)
+    private async Task<IReadOnlyList<QueuedCard>> BuildItemQueueAsync(int slots, IReadOnlyCollection<long> exclude, DateTimeOffset now, CancellationToken ct)
     {
         var o = Settings;
-        var candidates = await store.CandidatesAsync(now.AddDays(-o.Swipe.CandidateDays), now.AddDays(-o.Swipe.RepeatDays), [], ct);
+        var candidates = await store.CandidatesAsync(now.AddDays(-o.Swipe.CandidateDays), now.AddDays(-o.Swipe.RepeatDays), exclude, ct);
         if (candidates.Count == 0 || slots == 0)
         {
             return [];
