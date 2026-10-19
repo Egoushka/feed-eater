@@ -103,6 +103,7 @@ public sealed class LibraryTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Finding_by_canonical_url_skips_duplicates_and_takes_the_lowest_id()
     {
         var items = new ItemStore(pg.Db);
+        await items.UpsertFeedAsync(new Feed(1, "Feed 1", null, null), default);
         var first = await items.InsertAsync(New(1, "https://a.example/x", "first story here"), default);
         var second = await items.InsertAsync(New(2, "https://a.example/x", "other story there"), default);
 
@@ -110,6 +111,12 @@ public sealed class LibraryTests(PostgresFixture pg) : IAsyncLifetime
         Assert.NotNull(second);
         Assert.Null(await items.FindByCanonicalAsync("https://a.example/none", default));
 
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update items set duplicate_of = null where id = @second; update items set duplicate_of = @second where id = @first", new { first, second });
+        }
+
+        Assert.Equal(second, await items.FindByCanonicalAsync("https://a.example/x", default));
     }
 
     [Fact]
