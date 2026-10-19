@@ -18,7 +18,8 @@ namespace FeedEater.Tests;
 /// <summary>One host per class: every extra host adds a connection pool, and the shared Postgres has a low connection limit.</summary>
 internal static class ApiHost
 {
-    public static WebApplicationFactory<Program> Create(string connectionString, Action<IServiceCollection>? configure = null) =>
+    public static WebApplicationFactory<Program> Create(
+        string connectionString, Action<IServiceCollection>? configure = null, params (string Key, string Value)[] extra) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             (string Key, string Value)[] settings =
@@ -29,7 +30,7 @@ internal static class ApiHost
                 ("FeedEater:ProfilePath", "/nope/profile.json"),
                 ("FeedEater:Swipe:Enabled", "true"),
             ];
-            foreach (var (key, value) in settings)
+            foreach (var (key, value) in settings.Concat(extra))
             {
                 b.UseSetting(key, value);
             }
@@ -406,6 +407,88 @@ public sealed class ApiTests(PostgresFixture pg) : IAsyncLifetime
         var published = json.RootElement[0].GetProperty("publishedAt").GetString()!;
         Assert.True(published.EndsWith('Z') || published.EndsWith("+00:00", StringComparison.Ordinal), published);
         Assert.False(json.RootElement[0].TryGetProperty("rank", out _));
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body = null) =>
+        await RawAsync(method, path, "Bearer " + await TokenAsync(), body: body is null ? null : JsonSerializer.Serialize(body));
+
+    private async Task<long> FollowItemAsync()
+    {
+        var item = await Seed.ItemAsync(pg, 1, "Followed story", TestVectors.OneHot(7), DateTime.UtcNow.AddHours(-1));
+        return item;
+    }
+
+    [Fact]
+    public async Task Following_a_story_lists_it_and_stopping_it_closes_it()
+    {
+        var item = await FollowItemAsync();
+
+        var started = await PostAsync<StartFollowResponse>("/api/v1/follows", new { itemId = item });
+        var again = await PostAsync<StartFollowResponse>("/api/v1/follows", new { itemId = item });
+        var missing = await PostAsync<StartFollowResponse>("/api/v1/follows", new { itemId = item + 1000 });
+
+        Assert.Equal(("Started", "AlreadyFollowing", "NoItem"), (started.Outcome, again.Outcome, missing.Outcome));
+        var follow = Assert.Single(await GetAsync<List<FollowResponse>>("/api/v1/follows"));
+        Assert.Equal(item, follow.RootItemId);
+        Assert.Equal(TimeSpan.Zero, follow.EndsAt.Offset);
+        Assert.False(JsonDocument.Parse(await (await SendAsync(HttpMethod.Get, "/api/v1/follows")).Content.ReadAsStringAsync()).RootElement[0].TryGetProperty("rootMessageId", out _));
+
+        Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(HttpMethod.Delete, $"/api/v1/follows/{follow.Id}")).StatusCode);
+        Assert.Empty(await GetAsync<List<FollowResponse>>("/api/v1/follows"));
+        var gone = await SendAsync(HttpMethod.Delete, $"/api/v1/follows/{follow.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+        Assert.Equal("application/problem+json", gone.Content.Headers.ContentType!.MediaType);
+    }
+
+    [Fact]
+    public async Task A_follow_without_an_item_id_is_400()
+    {
+        Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(HttpMethod.Post, "/api/v1/follows", new { })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Feeds_merge_the_thirty_day_counts_and_muting_works()
+    {
+        var item = await Seed.ItemAsync(pg, 1, "Rated", TestVectors.OneHot(3), DateTime.UtcNow.AddDays(-2));
+        await Seed.ItemAsync(pg, 1, "Other", TestVectors.OneHot(4), DateTime.UtcNow.AddDays(-2));
+        await SqlAsync("insert into votes (item_id, value) values (@item, 1)", new { item });
+
+        var feed = Assert.Single(await GetAsync<List<FeedResponse>>("/api/v1/feeds"));
+        Assert.Equal((2, 1, 0, 1.0), (feed.Items30d, feed.Up30d, feed.Down30d, feed.UpRate));
+        Assert.False(feed.Muted);
+
+        var muted = await SendAsync(HttpMethod.Post, $"/api/v1/feeds/{feed.Id}/mute", new { muted = true });
+        Assert.Equal(HttpStatusCode.OK, muted.StatusCode);
+        Assert.True(Assert.Single(await GetAsync<List<FeedResponse>>("/api/v1/feeds")).Muted);
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(HttpMethod.Post, "/api/v1/feeds/999/mute", new { muted = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(HttpMethod.Post, $"/api/v1/feeds/{feed.Id}/mute", new { })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Putting_only_learn_leaves_the_quiet_switch_alone()
+    {
+        var quiet = await SendAsync(HttpMethod.Put, "/api/v1/settings", new { quiet = true });
+        Assert.True((await quiet.Content.ReadFromJsonAsync<SettingsResponse>())!.QuietNow);
+
+        var learned = await (await SendAsync(HttpMethod.Put, "/api/v1/settings", new { learn = true })).Content.ReadFromJsonAsync<SettingsResponse>();
+
+        Assert.True(learned!.QuietNow);
+        Assert.True(learned.Learn);
+        Assert.Equal("07:30", learned.DigestAt);
+        Assert.False(learned.QuietWindow);
+        Assert.Null(learned.QuietFrom);
+        Assert.Equal(learned, await GetAsync<SettingsResponse>("/api/v1/settings"));
+    }
+
+    [Fact]
+    public async Task Runs_are_409_when_background_jobs_are_off()
+    {
+        var digest = await SendAsync(HttpMethod.Post, "/api/v1/digest/run", new { resend = true });
+        var ideas = await SendAsync(HttpMethod.Post, "/api/v1/ideas/run");
+
+        Assert.Equal((HttpStatusCode.Conflict, HttpStatusCode.Conflict), (digest.StatusCode, ideas.StatusCode));
+        Assert.Equal("application/problem+json", digest.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(0, await ScalarAsync<int>("select count(*)::int from cursors where name in ('digest:force', 'weekly-ideas:force')"));
     }
 }
 

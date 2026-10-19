@@ -34,6 +34,7 @@ public static class ApiEndpoints
             .Produces<StatusResponse>();
         group.MapSwipeApi();
         group.MapItemsApi();
+        group.MapManageApi();
 
         return group;
     }
