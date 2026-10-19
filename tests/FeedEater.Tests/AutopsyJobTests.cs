@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Hype;
+using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -46,7 +47,7 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv",
-            Telegram = new TelegramOptions { AllowedUserId = 42 },
+            Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 },
             GitHub = new GitHubOptions { User = "octocat", Token = token },
         });
         var stub = new StubHandler((_, body) =>
@@ -60,8 +61,9 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
             return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
         });
         var ghStub = new StubHandler((request, _) => github(request.RequestUri!.AbsolutePath));
+        var telegram = new TelegramClient(stub.Client("http://tg/botT/"));
         var job = new AutopsyJob(
-            new AutopsyStore(pg.Db), new GitHubStarsClient(ghStub.Client("http://github/"), options), new TelegramClient(stub.Client("http://tg/botT/")),
+            new AutopsyStore(pg.Db), new GitHubStarsClient(ghStub.Client("http://github/"), options), new InboxService(new InboxStore(pg.Db), telegram, options, time),
             new QuietHours(new CursorStore(pg.Db), options, time), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<AutopsyJob>.Instance);
         return new Rig(job, time, ghStub, sent);
     }
@@ -114,6 +116,18 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
         await SnapshotAsync("No repo", null, stars: null),
         await SnapshotAsync("Already gone", "acme/early", stars: null),
     ];
+
+    [Fact]
+    public async Task The_autopsy_is_an_inbox_entry()
+    {
+        await SeedMixedAsync();
+        var rig = Build(Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value)));
+
+        await rig.Job.TickAsync(default);
+
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        Assert.Equal(1, await c.ExecuteScalarAsync<int>("select count(*)::int from inbox where kind = 'autopsy'"));
+    }
 
     [Fact]
     public async Task The_monthly_run_scores_the_ripe_snapshots_stores_the_autopsy_and_sends_it()

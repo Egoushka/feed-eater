@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
+using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -10,7 +12,7 @@ namespace FeedEater.Digest;
 
 /// <summary>Runs the digest inside the 07:30–12:00 window, held while quiet hours are in effect (a digest asked for by hand is not); a failure is reported once on Telegram and retried with backoff.</summary>
 public sealed class DigestJob(
-    DigestRun run, DigestStore digests, TelegramClient telegram, DigestTrigger trigger, QuietHours quiet,
+    DigestRun run, DigestStore digests, IInbox inbox, DigestTrigger trigger, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<DigestJob> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -32,7 +34,7 @@ public sealed class DigestJob(
             await trigger.FinishAsync(outcome.Text, ct);
             if (!outcome.Sent)
             {
-                await NotifyAsync(outcome.Text, ct);
+                await NotifyAsync($"notice:digest:{request.Date}:notice", outcome.Text, ct);
             }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -68,11 +70,12 @@ public sealed class DigestJob(
         }
     }
 
-    private async Task NotifyAsync(string text, CancellationToken ct)
+    private async Task NotifyAsync(string key, string text, CancellationToken ct)
     {
         try
         {
-            await telegram.SendAsync(Settings.Telegram.AllowedUserId, new OutMessage(WebUtility.HtmlEncode(text)), ct);
+            await inbox.AddAsync(new InboxEntry(key, InboxKinds.Notice, Payload: new JsonObject { ["text"] = text },
+                ExpiresAt: Time.GetUtcNow().AddDays(2)), new OutMessage(WebUtility.HtmlEncode(text)), ct);
         }
         catch (Exception notify) when (notify is HttpRequestException or TelegramException or JsonException)
         {
@@ -85,7 +88,9 @@ public sealed class DigestJob(
         var until = Settings.DigestGiveUpAt.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
         try
         {
-            await telegram.SendAsync(Settings.Telegram.AllowedUserId,
+            await inbox.AddAsync(new InboxEntry($"notice:digest:{key}:failed", InboxKinds.Notice,
+                Payload: new JsonObject { ["text"] = $"Digest {key} failed: {error}. Retrying until {until}." },
+                ExpiresAt: Time.GetUtcNow().AddDays(2)),
                 new OutMessage($"Digest {key} failed: {WebUtility.HtmlEncode(error)}. Retrying until {until}."), ct);
         }
         catch (Exception notify) when (notify is HttpRequestException or TelegramException or JsonException)

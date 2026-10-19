@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Digest;
 using FeedEater.Ingest;
+using FeedEater.Inbox;
 using FeedEater.Llm;
 using FeedEater.Signals;
 using FeedEater.Loops;
@@ -159,7 +160,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     private DigestJob BuildJob(DigestRun run, DigestStore digests, StubHandler notices, IOptions<FeedEaterOptions> options, FakeTimeProvider time) =>
-        new(run, digests, new TelegramClient(notices.Client("http://tg/botT/")), new DigestTrigger(new CursorStore(pg.Db), options, time),
+        new(run, digests, new InboxService(new InboxStore(pg.Db), new TelegramClient(notices.Client("http://tg/botT/")), options, time), new DigestTrigger(new CursorStore(pg.Db), options, time),
             new QuietHours(new CursorStore(pg.Db), options, time), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DigestJob>.Instance);
 
     private async Task SeedAsync()
@@ -337,7 +338,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     public async Task A_failed_job_run_keeps_the_digest_retryable_and_reports_once()
     {
         await SeedAsync();
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 } });
         var (run, digests, _) = Build();
         var time = new FakeTimeProvider(Now);
         var notices = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
@@ -351,6 +352,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.NotEqual("failed", row.Status);
         Assert.NotNull(row.Error);
         Assert.Single(notices.Calls);
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        Assert.Equal(1, await c.ExecuteScalarAsync<int>("select count(*)::int from inbox where kind = 'notice' and key like 'notice:digest:%:failed'"));
     }
 
     [Fact]
@@ -513,7 +516,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private (DigestRun Run, DigestStore Digests, DigestJob Job, DigestTrigger Trigger, StubHandler Notices) BuildForced()
     {
         var (run, digests, _) = Build();
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 } });
         var time = new FakeTimeProvider(Evening);
         var notices = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
         return (run, digests, BuildJob(run, digests, notices, options, time), new DigestTrigger(new CursorStore(pg.Db), options, time), notices);

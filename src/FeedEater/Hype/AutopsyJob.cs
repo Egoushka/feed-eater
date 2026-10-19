@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
+using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -13,7 +15,7 @@ namespace FeedEater.Hype;
 /// past the anonymous request budget or the rate limit) is left for next month's autopsy; only the rate limit and an unreachable GitHub end the run.
 /// </summary>
 public sealed class AutopsyJob(
-    AutopsyStore store, GitHubStarsClient github, TelegramClient telegram, QuietHours quiet,
+    AutopsyStore store, GitHubStarsClient github, IInbox inbox, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<AutopsyJob> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -32,7 +34,8 @@ public sealed class AutopsyJob(
             return;
         }
 
-        await telegram.SendAsync(Settings.Telegram.AllowedUserId, new OutMessage(html), ct);
+        await inbox.AddAsync(new InboxEntry($"autopsy:{key}", InboxKinds.Autopsy, Payload: new JsonObject { ["html"] = html },
+            ExpiresAt: Time.GetUtcNow().AddDays(7)), new OutMessage(html), ct);
         await store.MarkSentAsync(key, Time.GetUtcNow(), ct);
     }
 

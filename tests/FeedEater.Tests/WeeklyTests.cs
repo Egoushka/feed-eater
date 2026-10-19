@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Review;
 using FeedEater.Storage;
@@ -21,6 +22,12 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
 
     private Task<long> ItemAsync(long feed, string title, double daysAgo) =>
         Seed.ItemAsync(pg, feed, title, TestVectors.OneHot((int)(Math.Abs(title.GetHashCode()) % 1000)), Until.UtcDateTime.AddDays(-daysAgo));
+
+    private async Task<T?> ScalarAsync<T>(string sql, object? args = null)
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return await c.ExecuteScalarAsync<T>(sql, args);
+    }
 
     private async Task SqlAsync(string sql, object? args = null)
     {
@@ -149,7 +156,7 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
     {
         var time = new FakeTimeProvider(now);
         var sent = new List<string>();
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", Telegram = new TelegramOptions { AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 } });
         var stub = new StubHandler((_, body) =>
         {
             if (telegramFails)
@@ -160,7 +167,8 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
             sent.Add(body);
             return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
         });
-        return (new WeeklyReview(new WeeklyStore(pg.Db), new TelegramClient(stub.Client("http://tg/botT/")), new QuietHours(new CursorStore(pg.Db), options, time), new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<WeeklyReview>.Instance), time, sent);
+        var telegram = new TelegramClient(stub.Client("http://tg/botT/"));
+        return (new WeeklyReview(new WeeklyStore(pg.Db), new InboxService(new InboxStore(pg.Db), telegram, options, time), new QuietHours(new CursorStore(pg.Db), options, time), new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<WeeklyReview>.Instance), time, sent);
     }
 
     [Fact]
@@ -182,6 +190,19 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
         var row = (await new WeeklyStore(pg.Db).LatestAsync(default))!;
         Assert.Equal("2026-10-11", row.WeekOf);
         Assert.NotNull(row.SentAt);
+    }
+
+    [Fact]
+    public async Task The_review_is_an_inbox_entry_with_its_text()
+    {
+        await SeedWeekAsync();
+        var (job, _, _) = BuildJob(Until.AddMinutes(1));
+
+        await job.TickAsync(default);
+
+        var key = await ScalarAsync<string>("select week_of::text from weekly");
+        Assert.Equal("review", await ScalarAsync<string>("select kind from inbox where key = @k", new { k = $"review:{key}" }));
+        Assert.False(string.IsNullOrEmpty(await ScalarAsync<string>("select payload->>'html' from inbox where kind = 'review'")));
     }
 
     [Fact]
