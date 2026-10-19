@@ -159,12 +159,17 @@ public sealed class ItemStore(FeedDb db)
             """, item, cancellationToken: ct));
     }
 
-    /// <summary>The oldest item with this canonical URL that is not a duplicate of another.</summary>
+    /// <summary>The oldest item with this canonical URL that is not a duplicate of another; failing that, the original the oldest duplicate points at.</summary>
     public async Task<long?> FindByCanonicalAsync(string canonicalUrl, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.ExecuteScalarAsync<long?>(new CommandDefinition(
-            "select id from items where canonical_url = @canonicalUrl and @canonicalUrl <> '' and duplicate_of is null order by id limit 1",
+            """
+            select coalesce(
+                (select id from items where canonical_url = @canonicalUrl and duplicate_of is null order by id limit 1),
+                (select duplicate_of from items where canonical_url = @canonicalUrl and duplicate_of is not null order by id limit 1))
+            where @canonicalUrl <> ''
+            """,
             new { canonicalUrl }, cancellationToken: ct));
     }
 

@@ -120,6 +120,23 @@ public sealed class LibraryTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Finding_by_canonical_url_falls_back_to_the_original_of_the_oldest_duplicate()
+    {
+        var items = new ItemStore(pg.Db);
+        await items.UpsertFeedAsync(new Feed(1, "Feed 1", null, null), default);
+        var original = await items.InsertAsync(New(1, "https://orig.example/x", "the original story"), default);
+        var copy = await items.InsertAsync(New(2, "https://copy.example/x", "same story by title"), default);
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update items set title_hash = 'h' where id in (@original, @copy)", new { original, copy });
+            await c.ExecuteAsync("update items set canonical_url = 'https://copy.example/x', duplicate_of = @original where id = @copy", new { original, copy });
+            await c.ExecuteAsync("update items set canonical_url = 'https://other.example/y' where id = @original", new { original });
+        }
+
+        Assert.Equal(original, await items.FindByCanonicalAsync("https://copy.example/x", default));
+    }
+
+    [Fact]
     public async Task Unread_since_leaves_out_read_items_recent_saves_and_recently_resurfaced_ones()
     {
         var store = new LibraryStore(pg.Db);
@@ -241,6 +258,35 @@ public sealed class LibraryTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(new SaveResult(SaveStatus.Saved, id), result);
         Assert.Equal(1, await QueryAsync<int>("select count(*)::int from items"));
+    }
+
+    [Fact]
+    public async Task A_url_whose_only_rows_are_duplicates_saves_their_original_and_adds_no_row()
+    {
+        var items = new ItemStore(pg.Db);
+        await items.UpsertFeedAsync(new Feed(1, "Feed 1", null, null), default);
+        var original = (await items.InsertAsync(New(1, "https://orig.example/x", "the original story"), default))!.Value;
+        var copy = (await items.InsertAsync(New(2, "https://copy.example/x", "other"), default))!.Value;
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("update items set duplicate_of = @original where id = @copy", new { original, copy });
+        }
+
+        var result = await Service().SaveUrlAsync("https://copy.example/x", null, null, "share", default);
+
+        Assert.Equal(new SaveResult(SaveStatus.Saved, original), result);
+        Assert.Equal(2, await QueryAsync<int>("select count(*)::int from items"));
+    }
+
+    [Fact]
+    public async Task A_Karakeep_timeout_never_fails_the_save()
+    {
+        var id = await NewItemAsync();
+        var timeout = new StubHandler((_, _) => throw new TaskCanceledException("timed out"));
+
+        Assert.Equal(SaveStatus.Saved, (await Service(mirror: true, stub: timeout).SaveAsync(id, "ui", default)).Status);
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        Assert.Null(await c.ExecuteScalarAsync<string?>("select karakeep_id from saved where item_id = @id", new { id }));
     }
 
     [Theory]

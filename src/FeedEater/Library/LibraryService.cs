@@ -75,7 +75,7 @@ public sealed class LibraryService(LibraryStore library, ItemStore items, Feedba
         {
             await library.SetKarakeepIdAsync(itemId, await karakeep.CreateLinkAsync(url, title, ct), ct);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || (e is TaskCanceledException && !ct.IsCancellationRequested))
         {
             logger.LogWarning(e, "Karakeep mirror of item {ItemId} failed; the save stands", itemId);
         }
