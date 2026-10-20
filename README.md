@@ -1,13 +1,63 @@
+<!-- readme:header:start -->
+<p>
+  <img alt="status: Active" src="https://img.shields.io/badge/status-Active-2ea44f">
+  <a href="https://github.com/Egoushka/feed-eater/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Egoushka/feed-eater/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="last commit" src="https://img.shields.io/github/last-commit/Egoushka/feed-eater?label=last%20change">
+</p>
+<!-- readme:header:end -->
+
 # feed-eater
 
-Reads your feeds, keeps every entry in a searchable archive, and each morning sends the few that
-matter to Telegram with a concrete suggestion where one exists. Button presses teach the ranking; a weekly job turns
-the suggestions into ideas (into Plane Intake when Plane is configured, else into a local list). Any MCP client can search the archive.
-One user, one instance: you run it yourself.
+> A self-hosted feed reader for one person: it archives everything you follow, sends the few items that matter each morning, and lets any AI client search the archive.
+
+<!-- readme:status:start -->
+**Active**. I work on it this month.
+<!-- readme:status:end -->
+
+```mermaid
+flowchart LR
+  feeds[RSS, Atom and JSON feeds] --> reader[built-in reader or Miniflux]
+  reader --> archive[(archive: Postgres + pgvector)]
+  archive --> rank[ranking by your interests and votes]
+  rank --> models[small model triages, larger model reads]
+  models --> out[morning digest: Telegram or swipe page]
+  out -- "👍 👎 📌" --> archive
+  archive --> ui[web UI at /ui]
+  archive --> mcp[MCP tools for AI clients]
+  archive --> api[JSON API for the phone app]
+```
+
+## Why
+
+I followed more feeds than I could read: on 2026-10-05 my Miniflux held 10,752 entries from 17 feeds, every one of
+them unread ([design notes](docs/specs/2026-10-05-feed-eater-design.md#what-exists-checked-2026-10-05)). Feed
+readers show everything in date order and leave the picking to you. I wanted a service that reads all of it, picks
+the handful that touch my projects, says what I could do with each, learns from my reactions, and keeps the rest
+searchable for an AI assistant instead of throwing it away.
+
+## What it does
+
+- **Reads your feeds itself** (RSS 2.0, Atom, JSON Feed, OPML import), or copies them from Miniflux, a self-hosted
+  feed reader, if you already run one.
+- **Keeps every entry** in a searchable archive, with duplicates and repeat stories across feeds linked together.
+- **Sends a morning digest** of up to 12 items, each with a summary, why it matters and a suggestion, to Telegram or
+  to a phone swipe page. 👍, 👎 and swipes teach the ranking.
+- **Answers questions from the archive**, citing the items it used, in Telegram or through the API.
+- **Saves items to its own library**, where they get full text and a summary, and come back if left unread.
+- **Lets any MCP client search it.** MCP (Model Context Protocol) is how AI assistants call outside tools; feed-eater
+  exposes five read-only ones.
+
+Smaller jobs ride along: a twice-daily "which would you rather read" duel, following one story for two weeks,
+release alerts for software you run, a weekly review, and weekly project ideas.
+
+Not here: more than one user, a public instance (you run your own), and a hosted model (you
+bring an OpenAI-compatible key). The Android app the [v1.0 spec](docs/specs/2026-10-19-v1.0-app.md) describes is
+not built yet; the server side of it is.
 
 ## Quick start
 
-You need Docker, an OpenAI-compatible API key (OpenAI by default), a Telegram account and an OPML file of your feeds (or one feed URL).
+You need Docker with Compose, an OpenAI-compatible API key (OpenAI by default), a Telegram account and an OPML file
+of your feeds, or one feed URL.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Egoushka/feed-eater/main/compose.example.yaml -o compose.yaml
@@ -20,225 +70,61 @@ docker compose run --rm feed-eater import-opml /config/feeds.opml
 docker compose run --rm feed-eater doctor     # one line per integration: ok, off or FAIL with the fix
 ```
 
-Then send `/digest` to the bot. The full walk-through, every optional integration (Plane, Karakeep, GitHub, Hindsight, release
-watch, Miniflux) and upgrade notes are in [docs/SETUP.md](docs/SETUP.md). The embedding column is fixed at 1536 dimensions, so the
-embedding model must return that size (the default does).
+Then send `/digest` to the bot. [Setup](docs/SETUP.md) walks through each step, every optional integration and
+upgrades. The embedding column is fixed at 1536 dimensions, so the embedding model must return that size (the
+default does).
 
-Design: [docs/specs/2026-10-05-feed-eater-design.md](docs/specs/2026-10-05-feed-eater-design.md).
-
-## How an item travels
-
-1. Your feeds are fetched (by the built-in reader, or by Miniflux when it is configured). feed-eater copies each new entry
-   (every 30 min), strips HTML, marks duplicates by canonical URL or title, and embeds it.
-2. At 07:30 (`FeedEater:TimeZone`, default UTC) the new items are ranked by vector math: fit to the projects and topics in
-   `profile.json`, similarity to what was liked or disliked, and the feed's 👍 rate.
-3. The top 60 get a one-line verdict from a small model; the top 12 of those that matter are read in full by a
-   stronger one, which writes a summary, why it matters, and a suggestion.
-4. Telegram gets a header and one message per item with 👍 👎 and 📌.
-
-## Configuration
-
-Every key is under `FeedEater:` (environment: `FeedEater__Section__Key`). Every setting, its default and what it does is in
-[docs/CONFIG.md](docs/CONFIG.md); `dotnet FeedEater.dll doctor` checks them against the real services, and `doctor --print-config`
-prints the effective values with secrets masked.
-
-| Key | Required | Notes |
-|---|---|---|
-| `ConnectionStrings:FeedEater` | yes | Postgres 18 with pgvector |
-| `Mcp:Token` | yes | empty: `/mcp` refuses every request |
-| `FeedEater:Miniflux:BaseUrl`, `Token` | with `Source:Kind=miniflux` | Miniflux and its API key; read-only use |
-| `FeedEater:Llm:BaseUrl`, `ApiKey` | yes | an OpenAI-compatible endpoint with its version path (default `https://api.openai.com/v1/`) and key |
-| `FeedEater:Telegram:Token`, `AllowedUserId` | yes | its own bot; the poller only starts with a token. While `AllowedUserId` is 0 the bot answers only `/start`, with your id |
-| `FeedEater:Miniflux:BaseUrl`, `Token` | no | use Miniflux as the feed source instead of the built-in reader; read-only use |
-| `FeedEater:TimeZone` | no | default `UTC`; set an IANA name such as `Europe/Berlin` for the digest time, quiet hours and shown dates |
-| `FeedEater:Plane:BaseUrl`, `Token`, `Workspace` | no | without them 💡 saves ideas to the local list (`/ui/ideas`) |
-| `FeedEater:Karakeep:BaseUrl`, `Token` | no | without them there is no Karakeep mirror and no bookmark import |
-| `FeedEater:Hindsight:BaseUrl` | no | weekly summary to the `feed-eater` bank; off without it |
-| `FeedEater:GitHub:User` | no | stars of this user count as liked items; off without it. With a Telegram token it also turns on the hype autopsy (`/ui/autopsy`) |
-| `FeedEater:GitHub:Token` | no | sent on every GitHub call; lifts the 60 requests an hour limit (the autopsy snapshots stop at 40 requests a run without it) |
-| `FeedEater:ProfilePath` | no | default `/config/profile.json`; shape in `profile.example.json`; a missing file means the example interests and a notice |
-
-## Built-in feed reader
-
-By default feed-eater fetches the feeds itself (RSS 2.0, Atom, JSON Feed); no Miniflux is needed. Add feeds on `/ui/sources` (a feed
-or a site address; the feed link is looked up on the page), import or export OPML there (folders become categories), send
-`/feeds` or `/feeds add <url>` to the bot, or run `dotnet FeedEater.dll import-opml feeds.opml` (adds the feeds; the running service
-fetches them at its next poll). Removing a feed keeps its items in the archive, now without a feed.
-
-Each feed is fetched with a conditional GET (ETag, Last-Modified) every `FeedInterval`; every failure doubles the wait up to
-`MaxBackoff`, and a good fetch resets it. The error shows on `/ui/sources`, and a feed that failed 3 times in a row is named in the digest
-header. All fetches go through the same guarded fetcher as page fetch: public addresses only, ports 80 and 443, at most 3 redirects, 10 s,
-one request a second per host, answers up to 5 MB. A feed's first fetch keeps only entries from the last `BackfillDays`, so a new
-instance embeds days, not whole histories. Items without a date count as published when first seen. An item is stored once per
-feed and entry (`items.source_key`); the same article from another feed is marked a duplicate by URL or title as before. Short items
-get their article text from the page itself when the digest reads them.
-
-`FeedEater:Source:*`:
-
-| Key | Default | Notes |
-|---|---|---|
-| `Kind` | `builtin` | `builtin` or `miniflux` (copy entries from Miniflux, as before; full text through Miniflux). Any other value stops startup and fails `doctor`. Switching on a populated database is unsupported |
-| `AllowedHosts` | none | Private hosts a feed URL may point at, e.g. a self-hosted RSSHub: exact names, any port (`FeedEater__Source__AllowedHosts__0=rsshub`). Feed URLs only: article and linked-page fetches never reach private hosts |
-| `BackfillDays` | 14 | Age limit for the first fetch of a feed |
-| `FeedInterval` | 30 min | Per feed |
-| `MaxBackoff` | 24 h | Longest wait after repeated failures |
-| `PollInterval` | 1 min | How often the ingest loop looks for feeds that are due |
-
-## Web UI
-
-`/ui` is a server-rendered reading UI over the archive: today's digest with 👍 👎 💡 buttons, search, one item, the digest
-history, per-feed stats for the last 30 days (to decide which Miniflux feeds to prune), filed ideas and LLM spend (tokens always; a call
-whose cost is in neither the gateway's `x-litellm-response-cost` header nor `FeedEater:Llm:Prices` shows as "cost unknown", not as free).
-It needs no JavaScript and loads nothing from other hosts (CSP `default-src 'none'`).
-
-`/ui/setup` shows the same checks as `doctor`. Sign in at `/ui/login` with the same value as `Mcp:Token`. The session is an HttpOnly, SameSite=Strict cookie signed with a key
-derived from that token (30 days; changing the token signs everyone out). Every POST also checks that Origin or Referer
-names the request's own host and carries a per-session anti-forgery value. Logins are limited to 5 a minute. With no
-`Mcp:Token` every `/ui` route answers 503. `FeedEater:Llm:MonthlyBudget` (USD, default 0 = none) adds a budget line to `/ui/usage`.
-`/mcp` and `/healthz` are unchanged.
-
-`/ui/posts` is the stream of recent posts beyond the digest (filters: category, feed, project, kind, unrated, with AI summary;
-keyset paging). `/ui/feedback` lists everything already rated, per 👍, 👎 and 💡, with the 7- and 30-day 👍 rate; a vote can be
-changed or cleared there. The top of Today has "the day in brief", built from the digest's stored reads with no extra model call.
-
-### Taste map
-
-`/ui/map` draws every voted item and a seeded sample of up to 1500 other embedded items from the last 90 days as points on a plane
-(PCA on the embeddings, computed on the server, cached 10 minutes), as one inline `<svg>` with no script. 👍 is a green circle, 👎 a red
-cross (shape and colour), no vote a small grey dot; a heavier vote is a bigger mark. Each profile key is written at the mean of its 10 nearest
-points; a dashed square marks a region with items where no digest ever showed one. The month links above the plot (`?month=YYYY-MM`) show the
-votes up to the end of that month while every item stays in place, so you can watch the taste form. A table below the plot gives the counts per
-vote kind and per profile for use without the picture. It needs at least 3 embedded items and no setting.
-
-## v0.4 additions
-
-- **Story clustering.** An item whose embedding is within `FeedEater:Cluster:Threshold` (default 0.84, cosine) of an earlier
-  item from another feed published within `WindowDays` (3) is linked to it (`items.cluster_of`); nothing is hidden. The digest takes
-  the earliest unmuted item of each story and skips a story any member of which was triaged on an earlier day. Cards, the Telegram
-  digest and search show "also in" and the count. Two titles that name different versions never merge. 0.84 was picked from the
-  real archive on 2026-10-06 (same stories 0.80 to 0.86, related ones below 0.80, few samples): raise it if unrelated items merge,
-  lower it to 0.82 if the same story shows up twice.
-- **Mute a feed.** `/ui/sources` has Mute/Unmute per feed and a posts/week column. A muted feed is still ingested, archived and
-  searchable; it stays out of digest candidates and the Today brief, and `/ui/posts` hides it unless "Show muted feeds" is ticked.
-- **Telegram search.** `/search words`, or any plain message from the allowed user, returns up to 5 results, one message each,
-  with 👍 👎 📌.
-- **Weekly review.** Sundays 18:30 in `FeedEater:TimeZone` (only with a Telegram token): counts, top 5 👍, ratings per project, ideas filed, the 3
-  feeds that earned most 👍 and 3 mute candidates. Stored in `weekly` and shown at `/ui/weekly`. No model call.
-
-## v0.5 additions
-
-- **Linked pages.** Reddit and Hacker News link posts are teasers, so for recent ones with a short text feed-eater fetches the page they
-  link to (and the top 5 HN comments) and gives it to triage and read, fenced as untrusted data. The fetcher refuses private, loopback,
-  link-local, tailnet and metadata addresses, pins the connection to the address it checked, follows at most 3 redirects, reads at most
-  1 MB of html or text in 10 s, and keeps to 1 request a second per host and `FeedEater:Fetch:MaxPerDay` (400; 0 turns page fetching off). Every rule is in
-  [docs/specs/2026-10-06-page-fetch.md](docs/specs/2026-10-06-page-fetch.md). Tune with `FeedEater:Fetch:*` (`MaxPerPoll`, `BlockedHosts`).
-- **Release watch.** Off until `FeedEater:Watch:Source` or `FeedEater:Watch:FallbackPath` is set. What you run comes from the source: a PINS.md
-  file path or an https URL (for a private repo, the GitHub contents API URL plus `FeedEater:Watch:Token`); unset or failing, it uses the
-  static JSON list at `FeedEater:Watch:FallbackPath` (the format is in `config/watch.example.json`). `config/watch-map.json`
-  maps images to upstream GitHub repos (add rows for more). A release newer than the pinned version is read by the model (what changed,
-  breaking yes/no/unknown with a quote); one that mentions security, a CVE, a vulnerability or breaking goes to Telegram on its own,
-  the rest in the digest header. `/ui/releases` lists products and releases. Each release is announced once; nothing is applied.
-- **📌 Save** (Telegram, Today, Posts, Feedback, item page) saves the item to the library; it always shows. With Karakeep set it also mirrors the bookmark there, and Karakeep being down never fails the save.
-- **Suggested feeds** on `/ui/sources`: domains behind your 👍 items that no subscribed feed covers, with the feed URL found on the
-  homepage (3 domains per poll, rechecked after 30 days). Subscribe in Miniflux yourself.
-- **Prompt eval.** `dotnet FeedEater.dll eval --max-usd 0.25 [--max-items 40] [--reads] [--out report.md]` re-runs the current prompts
-  over your voted items and prints how relevance agrees with the votes and how often "new" appears with no version or date. It says when
-  there are too few votes (under 10 up and 10 down in the sample) and stops at the spend limit. It refuses to run when a call comes back
-  with no cost (no `x-litellm-response-cost` header and no `FeedEater:Llm:Prices` entry), because the limit could not be enforced.
-- **Taste learning, guarded.** `dotnet FeedEater.dll taste` is an offline report (held-out agreement of a learned model against the
-  current ranking). `FeedEater:Taste:Learn` (default false) adds a bounded learned term; with under 100 votes (10 of each kind) it
-  refuses and the digest header says so. The default ranking is unchanged.
-- **Quiet hours.** `FeedEater:Quiet:From` and `To` (local time, default none) hold the scheduled digest, duels, followed stories, the weekly review,
-  the hype autopsy and release alerts. `/quiet` (or `/quiet on|off|status`) and a button on Today toggle it by hand; `/digest` still works. Driving it from the
-  senses service is a follow-up.
-
-## v0.6 additions
-
-- **Ask the archive.** `/ask question`, or any plain message ending in `?`, searches the archive (top 8), and the read model answers
-  from those items only, citing each claim as `[n]`. Markers that name no source are dropped, and the cited items follow as links. When the
-  sources do not answer it, the reply says so. Other plain messages are still a search.
-- **Reply to an item.** Reply to a digest item or a search result with free text. The small model turns it into one action: 👍, 👎,
-  file an idea (in a project you name, in your words: "idea for <project>: …"), save to Karakeep, mute the feed, or answer a question
-  from the item's own text. A bare 👍 or 👎 needs no model call. The item is found from the buttons on the message you replied to, so
-  nothing new is stored. A project name that is not a known project (a Plane project when Plane is the idea sink) files nothing and lists the known ones.
-- **`/learn`.** `/learn status` gives the vote count and, with enough votes, the held-out agreement of the current and learned rankings.
-  `/learn on|off` switches the learned term from the next digest and wins over `FeedEater:Taste:Learn`. The weekly review adds a
-  "Ranking" line when the learned model is ahead by the required margin and still off.
-
-## Vote weight
-
-Every vote has a weight (`votes.weight`, above 0 and up to 3, default 1). The ranking learns from weighted votes: the 👍 and 👎
-centroids are weighted means, the learned model counts each vote by its weight, a feed's 👍 rate sums weights, and the taste map draws a
-heavier vote as a bigger mark. Only the duel writes a weight below 1 today (its 👎 counts half). A vote cast by hand replaces the earlier
-one with weight 1, and votes from before the weights keep 1, so the default ranking is unchanged. The thresholds that need "enough
-votes" (the learned term, the taste centroids) count votes, not weights; the weekly review and the feedback page count votes too.
-
-## Duel
-
-Twice a day (`FeedEater:Duel:Times`, default 12:30 and 20:30 local, at most `PerDay` 2) the bot sends one message with two items you have
-not voted on and asks which you would rather read. They come from the middle of the ranking, where it is least sure (items from the last
-7 days, embedded, scored, relevant, one per story, not in a muted feed; the pair that is least alike wins, and a pair is never sent
-twice). One tap on ◀ or ▶ records a 👍 for the pick (weight 1) and a 👎 for the other (weight 0.5) and rewrites the message to "You
-picked …"; skip records nothing. An item you voted on yourself is never overwritten. Needs six eligible items and the Telegram bot;
-`FeedEater:Duel:Enabled=false` turns it off. A slot missed while the service was down is sent only within 2 hours of its time, and quiet
-hours hold it. A reply to a duel message is an ordinary message (a search, or a question when it ends in "?").
-
-## Follow this story
-
-🧵 on a digest item or a search hit follows its story for `FeedEater:Follow:Days` (14): the bot sends a root message with a ⏹ button, then
-every later item on the same story as a reply to it, checked every 10 minutes (same cluster, or as similar as the cluster threshold minus
-0.04 to the root or to an item already sent; muted feeds are skipped). The story closes at the end, at `MaxMessages` (50) or on ⏹ with
-the read model's summary of it, or just the links when the model fails. `MaxActive` (5) stories can be followed at once; `/follows` lists them with stop
-buttons and `/unfollow [id]` stops one. A reply to an update acts on that item like a reply to a digest item; a reply to the root
-message gets the help text. Quiet hours hold the run, and `FeedEater:Follow:Enabled=false` removes the button and the job. Needs the
-Telegram bot.
-
-## Hype autopsy
-
-With `FeedEater:GitHub:User` and a Telegram token set, a daily job (05:00) records the GitHub repo of every 👍 item (stars, last push,
-latest release). On the 1st of each month (09:00) the autopsy scores each snapshot that is at least 87 days old, by first match: gone
-(404 or archived), grew (stars up 20% or more), alive (pushed in the last 30 days), quiet. It splits the result by the model's relevance
-and by feed, shows it at `/ui/autopsy` and sends it to Telegram; it calls no model, and quiet hours hold the message. Without
-`FeedEater:GitHub:Token` the snapshot job stops at 40 requests a run and the next day carries on. A duel pick is a 👍 too, so it is
-snapshotted like any other.
-
-## Weekly ideas
-
-With Plane and a Telegram token set, Mondays at `FeedEater:WeeklyIdeas:At` (09:00 in `FeedEater:TimeZone`) a job collects the week's items
-the model marked `improve`, the items you 👍 or 📌 saved, and your new Karakeep bookmarks. One model call ranks them into at most
-`MaxFiled` (5) ideas, each with the project it belongs to, the repo or workflow it changes, an effort (S under an hour, M up to a day, L
-longer) and a reason. Every idea becomes a Plane Intake item in that project (`FeedEater:Plane:FallbackProject` when none fits), and the
-top `TopInMessage` (3) go to Telegram. The model sees the latest 100 work items of each project, the ideas earlier runs filed and, with
-`FeedEater:WeeklyIdeas:BacklogUrl` (a GitHub contents API URL, token in `BacklogToken`), a backlog file, and leaves out whatever repeats
-them; a source URL that was filed once is never offered again (`weekly_ideas`). A configured backlog that cannot be read fails the run,
-which is retried with backoff, so nothing is filed without the check. Quiet hours hold it; a run missed while down happens at start; `/ideas` on Telegram runs it now.
-There is no 💡 button on digest items: the machinery behind it (the `ideas` list, the web UI, the swipe page) is unchanged, and an old
-message's 💡 still works.
-
-## Running a digest on demand
-
-The scheduled digest runs once a day inside 07:30 to 12:00 local time (`FeedEater:TimeZone`). To run one outside that:
-
-- Telegram: `/digest` (only from `FeedEater:Telegram:AllowedUserId`). `/digest resend` sends today's digest again.
-- UI: "Run digest now" on `/ui`; "Send today's digest again" sits behind a confirm step.
-
-Both write a cursor, `digest:force` (`run:<date>` or `resend:<date>`), that the digest job picks up within a minute. It ignores
-the window and the done-check for that day only, and is cleared after the run, failed or not (a failure is reported on Telegram
-and in `/ui`). A stale request from an earlier day is dropped. If today's digest was already sent, a plain run says so and
-sends nothing; only `resend` sends the same messages again. Without a Telegram token the digest job is not registered.
-
-## MCP tools
-
-`feed_search`, `feed_read`, `feed_digests`, `feed_digest`, `feed_ideas`. All read-only. `./selftest.sh` calls them.
-
-## Develop
+To build and test from source (Docker must be running; the tests start Postgres with pgvector in a container):
 
 ```bash
+git clone https://github.com/Egoushka/feed-eater.git && cd feed-eater
 dotnet test FeedEater.slnx
 ```
 
-Docker must be running (Testcontainers starts `pgvector/pgvector:0.8.7-pg18-trixie`).
+## How it works
 
-## License
+One .NET 10 process and one Postgres 18 database with the pgvector extension for embeddings. An item travels like this:
 
-Apache-2.0.
+1. Feeds are fetched every 30 minutes, by the built-in reader or by Miniflux. Each new entry has its HTML stripped,
+   is marked a duplicate by canonical URL or title, and is embedded.
+2. At 07:30 (in `FeedEater:TimeZone`, default UTC) the new items are ranked by vector math: fit to the projects and
+   topics in `profile.json`, similarity to what you liked or disliked, and the feed's 👍 rate. No trained model is
+   needed on day one.
+3. The top 60 get a one-line verdict from a small model; the top 12 of those that matter are read in full by a
+   stronger one, which writes a summary, why it matters, and a suggestion.
+4. The digest goes out as one message or card per item. Your reactions feed back into step 2.
+
+The invariant that keeps the bill flat: model spend is capped by those fixed counts, not by how many feeds you add;
+only embeddings grow with volume. Every fetch of a page goes through one guarded fetcher that refuses private
+addresses, so a feed cannot point the service at your own network
+([page fetch rules](docs/specs/2026-10-06-page-fetch.md)).
+
+## Numbers
+
+| | Value | Source |
+|---|---|---|
+| Unread entries when I started | 10,752 from 17 feeds | [design notes](docs/specs/2026-10-05-feed-eater-design.md#what-exists-checked-2026-10-05), 2026-10-05 |
+| Items a model reads per day | 60 triaged, at most 12 read in full | [How it works](#how-it-works) |
+| Test methods | 1,000 `[Fact]`/`[Theory]` | `grep` over `tests/` at 3e07ef8 |
+| Users | 1, me | counted |
+
+## Lessons
+
+I built swipe mode, a phone page with one card per screen, and then never opened it: on 2026-10-19 its tables held
+zero rows, and I had not noticed it was live. Features that wait for you to visit them do not get visited. The
+v1.0 work turns that around: every job writes to one inbox and the digest leads the swipe stack, so there is one
+place to look ([v1.0 spec](docs/specs/2026-10-19-v1.0-app.md)).
+
+## Docs
+
+- [Setup](docs/SETUP.md): install, every optional integration, upgrading
+- [Configuration](docs/CONFIG.md): every setting, its default and what it does (generated from the code)
+- [Features in detail](docs/reference/features.md): the reader, web UI, taste map, clustering, duels, follows, autopsy, weekly ideas, MCP tools
+- [Design](docs/specs/2026-10-05-feed-eater-design.md) and the later specs in [docs/specs](docs/specs/)
+- [Plans](docs/plans/): one per release step
+
+<!-- readme:footer:start -->
+---
+
+<sub>Made by [Yehor Hrabovskyi](https://hrabovskyi.online) · [Apache licence](LICENSE).</sub>
+<!-- readme:footer:end -->
