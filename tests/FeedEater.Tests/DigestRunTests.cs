@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using Npgsql;
 using FeedEater.Digest;
 using FeedEater.Ingest;
 using FeedEater.Inbox;
@@ -45,6 +46,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private System.Net.HttpStatusCode _githubStatus = HttpStatusCode.NotFound;
     private readonly List<string> _readPrompts = [];
     private readonly List<string> _githubCalls = [];
+    private int _crashAfterTelegramCall;
+    private bool _crashed;
 
     public async Task InitializeAsync()
     {
@@ -117,6 +120,17 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         _sent.Add(body);
+        if (n == _crashAfterTelegramCall && !_crashed)
+        {
+            // Telegram received and sent this message; simulate the process dying before DigestRun can record that,
+            // by making the write it is about to do fail (renaming the table it writes to back is step two).
+            _crashed = true;
+            using var c = new NpgsqlConnection(pg.ConnectionString);
+            c.Open();
+            using var cmd = new NpgsqlCommand("alter table digests rename to digests_away", c);
+            cmd.ExecuteNonQuery();
+        }
+
         return StubHandler.Json($$$"""{"ok":true,"result":{"message_id":{{{n}}}}}""");
     }
 
@@ -474,6 +488,30 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(afterFirst, _chatCalls);
         Assert.Equal(3, _sent.Count);
         Assert.Single(_sent, s => s.Contains("Feed digest", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_crash_right_after_a_Telegram_send_and_before_recording_it_does_not_resend_that_part()
+    {
+        await SeedAsync();
+        var (run, digests, _) = Build();
+        _crashAfterTelegramCall = 2;   // the first item message, right after the header
+
+        try
+        {
+            await Assert.ThrowsAsync<PostgresException>(() => run.RunAsync(Today, default));
+            Assert.Equal(2, _sent.Count);   // the header and the crashed part both reached the fake Telegram client
+        }
+        finally
+        {
+            await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+            await c.ExecuteAsync("alter table if exists digests_away rename to digests");
+        }
+
+        await run.RunAsync(Today, default);
+
+        Assert.Equal(3, _sent.Count);   // the crashed part was not sent again; only the remaining part went out
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
     }
 
     [Fact]
