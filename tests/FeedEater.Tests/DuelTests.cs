@@ -6,7 +6,7 @@ using Microsoft.Extensions.Time.Testing;
 using FeedEater.Duels;
 using FeedEater.Inbox;
 using FeedEater.Loops;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Storage;
 using FeedEater.Telegram;
 
@@ -98,7 +98,7 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         }).Client("http://tg/botT/"));
         var items = new ItemStore(pg.Db);
         var feedback = new FeedbackStore(pg.Db);
-        IIdeaSink sink = new PlaneIdeaSink(new PlaneClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://plane/"), options), options);
+        IIdeaSink sink = new GitHubIdeaSink(new GitHubIssues(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://github/")), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
         return new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), Seed.Library(pg, options), options, NullLogger<CallbackHandler>.Instance);
     }

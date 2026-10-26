@@ -33,9 +33,9 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
                 ("FeedEater:Telegram:Token", SetupStubs.BotToken),
                 ("FeedEater:Karakeep:BaseUrl", "http://karakeep.example/"),
                 ("FeedEater:Karakeep:Token", "kk-karakeep-key"),
-                ("FeedEater:Plane:BaseUrl", "http://plane.example/"),
-                ("FeedEater:Plane:Token", "plane-secret-key"),
-                ("FeedEater:Plane:Workspace", "ws"),
+                ("FeedEater:GitHub:BaseUrl", "http://github.example/"),
+                ("FeedEater:GitHub:Token", "gh-secret-key"),
+                ("FeedEater:GitHub:FallbackRepo", "octo/feed"),
                 ("FeedEater:ProfilePath", "/nope/profile.json"),
             ];
             foreach (var (key, value) in settings)
@@ -43,7 +43,7 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
                 b.UseSetting(key, value);
             }
 
-            var stub = SetupStubs.Services(request => request.RequestUri!.Host == "plane.example" ? StubHandler.Json("{}", HttpStatusCode.Unauthorized) : null);
+            var stub = SetupStubs.Services(request => request.RequestUri!.Host == "github.example" ? StubHandler.Json("{}", HttpStatusCode.Unauthorized) : null);
             b.ConfigureTestServices(s =>
             {
                 s.RemoveAll<IHostedService>();
@@ -102,7 +102,7 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var shown = RowPattern().Matches(html).Select(m => (Label: m.Groups[1].Value, Name: m.Groups[2].Value.Trim())).ToList();
         Assert.Equal(doctor.Select(r => (DoctorReport.Label(r.Result.Status), r.Name)), shown);
-        Assert.Contains(("FAIL", "plane"), shown);
+        Assert.Contains(("FAIL", "github-issues"), shown);
         Assert.Contains(("ok", "karakeep"), shown);
         Assert.Contains(("off", "hindsight"), shown);
         Assert.Contains(("warn", "profile"), shown);
@@ -127,9 +127,9 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
     {
         var html = await (await GetSetupAsync(await LoginAsync())).Content.ReadAsStringAsync();
 
-        Assert.Contains("FeedEater__Plane__Token", html, StringComparison.Ordinal);
+        Assert.Contains("FeedEater__GitHub__Token", html, StringComparison.Ordinal);
         Assert.Contains("Using the example interests; edit /nope/profile.json", html, StringComparison.Ordinal);
-        foreach (var secret in new[] { SetupStubs.ApiKey, SetupStubs.BotToken, "plane-secret-key", "kk-karakeep-key", Token })
+        foreach (var secret in new[] { SetupStubs.ApiKey, SetupStubs.BotToken, "gh-secret-key", "kk-karakeep-key", Token })
         {
             Assert.DoesNotContain(secret, html, StringComparison.Ordinal);
         }

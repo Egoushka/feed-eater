@@ -345,7 +345,7 @@ public sealed class ItemStore(FeedDb db)
             $"""
             select i.id, i.title, i.url, coalesce(f.title, '') as feed, f.id as feed_id, f.category, coalesce(f.muted, false) as feed_muted, i.published_at, i.content, i.profile_key,
                    t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
-                   coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in, (sv.item_id is not null) as saved, {AlsoColumn}
+                   coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, coalesce(d.repo, d.plane_project) as filed_in, (sv.item_id is not null) as saved, {AlsoColumn}
             from items i
             left join feeds f on f.id = i.feed_id
             left join triage t on t.item_id = i.id
@@ -386,7 +386,7 @@ public sealed class ItemStore(FeedDb db)
         $"""
         i.id, i.title, i.url, coalesce(f.title, '') as feed, f.category, coalesce(f.muted, false) as feed_muted, i.published_at, left(i.content, 600) as content, i.profile_key,
         t.relevance::int as relevance, t.reason, r.summary, r.why, coalesce(r.kind, t.kind) as kind,
-        coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, d.plane_project as filed_in, (sv.item_id is not null) as saved, {AlsoColumn}
+        coalesce(r.project, t.project) as project, r.suggestion, v.value::int as vote, coalesce(d.repo, d.plane_project) as filed_in, (sv.item_id is not null) as saved, {AlsoColumn}
         """;
 
     /// <summary>
@@ -572,7 +572,7 @@ public sealed class ItemStore(FeedDb db)
             select i.id, i.title, i.url, coalesce(f.title, '') as feed, i.published_at, r.summary,
                    coalesce(r.project, i.profile_key) as project, r.kind, vt.value::int as vote,
                    (select count(*) from items m where m.id <> i.id and (m.id = coalesce(i.cluster_of, i.id) or m.cluster_of = coalesce(i.cluster_of, i.id)))::int as also,
-                   r.suggestion is not null as has_suggestion, d.plane_project as filed_in, (sv.item_id is not null) as saved,
+                   r.suggestion is not null as has_suggestion, coalesce(d.repo, d.plane_project) as filed_in, (sv.item_id is not null) as saved,
                    fused.rrf as rank
             from fused
             join items i on i.id = fused.id

@@ -25,8 +25,9 @@ public sealed record RatingTotals
 public sealed record Idea
 {
     public long ItemId { get; init; }
-    public string PlaneProject { get; init; } = "";
-    public string PlaneIssueId { get; init; } = "";
+    /// <summary>The repo (owner/name) the idea went to; a Plane project identifier for ideas filed before GitHub; a profile key for local ideas.</summary>
+    public string Project { get; init; } = "";
+    public int? IssueNumber { get; init; }
     public string Title { get; init; } = "";
     public DateTime At { get; init; }
 }
@@ -181,7 +182,7 @@ public sealed class FeedbackStore(FeedDb db)
             where v.value = 1 and v.at >= @since order by v.at desc limit 10
             """, args, cancellationToken: ct));
         var ideas = await c.QueryAsync<Idea>(new CommandDefinition(
-            "select item_id, plane_project, plane_issue_id, title, at from ideas where at >= @since order by at",
+            "select item_id, coalesce(repo, plane_project) as project, issue_number, title, at from ideas where at >= @since order by at",
             args, cancellationToken: ct));
         return digests with { Up = votes.Up, Down = votes.Down, Liked = liked.ToList(), Ideas = ideas.ToList() };
     }
@@ -190,7 +191,7 @@ public sealed class FeedbackStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.QuerySingleOrDefaultAsync<Idea>(new CommandDefinition(
-            "select item_id, plane_project, plane_issue_id, title, at from ideas where item_id = @itemId",
+            "select item_id, coalesce(repo, plane_project) as project, issue_number, title, at from ideas where item_id = @itemId",
             new { itemId }, cancellationToken: ct));
     }
 
@@ -200,21 +201,21 @@ public sealed class FeedbackStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into ideas (item_id, plane_project, plane_issue_id, title, at)
-            values (@ItemId, @PlaneProject, @PlaneIssueId, @Title, @At)
+            insert into ideas (item_id, repo, issue_number, title, at)
+            values (@ItemId, @Project, @IssueNumber, @Title, @At)
             on conflict (item_id) do nothing
             """, idea, cancellationToken: ct));
     }
 
-    public async Task<IReadOnlyList<Idea>> IdeasAsync(string? planeProject, int limit, CancellationToken ct)
+    public async Task<IReadOnlyList<Idea>> IdeasAsync(string? project, int limit, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<Idea>(new CommandDefinition(
             """
-            select item_id, plane_project, plane_issue_id, title, at from ideas
-            where @planeProject::text is null or plane_project = @planeProject
+            select item_id, coalesce(repo, plane_project) as project, issue_number, title, at from ideas
+            where @project::text is null or coalesce(repo, plane_project) = @project
             order by at desc limit @limit
-            """, new { planeProject, limit }, cancellationToken: ct))).ToList();
+            """, new { project, limit }, cancellationToken: ct))).ToList();
     }
 
     private async Task<IReadOnlyList<FeedEater.Ranking.WeightedVector>> VectorsAsync(string sql, int limit, CancellationToken ct)

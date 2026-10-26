@@ -71,7 +71,7 @@ public static partial class UiPages
 
     private static readonly Dictionary<string, string> Notices = new()
     {
-        ["filed"] = "Filed in Plane.",
+        ["filed"] = "Filed as a GitHub issue.",
         ["saved-idea"] = "Saved as an idea.",
         ["file-failed"] = "Not filed: the idea sink did not accept it, or the item has no suggestion.",
         ["queued"] = "Digest queued; it starts within a minute.",
@@ -507,7 +507,7 @@ public static partial class UiPages
             h.Append("<ul>");
             foreach (var i in r.IdeasFiled)
             {
-                h.Append($"<li>{E(i.Title)} <span class=\"badge\">{E(i.PlaneProject)}</span> · <a href=\"/ui/item/{N(i.ItemId)}\">Source item</a></li>");
+                h.Append($"<li>{E(i.Title)} <span class=\"badge\">{E(i.Project)}</span> · <a href=\"/ui/item/{N(i.ItemId)}\">Source item</a></li>");
             }
 
             h.Append("</ul>");
@@ -606,7 +606,7 @@ public static partial class UiPages
             h.Append("<div class=\"scroll\"><table><thead><tr><th>Filed</th><th>Project</th><th>Idea</th><th>Source item</th></tr></thead><tbody>");
             foreach (var i in ideas)
             {
-                h.Append($"<tr><td>{E(Local(p, i.At))}</td><td><span class=\"badge\">{E(i.PlaneProject)}</span></td><td>{E(i.Title)}</td>")
+                h.Append($"<tr><td>{E(Local(p, i.At))}</td><td><span class=\"badge\">{E(i.Project)}</span></td><td>{E(i.Title)}</td>")
                     .Append($"<td><a href=\"/ui/item/{N(i.ItemId)}\">Item {N(i.ItemId)}</a></td></tr>");
             }
 
@@ -760,11 +760,11 @@ public static partial class UiPages
         var style = p.Style ?? ButtonStyle.Default;
         if (v.FiledIn is not null)
         {
-            h.Append($"<span class=\"badge good\">{(style.ToPlane ? $"Filed in {E(v.FiledIn)}" : "Saved as an idea")}</span>");
+            h.Append($"<span class=\"badge good\">{(style.ToGitHub ? $"Filed in {E(v.FiledIn)}" : "Saved as an idea")}</span>");
         }
         else if (v.Suggestion is not null)
         {
-            h.Append($"<button type=\"submit\" name=\"v\" value=\"idea\">{(style.ToPlane ? "💡 File to Plane" : "💡 Save idea")}</button>");
+            h.Append($"<button type=\"submit\" name=\"v\" value=\"idea\">{(style.ToGitHub ? "💡 File as issue" : "💡 Save idea")}</button>");
         }
 
         if (v.Saved)

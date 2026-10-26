@@ -29,11 +29,11 @@ public sealed record DigestHeader(
     int VotesUp, int VotesDown, decimal MonthSpend, double? WeekUpRate, IReadOnlyList<string> Notes, IReadOnlyList<string>? Releases = null, int UnpricedCalls = 0);
 
 /// <summary>Which optional buttons a surface offers: the filed-idea label says where the idea went.</summary>
-public sealed record ButtonStyle(bool CanSave, bool ToPlane)
+public sealed record ButtonStyle(bool CanSave, bool ToGitHub)
 {
     public static readonly ButtonStyle Default = new(true, true);
 
-    public static ButtonStyle From(FeedEaterOptions o) => new(true, o.IdeaSink == IdeasOptions.PlaneSink);
+    public static ButtonStyle From(FeedEaterOptions o) => new(true, o.IdeaSink == IdeasOptions.GitHubSink);
 }
 
 /// <summary>
@@ -148,7 +148,7 @@ public static class DigestFormatter
         var rows = new List<IReadOnlyList<Button>> { first };
         if (filedIn is not null)
         {
-            rows.Add(new[] { new Button(style.ToPlane ? $"✓ Filed in {filedIn}" : "✓ Saved as an idea", CallbackData.Noop) });
+            rows.Add(new[] { new Button(style.ToGitHub ? $"✓ Filed in {filedIn}" : "✓ Saved as an idea", CallbackData.Noop) });
         }
 
         return rows;

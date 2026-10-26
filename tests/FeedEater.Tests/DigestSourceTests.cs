@@ -33,7 +33,7 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
         await pg.ResetAsync();
         LiteLlmClient.RetryDelay = TimeSpan.Zero;
         await new ProfileStore(pg.Db).ReplaceAllAsync(
-            [new Profile { Key = "homelab", Kind = "project", PlaneIdentifier = "LAB", Description = "VPS.", Embedding = TestVectors.OneHot(0) }], Now, default);
+            [new Profile { Key = "homelab", Kind = "project", Repo = "octo/homelab", Description = "VPS.", Embedding = TestVectors.OneHot(0) }], Now, default);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Llm;
 using FeedEater.Loops;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Profiles;
 using FeedEater.Storage;
 
@@ -23,8 +23,8 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(3, file.Projects.Count);
         Assert.Equal(2, file.Topics.Count);
-        Assert.Equal("LAB", file.Projects[1].Plane);
-        Assert.Null(file.Projects[2].Plane);
+        Assert.Equal("octo/homelab", file.Projects[1].Repo);
+        Assert.Null(file.Projects[2].Repo);
         Assert.Equal("Agent orchestrator.", ProfileFile.OneLiner(file.Projects[0].Description));
     }
 
@@ -37,7 +37,7 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
         Assert.True(isExample);
         Assert.NotEmpty(example.About);
         Assert.NotEmpty(example.Projects.Concat(example.Topics));
-        Assert.All(example.Projects, p => Assert.Null(p.Plane));   // an example must never route ideas to a Plane project
+        Assert.All(example.Projects, p => Assert.Null(p.Repo));   // an example must never file ideas in a real repo
         Assert.False(fromFile);
         Assert.Equal(3, file.Projects.Count);
         var broken = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
@@ -71,7 +71,7 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 5, 1, 0, 0, TimeSpan.Zero));
         var profiles = new ProfileStore(pg.Db);
         var builder = new ProfileBuilder(
-            new PlaneClient(new HttpClient(), options), profiles,
+            new GitHubIssues(new HttpClient()), profiles,
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<ProfileBuilder>.Instance);
 
@@ -89,28 +89,27 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Throws<InvalidDataException>(() => ProfileFile.Parse(
             """{"about":"a","projects":[{"key":"x","description":" "}],"topics":[]}"""));
         Assert.Throws<InvalidDataException>(() => ProfileFile.Parse("""{"about":"a","projects":[],"topics":[]}"""));
+        Assert.Throws<InvalidDataException>(() => ProfileFile.Parse(
+            """{"about":"a","projects":[{"key":"x","description":"d","repo":"LAB"}],"topics":[]}"""));   // a Plane identifier is not a repo
     }
 
     [Fact]
-    public async Task Builder_embeds_descriptions_with_open_plane_work_and_survives_a_plane_error()
+    public async Task Builder_embeds_descriptions_with_open_issues_and_survives_a_github_error()
     {
         LiteLlmClient.RetryDelay = TimeSpan.Zero;
-        var plane = new StubHandler((request, _) => request.RequestUri!.AbsolutePath switch
+        var github = new StubHandler((request, _) => request.RequestUri!.AbsolutePath switch
         {
-            "/api/v1/workspaces/homelab/projects/" => StubHandler.Json(
-                """{"results":[{"id":"p-ch","identifier":"CHARGEHAND"},{"id":"p-lab","identifier":"LAB"}]}"""),
-            "/api/v1/workspaces/homelab/projects/p-lab/states/" => StubHandler.Json(
-                """{"results":[{"id":"s-open","group":"started"},{"id":"s-done","group":"completed"}]}"""),
-            "/api/v1/workspaces/homelab/projects/p-lab/work-items/" => StubHandler.Json(
-                """{"results":[{"name":"Rotate backups","state":"s-open"},{"name":"Old thing","state":"s-done"}]}"""),
+            "/repos/octo/homelab/issues" => StubHandler.Json(request.RequestUri.Query.Contains("state=open", StringComparison.Ordinal)
+                ? """[{"title":"Rotate backups"},{"title":"Bump it","pull_request":{}}]"""
+                : """[{"title":"Old thing"}]"""),
             _ => StubHandler.Json("{}", System.Net.HttpStatusCode.InternalServerError),
         });
         var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "t", Workspace = "homelab" } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", GitHub = new GitHubOptions { Token = "t", FallbackRepo = "octo/feed" } });
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 5, 1, 0, 0, TimeSpan.Zero)); // 04:00 Kyiv
         var profiles = new ProfileStore(pg.Db);
         var builder = new ProfileBuilder(
-            new PlaneClient(plane.Client("http://plane/"), options), profiles,
+            new GitHubIssues(github.Client("http://github/")), profiles,
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<ProfileBuilder>.Instance);
 
@@ -123,20 +122,22 @@ public sealed class ProfileTests(PostgresFixture pg) : IAsyncLifetime
         var input = llm.Calls.Single().Body;
         Assert.Contains("Open work: Rotate backups", input, StringComparison.Ordinal);
         Assert.DoesNotContain("Old thing", input, StringComparison.Ordinal);
+        Assert.DoesNotContain("Bump it", input, StringComparison.Ordinal);
+        Assert.Equal("octo/homelab", stored.Single(p => p.Key == "homelab").Repo);
         Assert.Contains("Agent orchestrator. Runs read-only coding agents and returns cited claims.\"", input, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Builder_falls_back_to_plain_descriptions_when_plane_answers_with_an_unexpected_shape()
+    public async Task Builder_falls_back_to_plain_descriptions_when_github_answers_with_an_unexpected_shape()
     {
         LiteLlmClient.RetryDelay = TimeSpan.Zero;
-        var plane = new StubHandler((_, _) => StubHandler.Json("{}"));
+        var github = new StubHandler((_, _) => StubHandler.Json("{}"));
         var llm = new StubHandler((_, body) => StubHandler.Json(TestVectors.EmbeddingResponse(TestVectors.InputCount(body))));
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "t", Workspace = "homelab" } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", GitHub = new GitHubOptions { Token = "t", FallbackRepo = "octo/feed" } });
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 5, 1, 0, 0, TimeSpan.Zero));
         var profiles = new ProfileStore(pg.Db);
         var builder = new ProfileBuilder(
-            new PlaneClient(plane.Client("http://plane/"), options), profiles,
+            new GitHubIssues(github.Client("http://github/")), profiles,
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<ProfileBuilder>.Instance);
 

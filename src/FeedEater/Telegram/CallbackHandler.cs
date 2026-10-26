@@ -4,7 +4,7 @@ using FeedEater.Digest;
 using FeedEater.Duels;
 using FeedEater.Follow;
 using FeedEater.Library;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Signals;
 using FeedEater.Storage;
 using FeedEater.WeeklyIdeas;
@@ -136,16 +136,16 @@ public sealed class CallbackHandler(
 
     public Task ClearVoteAsync(long itemId, CancellationToken ct) => feedback.ClearVoteAsync(itemId, ct);
 
-    /// <summary>Files the item's suggestion in Plane and counts it as a 👍. The project, or the reason it was not filed.</summary>
+    /// <summary>Files the item's suggestion as an idea (a GitHub issue when that is the sink) and counts it as a 👍. The project, or the reason it was not filed.</summary>
     public Task<(string? Project, string? Error)> FileIdeaAsync(long itemId, CancellationToken ct) => FileIdeaAsync(itemId, null, null, ct);
 
-    /// <summary>As above, in another Plane project or with his own wording; used by replies to an item.</summary>
-    public async Task<(string? Project, string? Error)> FileIdeaAsync(long itemId, string? planeProject, string? text, CancellationToken ct)
+    /// <summary>As above, in another project or with his own wording; used by replies to an item.</summary>
+    public async Task<(string? Project, string? Error)> FileIdeaAsync(long itemId, string? target, string? text, CancellationToken ct)
     {
         string project;
         try
         {
-            project = await ideas.FileAsync(itemId, planeProject, text, ct);
+            project = await ideas.FileAsync(itemId, target, text, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException
             || (ex is TaskCanceledException && !ct.IsCancellationRequested))

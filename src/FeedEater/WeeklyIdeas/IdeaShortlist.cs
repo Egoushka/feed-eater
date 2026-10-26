@@ -2,14 +2,15 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using FeedEater.Digest;
+using FeedEater.Issues;
 
 namespace FeedEater.WeeklyIdeas;
 
 /// <summary>Something that might become an idea: an item you liked, saved or that was marked improve, or a Karakeep bookmark.</summary>
 public sealed record Lead(string Signal, string Title, string Url, string Detail);
 
-/// <summary>A Plane project an idea can go to, with what the model needs to choose it.</summary>
-public sealed record Target(string Identifier, string Key, string Description);
+/// <summary>A repo (owner/name) an idea can go to, with what the model needs to choose it.</summary>
+public sealed record Target(string Repo, string Key, string Description);
 
 public sealed record ShortlistEntry(int Lead, string Idea, string Project, string Where, string Effort, string Why);
 
@@ -21,24 +22,24 @@ public static class IdeaShortlist
 
     public static string System(int max) => $$"""
         You turn one week of the owner's reading signals into a short list of concrete work for his own projects.
-        You get numbered leads (an item he liked or saved, an item marked "improve", or a bookmark), the Plane projects an idea can go to,
+        You get numbered leads (an item he liked or saved, an item marked "improve", or a bookmark), the repos an idea can go to,
         and everything that is already planned or filed.
 
         Pick at most {{max}} leads that suggest a specific change the owner could make to one of his projects or workflows, best first.
-        Skip news, opinions and anything with no action. Skip a lead whose idea repeats a row of the backlog, a Plane item or an earlier
+        Skip news, opinions and anything with no action. Skip a lead whose idea repeats a row of the backlog, an issue or an earlier
         shortlist idea, even if the wording differs. Fewer ideas, or none, beats a weak one.
 
         Reply with one JSON object and nothing else:
-        {"ideas": [{"lead": <number>, "idea": "<imperative, at most 90 characters>", "project": "<Plane identifier from the list>", "where": "<repo or workflow it changes>", "effort": "S" | "M" | "L", "why": "<at most 25 words: what it fixes or gains>"}]}
+        {"ideas": [{"lead": <number>, "idea": "<imperative, at most 90 characters>", "project": "<repo (owner/name) from the list>", "where": "<repo or workflow it changes>", "effort": "S" | "M" | "L", "why": "<at most 25 words: what it fixes or gains>"}]}
         Effort: S under an hour, M up to a day, L longer.
         """;
 
-    public static string User(IReadOnlyList<Lead> leads, IReadOnlyList<Target> targets, IReadOnlyList<string> planeTitles, IReadOnlyList<string> earlier, string? backlog)
+    public static string User(IReadOnlyList<Lead> leads, IReadOnlyList<Target> targets, IReadOnlyList<string> issueTitles, IReadOnlyList<string> earlier, string? backlog)
     {
-        var text = new StringBuilder("Plane projects:\n");
+        var text = new StringBuilder("Repos:\n");
         foreach (var t in targets)
         {
-            text.Append(CultureInfo.InvariantCulture, $"- {t.Identifier} ({t.Key}): {Clip(t.Description, 200)}\n");
+            text.Append(CultureInfo.InvariantCulture, $"- {t.Repo} ({t.Key}): {Clip(t.Description, 200)}\n");
         }
 
         text.Append("\nLeads:\n");
@@ -54,8 +55,8 @@ public static class IdeaShortlist
             text.Append('\n');
         }
 
-        text.Append("\nAlready in Plane (latest per project):\n");
-        text.AppendJoin('\n', planeTitles.Select(t => "- " + t));
+        text.Append("\nAlready issues (latest per repo, closed included):\n");
+        text.AppendJoin('\n', issueTitles.Select(t => "- " + t));
         text.Append("\n\nFiled by earlier shortlists:\n");
         text.AppendJoin('\n', earlier.Select(t => "- " + t));
         text.Append("\n\nBacklog:\n").Append(backlog is null ? "(not available)" : Clip(backlog, MaxBacklogChars));
@@ -98,7 +99,7 @@ public static class IdeaShortlist
             }
 
             var named = Json.Str(e, "project");
-            var project = projects.FirstOrDefault(p => string.Equals(p, named, StringComparison.OrdinalIgnoreCase)) ?? fallback;
+            var project = GitHubIssues.Find(projects, named) ?? fallback;
             var effort = Json.Str(e, "effort")?.ToUpperInvariant();
             entries.Add(new ShortlistEntry(lead - 1, idea.Trim(), project, Json.Str(e, "where") ?? "", Efforts.Contains(effort) ? effort! : "M", Json.Str(e, "why") ?? ""));
         }

@@ -8,7 +8,7 @@ using FeedEater.Duels;
 using FeedEater.Follow;
 using FeedEater.Llm;
 using FeedEater.Loops;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Storage;
 using FeedEater.Telegram;
 
@@ -67,7 +67,7 @@ public sealed class FollowTests(PostgresFixture pg) : IAsyncLifetime
         var feedback = new FeedbackStore(pg.Db);
         var store = new FollowStore(pg.Db);
         var follower = new StoryFollower(store, items, telegram, new FeedEater.Inbox.InboxService(new InboxStore(pg.Db), telegram, options, _time), llm, options, _time, NullLogger<StoryFollower>.Instance);
-        IIdeaSink sink = new PlaneIdeaSink(new PlaneClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://plane/"), options), options);
+        IIdeaSink sink = new GitHubIdeaSink(new GitHubIssues(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://github/")), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
         var callbacks = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), Seed.Library(pg, options),
             options, NullLogger<CallbackHandler>.Instance, follower);

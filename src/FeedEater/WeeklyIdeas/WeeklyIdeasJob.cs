@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Inbox;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Storage;
 using FeedEater.Telegram;
 using FeedEater.Text;
@@ -15,16 +15,16 @@ namespace FeedEater.WeeklyIdeas;
 
 /// <summary>
 /// Mondays at <c>WeeklyIdeas:At</c>: the week's improve items and what was liked, saved or bookmarked become a ranked shortlist.
-/// Each idea waits in the inbox for Keep or Drop (Keep files it in Plane Intake in its project); the top few go to Telegram. An idea whose source was filed before,
-/// or that repeats a Plane item or a backlog row, is left out. Quiet hours hold it.
+/// Each idea waits in the inbox for Keep or Drop (Keep files it as a GitHub issue labelled triage in its project's repo); the top few go to Telegram.
+/// An idea whose source was filed before, or that repeats an issue or a backlog row, is left out. Quiet hours hold it.
 /// </summary>
 public sealed class WeeklyIdeasJob(
-    WeeklyIdeaStore store, ProfileStore profiles, PlaneClient plane, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, InboxStore inboxStore, QuietHours quiet,
+    WeeklyIdeaStore store, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, InboxStore inboxStore, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<WeeklyIdeasJob> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
     private const int MaxLeads = 60;
-    private const int MaxPlaneTitles = 100;
+    private const int MaxIssueTitles = 100;
     private const int MaxTokens = 2000;
 
     /// <summary>Set by /ideas: the next tick runs the shortlist now, window or not, once.</summary>
@@ -65,38 +65,38 @@ public sealed class WeeklyIdeasJob(
             return;
         }
 
-        var targets = (await profiles.AllAsync(ct)).Where(p => p.PlaneIdentifier is { Length: > 0 })
-            .Select(p => new Target(p.PlaneIdentifier!, p.Key, p.Description)).DistinctBy(t => t.Identifier, StringComparer.Ordinal).ToList();
-        var fallback = Settings.Plane.FallbackProject;
-        if (fallback.Length > 0 && targets.All(t => t.Identifier != fallback))
+        var targets = (await profiles.AllAsync(ct)).Where(p => p.Repo is { Length: > 0 })
+            .Select(p => new Target(p.Repo!, p.Key, p.Description)).DistinctBy(t => t.Repo, StringComparer.OrdinalIgnoreCase).ToList();
+        var fallback = Settings.GitHub.FallbackRepo;
+        if (fallback.Length > 0 && targets.All(t => !string.Equals(t.Repo, fallback, StringComparison.OrdinalIgnoreCase)))
         {
             targets.Add(new Target(fallback, "other", "Ideas that fit no other project."));
         }
 
         if (targets.Count == 0)
         {
-            Logger.LogWarning("No Plane project to file ideas in (no profile has a Plane identifier and Plane:FallbackProject is empty)");
+            Logger.LogWarning("No repo to file ideas in (no profile has a repo and GitHub:FallbackRepo is empty)");
             return;
         }
 
-        var planeTitles = new List<string>();
+        var issueTitles = new List<string>();
         foreach (var t in targets)
         {
             try
             {
-                planeTitles.AddRange((await plane.RecentItemTitlesAsync(t.Identifier, ct)).Take(MaxPlaneTitles).Select(title => $"{t.Identifier}: {title}"));
+                issueTitles.AddRange((await issues.RecentTitlesAsync(t.Repo, ct)).Take(MaxIssueTitles).Select(title => $"{t.Repo}: {title}"));
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException { StatusCode: HttpStatusCode.NotFound or HttpStatusCode.Forbidden })
             {
-                Logger.LogWarning(ex, "Plane project {Project} unavailable; its items are not checked", t.Identifier);
+                Logger.LogWarning(ex, "Repo {Repo} unavailable; its issues are not checked", t.Repo);
             }
         }
 
         // A configured backlog that cannot be read fails the run: filing without it would repeat rows.
         var backlogText = await backlog.TextAsync(ct);
         var reply = await llm.ChatAsync(Settings.Llm.ReadModel, IdeaShortlist.System(settings.MaxFiled),
-            IdeaShortlist.User(leads, targets, planeTitles, await store.RecentTitlesAsync(50, ct), backlogText), MaxTokens, "weekly-ideas", ct);
-        var entries = IdeaShortlist.Parse(reply.Content, leads.Count, targets.Select(t => t.Identifier).ToList(), fallback.Length > 0 ? fallback : targets[0].Identifier)
+            IdeaShortlist.User(leads, targets, issueTitles, await store.RecentTitlesAsync(50, ct), backlogText), MaxTokens, "weekly-ideas", ct);
+        var entries = IdeaShortlist.Parse(reply.Content, leads.Count, targets.Select(t => t.Repo).ToList(), fallback.Length > 0 ? fallback : targets[0].Repo)
             .Take(settings.MaxFiled).ToList();
         if (entries.Count == 0)
         {
@@ -118,7 +118,7 @@ public sealed class WeeklyIdeasJob(
                     ["week"] = week,
                     ["title"] = title,
                     ["project"] = entry.Project,
-                    ["html"] = Html(entry, lead, week),
+                    ["body"] = Body(entry, lead, week),
                     ["url"] = url,
                     ["sourceTitle"] = lead.Title,
                     ["signal"] = lead.Signal,
@@ -154,17 +154,18 @@ public sealed class WeeklyIdeasJob(
         return leads.Where(l => seen.Add(UrlCanonicalizer.Canonical(l.Url))).Take(MaxLeads).ToList();
     }
 
-    private static string Html(ShortlistEntry e, Lead lead, string week)
+    /// <summary>The issue body, in Markdown.</summary>
+    internal static string Body(ShortlistEntry e, Lead lead, string week)
     {
-        var html = new StringBuilder($"<p>{E(e.Idea)}</p>");
+        var body = new StringBuilder(Markdown.Text(e.Idea));
         if (e.Why.Length > 0)
         {
-            html.Append($"<p>Why: {E(e.Why)}</p>");
+            body.Append($"\n\nWhy: {Markdown.Text(e.Why)}");
         }
 
-        html.Append($"<p>Where: {E(e.Where.Length > 0 ? e.Where : e.Project)} · effort {e.Effort}</p>");
-        html.Append($"<p>Source: <a href=\"{E(lead.Url)}\">{E(lead.Title)}</a> ({E(lead.Signal)}, feed-eater weekly ideas {week})</p>");
-        return html.ToString();
+        body.Append($"\n\nWhere: {Markdown.Text(e.Where.Length > 0 ? e.Where : e.Project)} · effort {e.Effort}");
+        body.Append($"\n\nSource: {Markdown.Link(lead.Title, lead.Url)} ({Markdown.Text(lead.Signal)}, feed-eater weekly ideas {week})");
+        return body.ToString();
     }
 
     internal static OutMessage Message(string week, IReadOnlyList<(ShortlistEntry Entry, Lead Lead, long InboxId)> staged, int detailed)

@@ -83,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/Egoushka/feed-eater/main/profile.ex
 ```
 
 `about` is a sentence on who you are; each project and topic has a `key` and a `description` the ranking and the models use. Add a
-`"plane"` value to a project to file its ideas into that Plane project (see Plane below). The file is read on each digest, but the
+`"repo"` value (`owner/name`) to a project to file its ideas as issues in that GitHub repo (see GitHub issues below). The file is read on each digest, but the
 ranking vectors built from it are rebuilt once a day at 03:00 in your time zone, so a change made later fully applies from the next
 night.
 
@@ -139,7 +139,7 @@ Anonymous requests are rate limited. The machine-readable description is at `/ap
   session; send the time the card was really on screen.
 - **One `clientId` per act.** Give every act a fresh UUID `clientId` and resend the same one on retry: a repeat does nothing
   and returns the first answer. An act without one cannot be undone.
-- **Undo the latest act only.** `POST /api/v1/swipe/undo` with the act's `clientId`, within 24 hours. Plane filings, duel
+- **Undo the latest act only.** `POST /api/v1/swipe/undo` with the act's `clientId`, within 24 hours. Filed issues, duel
   answers, recall reviews and post seeds cannot be taken back.
 - **What a card takes.** Each card lists its `acts`; offer only those.
 - **Rate limits.** 120 requests a minute per token, then 429. Requests refused with 401 (no token, a malformed or unknown
@@ -178,16 +178,18 @@ Each one is off until its settings are filled: no background work, no button, no
 read from) and `FeedEater__Source__Kind=miniflux`. feed-eater then copies entries from Miniflux and the built-in reader stays idle.
 Switching between the two on a database that already holds entries is not supported.
 
-**Plane (ideas as intake items).** 💡 on an item saves an idea. By default it goes to the local list (`/ui/ideas`, MCP tool
-`feed_ideas`). Set `FeedEater__Plane__BaseUrl`, `__Token` (API key) and `__Workspace` (the slug) and ideas go to Plane Intake of the
-project named in the profile entry (`"plane": "<identifier>"`), else of `FeedEater__Plane__FallbackProject`. Intake must be enabled
-on those projects. `FeedEater__Ideas__Sink=local` keeps ideas local even with Plane configured.
+**GitHub issues (ideas as triage issues).** 💡 on an item saves an idea. By default it goes to the local list (`/ui/ideas`, MCP tool
+`feed_ideas`). Set `FeedEater__GitHub__Token` and `FeedEater__GitHub__FallbackRepo` (`owner/name`) and each idea becomes an issue
+labelled `triage` in the repo named in the profile entry (`"repo": "owner/name"`), else in the fallback repo. The token must be able to
+write issues in every one of those repos: a classic token with the `repo` scope (`public_repo` when all are public), or a fine-grained
+one with Issues read and write, which covers the repos of one owner only. Without write access GitHub drops the label. The `github-issues`
+check in `doctor` and on `/ui/setup` reads the fallback repo. `FeedEater__Ideas__Sink=local` keeps ideas local even with GitHub configured.
 
 **Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). The 📌 button always shows and saves to the library; Karakeep
 is an optional mirror of those saves, and your Karakeep bookmarks count as liked items in the ranking. See "Library" for the mirror and the one-time import.
 
 **GitHub stars.** Set `FeedEater__GitHub__User`. The public stars of that user count as liked items. A token is optional
-(`FeedEater__GitHub__Token`, no scopes needed): without it GitHub allows 60 requests an hour, which is enough for the stars.
+(`FeedEater__GitHub__Token`, no scopes needed for this): without it GitHub allows 60 requests an hour, which is enough for the stars.
 
 **Hype autopsy.** Needs no setting of its own: with `FeedEater__GitHub__User` and a Telegram token set, a daily job records the GitHub
 repo of every 👍 item and a monthly report (`/ui/autopsy`, and Telegram) says what those repos did since; the README has the rules.
@@ -234,7 +236,7 @@ it relied on:
 - `FeedEater__TimeZone` (the default is now `UTC`).
 - `FeedEater__Llm__BaseUrl` and the model names, if you do not use the OpenAI defaults (`gpt-4.1-nano` triage, `gpt-4.1-mini` read,
   `text-embedding-3-small` embeddings).
-- The URLs and keys of Plane, Karakeep, Hindsight and the GitHub user: each integration is off until its setting is filled.
+- The keys of GitHub issues, Karakeep, Hindsight and the GitHub user: each integration is off until its setting is filled.
 - `FeedEater__Watch__FallbackPath` (or `Source`): release watch is off until one is set, and the list is no longer built in.
 
 `docker compose run --rm feed-eater doctor --print-config` prints every effective value with secrets masked; run it before and after

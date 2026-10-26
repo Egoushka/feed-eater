@@ -182,7 +182,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private async Task SeedAsync()
     {
         await new ProfileStore(pg.Db).ReplaceAllAsync(
-            [new Profile { Key = "homelab", Kind = "project", PlaneIdentifier = "LAB", Description = "Hetzner VPS.", Embedding = TestVectors.OneHot(0) }],
+            [new Profile { Key = "homelab", Kind = "project", Repo = "octo/homelab", Description = "Hetzner VPS.", Embedding = TestVectors.OneHot(0) }],
             Now, default);
         var hourAgo = Now.UtcDateTime.AddHours(-1);
         await Seed.ItemAsync(pg, 1, "Keep A", TestVectors.OneHot(0), hourAgo, hourAgo, LongText, 201);

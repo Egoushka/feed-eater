@@ -127,7 +127,7 @@ public static class ManageApi
         group.MapPost("/ideas/run", async (CursorStore cursors, IOptions<FeedEaterOptions> options, CancellationToken ct) =>
             {
                 var settings = options.Value;
-                if (!Delivers(settings) || !settings.WeeklyIdeas.Enabled || !settings.Plane.Enabled)
+                if (!Delivers(settings) || !settings.WeeklyIdeas.Enabled || !settings.GitHub.IssuesEnabled)
                 {
                     return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Weekly ideas are off");
                 }

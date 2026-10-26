@@ -342,7 +342,7 @@ public sealed class SwipeService(
 
     /// <summary>
     /// Takes back an act the client sent with <paramref name="clientId"/>, within 24 hours (ruling R-c): votes are restored to what they were, a stopped
-    /// follow, a done entry and a dropped idea are reopened. What reached Plane, a duel, a recall review or a post seed cannot be taken back.
+    /// follow, a done entry and a dropped idea are reopened. What was filed as an issue, a duel, a recall review or a post seed cannot be taken back.
     /// </summary>
     public async Task<ActResult> UndoAsync(long sessionId, int position, Guid clientId, CancellationToken ct)
     {
@@ -437,7 +437,7 @@ public sealed class SwipeService(
     {
         ("recall", _) => "the card was already reviewed.",
         ("seed", _) => "the post seed was already handled.",
-        (_, "idea") or (InboxKinds.Idea, "keep") => "it was filed in Plane.",
+        (_, "idea") or (InboxKinds.Idea, "keep") => "the idea was filed.",
         (_, "pick_a" or "pick_b") => "the duel was answered.",
         _ => null,
     };
@@ -532,8 +532,8 @@ public sealed class SwipeService(
 
         if (await feedback.GetIdeaAsync(seed.ItemId, ct) is { } filed)
         {
-            await recall.ResolveSeedAsync(seed.Id, "sent", filed.PlaneProject, now, ct);
-            return $"That item already has an idea in {filed.PlaneProject}";
+            await recall.ResolveSeedAsync(seed.Id, "sent", filed.Project, now, ct);
+            return $"That item already has an idea in {filed.Project}";
         }
 
         var (project, error) = await callbacks.FileIdeaAsync(seed.ItemId, null, "[post seed] " + seed.Angle, ct);

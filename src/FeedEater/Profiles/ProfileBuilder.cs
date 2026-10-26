@@ -2,14 +2,14 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using FeedEater.Llm;
 using FeedEater.Loops;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Storage;
 
 namespace FeedEater.Profiles;
 
 /// <summary>Daily at 03:00 (and at start when today's build is missing): one vector per project and topic.</summary>
 public sealed class ProfileBuilder(
-    PlaneClient plane, ProfileStore profiles, LiteLlmClient llm,
+    GitHubIssues issues, ProfileStore profiles, LiteLlmClient llm,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<ProfileBuilder> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -34,7 +34,7 @@ public sealed class ProfileBuilder(
         {
             Key = e.Entry.Key,
             Kind = e.Kind,
-            PlaneIdentifier = e.Entry.Plane,
+            Repo = e.Entry.Repo,
             Description = e.Entry.Description,
             Embedding = vectors[i].ToArray(),
         }).ToList(), Time.GetUtcNow(), ct);
@@ -43,20 +43,20 @@ public sealed class ProfileBuilder(
 
     private async Task<string> ProjectTextAsync(ProfileEntry project, CancellationToken ct)
     {
-        if (project.Plane is null || !Settings.Plane.Enabled)
+        if (project.Repo is null || !Settings.GitHub.IssuesEnabled)
         {
             return project.Description;
         }
 
         try
         {
-            var titles = await plane.OpenItemTitlesAsync(project.Plane, ct);
+            var titles = await issues.OpenTitlesAsync(project.Repo, ct);
             return titles.Count == 0 ? project.Description : $"{project.Description}\nOpen work: {string.Join("; ", titles.Take(MaxTitles))}";
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or KeyNotFoundException or JsonException
             || (ex is TaskCanceledException && !ct.IsCancellationRequested))
         {
-            Logger.LogWarning(ex, "Plane work items for {Project} unavailable; using the description only", project.Plane);
+            Logger.LogWarning(ex, "Open issues of {Repo} unavailable; using the description only", project.Repo);
             return project.Description;
         }
     }
