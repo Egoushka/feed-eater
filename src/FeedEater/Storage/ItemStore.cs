@@ -560,7 +560,9 @@ public sealed class ItemStore(FeedDb db)
             ),
             t as (
                 select id, row_number() over (order by score desc) as pos from (
-                    select i.id, ts_rank(i.search, q) as score from items i, websearch_to_tsquery('simple', @text) q
+                    select i.id, ts_rank(i.search, q) as score from items i,
+                        -- Each stem matches as a prefix: the english stemmer keeps some endings ("faster" stays "faster"), so "fast" finds it.
+                        (select regexp_replace(websearch_to_tsquery('english', @text)::text, '''((?:[^'']|'''')+)''', '''\1'':*', 'g')::tsquery) k(q)
                     where i.search @@ q and {Filter}
                     order by score desc limit 50) b
             ),

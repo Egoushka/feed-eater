@@ -1,3 +1,4 @@
+using Dapper;
 using FeedEater.Storage;
 
 namespace FeedEater.Tests;
@@ -21,6 +22,31 @@ public sealed class SearchTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal([byMeaning, byWord], both.Select(h => h.Id).Order());
         Assert.Equal([byWord], wordsOnly.Select(h => h.Id));
+    }
+
+    [Fact]
+    public async Task Stems_word_forms_so_other_tenses_and_endings_still_match()
+    {
+        var store = new ItemStore(pg.Db);
+        var stemmed = await Seed.ItemAsync(pg, 1, "Running Postgres faster", TestVectors.OneHot(1));
+
+        var hits = await store.SearchAsync(null, "run postgres fast", null, null, null, null, null, 10, default);
+
+        Assert.Equal([stemmed], hits.Select(h => h.Id));
+    }
+
+    [Fact]
+    public async Task The_keyword_search_uses_the_gin_index_on_search()
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await c.ExecuteAsync("set enable_seqscan = off"); // the table is too small for the planner to prefer the index on its own
+        var plan = string.Join('\n', await c.QueryAsync<string>(
+            """
+            explain select i.id, ts_rank(i.search, q) as score from items i, websearch_to_tsquery('english', 'run postgres') q
+            where i.search @@ q
+            """));
+
+        Assert.Contains("items_search_idx", plan, StringComparison.Ordinal);
     }
 
     [Fact]
