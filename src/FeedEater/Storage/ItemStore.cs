@@ -560,7 +560,7 @@ public sealed class ItemStore(FeedDb db)
             ),
             t as (
                 select id, row_number() over (order by score desc) as pos from (
-                    select i.id, ts_rank(i.search, q) as score from items i, websearch_to_tsquery('simple', @text) q
+                    select i.id, ts_rank(i.search, q) as score from items i, websearch_to_tsquery('english', @text) q
                     where i.search @@ q and {Filter}
                     order by score desc limit 50) b
             ),
