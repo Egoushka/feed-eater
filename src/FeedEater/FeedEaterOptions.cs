@@ -484,6 +484,15 @@ public sealed class GitHubOptions
     [Description("GitHub token, sent on every GitHub call. It lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it); a token with no scopes is enough for that. Filing ideas as issues needs one that can write issues in every repo of the profile (classic: repo, or public_repo when all are public).")]
     public string Token { get; set; } = "";
 
+    [Secret]
+    [Description("Tokens for owners that GitHub:Token cannot reach (a fine-grained token covers one owner), as owner=token pairs separated by commas, e.g. some-org=ghp_x. A repo of a listed owner is called with that token instead of GitHub:Token.")]
+    public string OwnerTokens { get; set; } = "";
+
+    /// <summary>The token for <paramref name="owner"/>: its entry of <see cref="OwnerTokens"/>, else <see cref="Token"/>.</summary>
+    public string TokenFor(string owner) => OwnerTokens.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(pair => pair.Split('=', 2, StringSplitOptions.TrimEntries))
+        .FirstOrDefault(p => p.Length == 2 && p[1].Length > 0 && string.Equals(p[0], owner, StringComparison.OrdinalIgnoreCase))?[1] ?? Token;
+
     [Description("Repo (owner/name) for ideas whose item matches no project with a repo of its own. With GitHub:Token it turns GitHub issues on: ideas are filed as issues labelled triage.")]
     public string FallbackRepo { get; set; } = "";
 }
