@@ -22,7 +22,8 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 
 /// <summary>
 /// One digest: rank candidates, triage the top N with the small model, read the top M with the strong one, send.
-/// Every step is stored, so a rerun resumes: results per item in triage/reads, delivered messages in sent_count.
+/// Every step is stored, so a rerun resumes: results per item in triage/reads, delivered messages in sent_count and
+/// sent_message_ids (one send intent per part, with its Telegram message id once the send is confirmed).
 /// </summary>
 public sealed class DigestRun(
     ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
@@ -91,8 +92,8 @@ public sealed class DigestRun(
                 return new ForceOutcome(false, "Today's digest was already sent; nothing sent again.");
             }
 
-            await digests.SetSentCountAsync(date, 0, ct);
-            await SendAsync(digest with { SentCount = 0 }, ct);
+            await digests.ResetSentAsync(date, ct);
+            await SendAsync(digest with { SentCount = 0, SentMessageIds = [] }, ct);
             return new ForceOutcome(true, "Sent again.");
         }
 
@@ -324,10 +325,34 @@ public sealed class DigestRun(
 
         var chat = options.Value.Telegram.AllowedUserId;
         var messages = await BuildMessagesAsync(digest, ct);
-        for (var i = digest.SentCount; i < messages.Count; i++)
+        var sentCount = digest.SentCount;
+        if (sentCount < messages.Count && digest.SentMessageIds.Length > sentCount)
         {
-            await telegram.SendAsync(chat, messages[i], ct);
-            await digests.SetSentCountAsync(digest.LocalDate, i + 1, ct);
+            // An earlier run recorded the intent to send this part but never got as far as storing its message id -
+            // it may have crashed before Telegram ever saw the call, or after Telegram sent it but before the id came
+            // back. Telegram's API gives no way to tell the two apart after the fact, and the point of this fix is
+            // to never send a part twice, so an unconfirmed attempt is treated as sent rather than retried.
+            sentCount++;
+            await digests.SetSentCountAsync(digest.LocalDate, sentCount, ct);
+        }
+
+        for (var i = sentCount; i < messages.Count; i++)
+        {
+            await digests.RecordIntentAsync(digest.LocalDate, i, ct);
+            long messageId;
+            try
+            {
+                messageId = await telegram.SendAsync(chat, messages[i], ct);
+            }
+            catch
+            {
+                // A definite answer (Telegram refused it, the request timed out, ...), not a crash: undo the intent so
+                // the retry this throw causes looks like a first attempt, not one this code cannot account for.
+                await digests.DropIntentAsync(digest.LocalDate, i, ct);
+                throw;
+            }
+
+            await digests.ConfirmSentAsync(digest.LocalDate, i, messageId, ct);
         }
 
         await digests.MarkSentAsync(digest.LocalDate, time.GetUtcNow(), ct);
