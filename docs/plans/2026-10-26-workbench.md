@@ -23,7 +23,10 @@ Node 24 at build time only.
 - **R1. Code-level detail is written per step, against `main` as it is then** (the repository's practice since v1.0: "each step gets its own
   detailed plan written against `main` as it is when the step starts"). This file fixes what each step delivers, the names other steps rely
   on, the tests that prove it and the commands that must pass. A worker reads the files named in its step before writing code.
-- **R2. One step = one issue = one PR = one patch release.** The step marked *milestone* releases the next minor version instead.
+- **R2. One step = one issue = one PR**, merged when its acceptance checks and CI pass (the weekly cycle, `~/Projects/context/cycle.md`).
+  Releases follow the cycle: every merged step is a patch-level change, the Friday release cuts the next patch for what merged that week,
+  and the step that closes a milestone is followed by an empty commit with the footer `Release-As: 0.N.0`. Milestones are named goals in
+  Plane ("Reader and search", "Tags and topics", "Notes and ideas"); the version numbers here are expectations, not names.
 - **R3. Each step is end to end** (migration, service, endpoint, SPA screen, tests) when it is small enough to review in one sitting;
   otherwise the server half comes first and the screen follows as its own step.
 - **R4. Server code lives in `src/FeedEater/Workbench/<Feature>/`** (service, store, `Map<Feature>Api(RouteGroupBuilder)`), stores in the
@@ -72,10 +75,37 @@ Each step: **Release**, **Depends on**, what it delivers, **Files**, **Produces*
 
 ---
 
-### Milestone M1 — Reader and search (0.9.1 … 0.10.0)
+### W0 — English stemming for keyword search (can be filed now)
+**Release:** patch · **Depends on:** nothing (independent of the workbench; improves `/ui`, Telegram, MCP and `/api/v1` search today).
+
+Today `items.search` is built with `to_tsvector('simple', …)` (`0001_init.sql`) and queried with `websearch_to_tsquery('simple', @text)`
+(`src/FeedEater/Storage/ItemStore.cs:563`, the only query site), so English words are not stemmed: "databases" does not find "database".
+Switch both to `'english'`. The archive is mostly English; non-English items lose nothing they have today except exact-stopword matches.
+
+**Files:**
+- Migration `00NN_english_search.sql`: `drop index items_search_idx; alter table items drop column search; alter table items add column search tsvector generated always as (setweight(to_tsvector('english', title), 'A') || setweight(to_tsvector('english', left(content, 100000)), 'B')) stored; create index items_search_idx on items using gin (search);`
+  (rewrites the table once: seconds at 15k rows; note the rewrite in `docs/SETUP.md`'s upgrade section).
+- `src/FeedEater/Storage/ItemStore.cs:563`: `websearch_to_tsquery('english', @text)`.
+
+**Tests:**
+- [ ] `SearchTests.English_plural_finds_singular` ("databases" finds an item titled "Database migrations"; fails on `main`).
+- [ ] `SearchTests.Stemmed_verb_forms_match` ("indexing" finds "indexes").
+- [ ] `SearchTests.Exact_title_still_ranks_first` (no regression on a known-item query).
+- [ ] `CombinationTests` lists include the migration.
+
+**Acceptance:**
+```bash
+dotnet format FeedEater.slnx --verify-no-changes
+dotnet test FeedEater.slnx --filter "FullyQualifiedName~SearchTests|FullyQualifiedName~CombinationTests"
+```
+**Not here:** BM25 (W3b).
+
+---
+
+### Milestone M1 — Reader and search (0.9.x patches, closed by 0.10.0)
 
 ### W1 — App shell, `/app` hosting and `/app/api` auth
-**Release:** 0.9.1 · **Depends on:** 0.9.0 released.
+**Release:** patch · **Depends on:** 0.9.0 released.
 
 Delivers: `web/` SvelteKit project (Svelte 5, TypeScript strict, `adapter-static` with `fallback: 'index.html'`, `ssr = false`,
 `paths.base = '/app'`), an empty three-pane layout with the top navigation (Home, Search, Topics, Notes, Ask) and a theme that follows
@@ -127,7 +157,7 @@ docker build -t feed-eater:w1 .
 ---
 
 ### W2 — Search API with modes, facets and the query-embedding cache; Search screen
-**Release:** 0.9.2 · **Depends on:** W1.
+**Release:** patch · **Depends on:** W1.
 
 Delivers: `GET /app/api/search` per the spec (items only; notes join in W12), `query_embeddings`, the 1.5 s partial rule, and the Search
 screen (box, instant results, facets, keyboard, URL state).
@@ -198,8 +228,9 @@ Delivers: a reproducible benchmark and a written decision. This is a research st
 
 **Acceptance:**
 ```bash
-bench/search/run.sh --synthetic 60000 --engines tsvector,pgx-bm25,pg_textsearch   # completes, writes bench/search/results.json
-test -s docs/reference/search-bench.md && grep -q '^## Decision' docs/reference/search-bench.md
+bench/search/run.sh --synthetic 60000 --engines tsvector-simple,tsvector-english,pgx-bm25,pg_textsearch
+jq -e '[.engines[] | select(.mrr10 != null and .p95_ms != null)] | length == 4' bench/search/results.json
+grep -q '^## Decision' docs/reference/search-bench.md
 ```
 The owner (or the Control desk) runs `bench/search/run.sh --dump <owner dump>` once on the real archive and pastes the table into the doc
 before W3b starts; a chargehand worker cannot reach the owner's database.
@@ -209,7 +240,7 @@ before W3b starts; a chargehand worker cannot reach the owner's database.
 ---
 
 ### W3b — `ILexicalSearch`, BM25 engine, database image, `search-eval`
-**Release:** 0.9.3 · **Depends on:** W3a's decision merged.
+**Release:** patch · **Depends on:** W3a's decision merged.
 
 Delivers: lexical search behind an interface with the chosen BM25 engine and today's tsvector engine; `ghcr.io/egoushka/feed-eater-db:pg18`;
 detection at start; `doctor` line; `search-eval` command.
@@ -254,7 +285,7 @@ Owner gate (not CI): `docker compose run --rm feed-eater search-eval` on the own
 ---
 
 ### W4 — Reader body, item API, reading state; Reader screen
-**Release:** 0.9.4 · **Depends on:** W1 (can run in parallel with W2/W3).
+**Release:** patch · **Depends on:** W1 (can run in parallel with W2/W3).
 
 **Files:**
 - Migration: `item_bodies`, `reading_state` (spec).
@@ -304,7 +335,7 @@ cd web && npm run check && npm test && npm run e2e && npm run size
 ---
 
 ### W5 — Related items and story; context pane
-**Release:** 0.9.5 · **Depends on:** W4.
+**Release:** patch · **Depends on:** W4.
 
 **Files:**
 - Option `FeedEater:Story:Days` (30) with description.
@@ -336,7 +367,7 @@ cd web && npm run check && npm test && npm run e2e
 ---
 
 ### W6 — Home, command palette, keyboard map (*milestone M1*)
-**Release:** 0.10.0 · **Depends on:** W2, W4, W5.
+**Release:** closes M1 "Reader and search" (`Release-As: 0.10.0`) · **Depends on:** W2, W4, W5.
 
 **Files:**
 - Create `src/FeedEater/Workbench/Home/HomeApi.cs`: `GET /app/api/home` → today's digest items (with read), continue reading (opened, not
@@ -367,10 +398,10 @@ Release gate: the owner reads a day's digest and runs ten searches in `/app` wit
 
 ---
 
-### Milestone M2 — Tags and topics (0.10.1 … 0.11.0)
+### Milestone M2 — Tags and topics (0.10.x patches, closed by 0.11.0)
 
 ### W7 — Tags: schema, seeding from profiles, suggester, API
-**Release:** 0.10.1 · **Depends on:** M1.
+**Release:** patch · **Depends on:** M1.
 
 **Files:**
 - Migration: `tags`, `item_tags` (spec).
@@ -405,7 +436,7 @@ dotnet test FeedEater.slnx --filter "FullyQualifiedName~Tag|FullyQualifiedName~A
 ---
 
 ### W8 — Tags in the app
-**Release:** 0.10.2 · **Depends on:** W7.
+**Release:** patch · **Depends on:** W7.
 
 **Files (web):** `src/lib/components/TagChips.svelte` (confirmed solid, suggested dashed with ✓ ✗; `t` opens the tag picker),
 `TagPicker.svelte` (palette mode: search tags, Enter adds, "create tag 'x'" when none matches — asks for a one-line description),
@@ -424,7 +455,7 @@ cd web && npm run check && npm test && npm run e2e && npm run size
 ---
 
 ### W9 — Topics: schema, evaluation, timeline, weekly `topic` card
-**Release:** 0.10.3 · **Depends on:** W7.
+**Release:** patch · **Depends on:** W7.
 
 **Files:**
 - Migration: `topics` (spec); replace `inbox.kind` check to add `topic`; add `open`/`mute` to whatever check lists swipe acts if needed
@@ -457,7 +488,7 @@ dotnet test FeedEater.slnx
 ---
 
 ### W10 — Topic and story pages (*milestone M2*)
-**Release:** 0.11.0 · **Depends on:** W9, W5.
+**Release:** closes M2 "Tags and topics" (`Release-As: 0.11.0`) · **Depends on:** W9, W5.
 
 **Files (web):** `src/routes/topics/+page.svelte` (list, "new topic from this search" also as a palette action on the Search screen),
 `src/routes/topics/[id]/+page.svelte` (definition editor, timeline as inline SVG bars — no chart library —, items with sort, stories, notes
@@ -479,10 +510,10 @@ Release gate: five topics exist on the owner's instance and one weekly `topic` c
 
 ---
 
-### Milestone M3 — Notes and ideas (0.11.1 … 0.12.0)
+### Milestone M3 — Notes and ideas (0.11.x patches, closed by 0.12.0)
 
 ### W11 — Highlights
-**Release:** 0.11.1 · **Depends on:** M1 (W4).
+**Release:** patch · **Depends on:** M1 (W4).
 
 **Files:**
 - Migration: `highlights` (spec).
@@ -510,7 +541,7 @@ cd web && npm run check && npm test && npm run e2e
 ---
 
 ### W12 — Notes: schema, links, backlinks, search, embedder
-**Release:** 0.11.2 · **Depends on:** W11, W7, W9.
+**Release:** patch · **Depends on:** W11, W7, W9.
 
 **Files:**
 - Migration: `notes`, `note_links` (spec).
@@ -546,7 +577,7 @@ dotnet test FeedEater.slnx
 ---
 
 ### W13 — Notes in the app: editor, preview, backlinks
-**Release:** 0.11.3 · **Depends on:** W12.
+**Release:** patch · **Depends on:** W12.
 
 **Files (web):** `src/routes/notes/+page.svelte` (list with filters), `src/routes/notes/[id]/+page.svelte`, `src/lib/editor/` (CodeMirror 6
 loaded by dynamic `import()` only on this route; Markdown mode; `[[` completion from `/app/api/jump`; `#` completion from tags; autosave
@@ -571,7 +602,7 @@ cd web && npm run check && npm test && npm run e2e && npm run build && npm run s
 ---
 
 ### W14 — Ask in the workbench: scopes, streaming, save as note
-**Release:** 0.11.4 · **Depends on:** W12, W9.
+**Release:** patch · **Depends on:** W12, W9.
 
 **Files:**
 - Modify `src/FeedEater/Search/ArchiveAnswer.cs`: extract `AnswerAsync(string question, IReadOnlyList<SearchHit> sources, ct)` and a
@@ -605,7 +636,7 @@ cd web && npm run check && npm test && npm run e2e
 ---
 
 ### W15 — Promote an idea to Plane or a GitHub issue
-**Release:** 0.11.5 · **Depends on:** W12, W13.
+**Release:** patch · **Depends on:** W12, W13.
 
 **Files:**
 - Migration: `promotions` (spec).
@@ -641,7 +672,7 @@ cd web && npm run check && npm test && npm run e2e
 ---
 
 ### W16 — Exports and MCP additions (*milestone M3*)
-**Release:** 0.12.0 · **Depends on:** W12, W14, W15.
+**Release:** closes M3 "Notes and ideas" (`Release-As: 0.12.0`) · **Depends on:** W12, W14, W15.
 
 **Files:**
 - Create `src/FeedEater/Workbench/Export/ExportApi.cs`: `GET /notes/{id}.md`, `GET /topics/{id}.md`, `GET /export/notes.zip` (each note as
@@ -670,6 +701,7 @@ item 5 (one idea promoted to an issue chargehand picks up).
 ## Order and parallelism
 
 ```
+W0 (any time)
 0.9.0 ─ W1 ─┬─ W2 ─ W3a ─ W3b ─┐
             └─ W4 ─ W5 ─────────┴─ W6 (0.10.0) ─ W7 ─┬─ W8
                                                      └─ W9 ─ W10 (0.11.0) ─ W11 ─ W12 ─┬─ W13 ─ W15 ─┐
@@ -687,4 +719,6 @@ When the owner approves this plan, each step becomes one issue on `Egoushka/feed
 - Body: the step's section verbatim, then "Global constraints, rulings and Review focus: `docs/plans/2026-10-26-workbench.md`; spec:
   `docs/specs/2026-10-26-workbench.md`", then the **Depends on** issues as links.
 - Only steps whose dependencies are merged carry the `chargehand` label, so the orchestrator never starts a step on a stale base.
+- Work-in-progress limit: at most 3 open implementation PRs in feed-eater (the weekly cycle); label the next issue only when one merges.
+- Each milestone is a Plane item in the week's cycle; the steps picked for the week are listed on it.
 - W3a's owner run (the real-archive benchmark) and every **Release gate** are tasks for the owner or the Control desk, not chargehand.

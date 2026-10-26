@@ -36,6 +36,9 @@ What is missing, checked against `main` at 96e0590:
   Rust", item 8926, is filed under `postgres`). It cannot be corrected and is not a tag.
 - **A place for ideas.** Weekly ideas go to Plane after a swipe; a 💡 files one item. There is no note, highlight, or idea that collects
   several sources and grows over days.
+- **Keyword search does not stem.** `items.search` uses `to_tsvector('simple', …)` and the query `websearch_to_tsquery('simple', …)`
+  (`ItemStore.cs:563`), so "databases" misses "database". Switching to `'english'` costs one table rewrite and no new dependency (plan step
+  W0, shippable before anything else); BM25 is the larger step after it.
 - **Summaries are rare.** Only digest reads and library saves get a summary (`reads`); most search hits have `summary: null`. The workbench
   must be useful on title and text alone and must not start reading 150 items a day to fill this gap (the cost invariant below).
 
@@ -231,7 +234,7 @@ create table notes (
     created_at   timestamptz not null default now(),
     updated_at   timestamptz not null default now(),
     search       tsvector generated always as (
-        setweight(to_tsvector('simple', title), 'A') || setweight(to_tsvector('simple', left(body, 100000)), 'B')) stored
+        setweight(to_tsvector('english', title), 'A') || setweight(to_tsvector('english', left(body, 100000)), 'B')) stored
 );
 create index notes_search_idx on notes using gin (search);
 
@@ -275,7 +278,7 @@ and new library saves (at most 50 a day, inside the fetch cap), so the morning's
   Hits are items and notes in one ranked list (`type: item|note`), with a highlighted snippet. Facets: counts by kind, feed, month, tag,
   saved, over the full candidate set (not the page).
 - **Lexical:** behind `ILexicalSearch`, two implementations. `Bm25Search` uses a BM25 index extension when installed; `TsvectorSearch` is
-  today's `items.search` with `ts_rank_cd`, used when the extension is absent. Which extension is decided by a benchmark step on the owner's
+  `items.search` with the `'english'` configuration (from W0) and `ts_rank_cd`, used when the extension is absent. Which extension is decided by a benchmark step on the owner's
   archive (plan step W3a) between **pgx-bm25** (1.0 released 2026-10-07, PostgreSQL licence, BM25F, phrases, prefix, snippets; item 12969 in
   the archive) and **pg_textsearch** (Tiger Data, PostgreSQL licence, 1.0 early 2026, phrase queries since 1.5.0). ParadeDB `pg_search` is out:
   AGPL and replicas only in its paid edition. Exactly one extension is installed; the code depends only on `ILexicalSearch`.
@@ -432,15 +435,17 @@ Nothing in this spec stores entities, so there is nothing to migrate; topics gai
 exists, this spec does not guess its interface.
 
 ## Milestones and versions
-The owner's release rhythm from 2026-10-26: every merged step is released as the next patch of the current minor version; the step that
-completes a milestone is released as the next minor version.
+The weekly cycle (`~/Projects/context/cycle.md`, from 2026-10-26): every merged step is a patch, the Friday release cuts the next patch for
+what merged that week, and a closed milestone is marked by an empty commit with `Release-As: 0.N.0`. Milestones are named goals in Plane; the
+version numbers below are expectations. feed-eater tags releases by hand today (`v0.8.6`, the image builds on `v*` tags); adopting
+release-please with `bump-patch-for-minor-pre-major` is an open decision for the owner.
 
-| Milestone | Releases | Contents | Done when |
+| Milestone (Plane name) | Releases | Contents | Done when |
 |---|---|---|---|
 | Server for the app | 0.9.0 | v1.0 steps 1–5 (inbox, one stack, `/api/v1`, library, push and doctor) | released and deployed; planned in `docs/plans/2026-10-19-v1.0-app.md` |
-| M1 Reader and search | 0.9.1 … 0.10.0 | App shell, search, BM25, reader, related and story, home and palette | the owner reads a day's digest and runs ten searches in `/app` without opening `/ui` |
-| M2 Tags and topics | 0.10.1 … 0.11.0 | Tags, topics, topic digest card, topic and story pages | five topics exist and one weekly `topic` card reached the stack |
-| M3 Notes and ideas | 0.11.1 … 0.12.0 | Highlights, notes, Ask in the app, Promote, exports, MCP additions; risk review | one idea went from highlights to a promoted GitHub issue with its sources |
+| M1 Reader and search | 0.9.x patches, closed by 0.10.0 | English stemming (W0), app shell, search, BM25, reader, related and story, home and palette | the owner reads a day's digest and runs ten searches in `/app` without opening `/ui` |
+| M2 Tags and topics | 0.10.x patches, closed by 0.11.0 | Tags, topics, topic digest card, topic and story pages | five topics exist and one weekly `topic` card reached the stack |
+| M3 Notes and ideas | 0.11.x patches, closed by 0.12.0 | Highlights, notes, Ask in the app, Promote, exports, MCP additions; risk review | one idea went from highlights to a promoted GitHub issue with its sources |
 | Android | 1.0.0 | Android app (v1.0 steps 6–7), Telegram retired | as `docs/specs/2026-10-19-v1.0-app.md` |
 
 ## Owner side (not in this repository)
