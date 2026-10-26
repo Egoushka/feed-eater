@@ -88,7 +88,7 @@ public static class LlmJson
         }
 
         var named = Text(e, "project");
-        var project = named is null ? null : projects.FirstOrDefault(p => string.Equals(p, named, StringComparison.OrdinalIgnoreCase));
+        var project = FeedEater.Issues.GitHubIssues.Find(projects, named);
         return new ReplyIntent(action, project, project is null ? named : null, Text(e, "idea"), Text(e, "question"));
     }
 

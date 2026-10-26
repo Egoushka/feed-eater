@@ -240,7 +240,7 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
             Assert.Equal("ok", StatusOf(output, name));
         }
 
-        foreach (var name in new[] { "miniflux", "plane", "karakeep", "github", "hindsight", "release watch" })
+        foreach (var name in new[] { "miniflux", "github-issues", "karakeep", "github", "hindsight", "release watch" })
         {
             Assert.Equal("off", StatusOf(output, name));
         }
@@ -286,16 +286,16 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Doctor_exits_0_when_only_an_optional_service_fails_and_shows_it_as_FAIL()
     {
         await Seed.ItemAsync(pg, 1, "A post", TestVectors.OneHot(0));
-        var config = Config(("FeedEater:Plane:BaseUrl", "http://plane.example/"), ("FeedEater:Plane:Token", "plane-secret-key"), ("FeedEater:Plane:Workspace", "ws"),
+        var config = Config(("FeedEater:GitHub:BaseUrl", "http://github.example/"), ("FeedEater:GitHub:Token", "gh-secret-key"), ("FeedEater:GitHub:FallbackRepo", "octo/feed"),
             ("FeedEater:Karakeep:BaseUrl", "http://karakeep.example/"), ("FeedEater:Karakeep:Token", "kk-karakeep-key"));
-        var stub = SetupStubs.Services(request => request.RequestUri!.Host == "plane.example" ? StubHandler.Json("{}", HttpStatusCode.Unauthorized) : null);
+        var stub = SetupStubs.Services(request => request.RequestUri!.Host == "github.example" ? StubHandler.Json("{}", HttpStatusCode.Unauthorized) : null);
 
         var (code, output) = await DoctorAsync(config, stub);
 
         Assert.Equal(0, code);
-        Assert.Equal("FAIL", StatusOf(output, "plane"));
+        Assert.Equal("FAIL", StatusOf(output, "github-issues"));
         Assert.Equal("ok", StatusOf(output, "karakeep"));
-        Assert.Contains("FeedEater__Plane__Token", output, StringComparison.Ordinal);
+        Assert.Contains("FeedEater__GitHub__Token", output, StringComparison.Ordinal);
     }
 
     [Fact]

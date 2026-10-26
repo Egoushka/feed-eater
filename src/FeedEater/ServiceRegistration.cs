@@ -14,7 +14,7 @@ using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Memory;
 using FeedEater.Mcp;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Profiles;
 using FeedEater.Ranking;
 using FeedEater.Review;
@@ -83,24 +83,14 @@ public static class ServiceRegistration
             http.BaseAddress = new Uri($"{o.BaseUrl}bot{o.Token}/");
             http.Timeout = TimeSpan.FromSeconds(70);   // above the 50 s long poll
         });
-        services.AddHttpClient<PlaneClient>((sp, http) =>
-        {
-            var o = Settings(sp).Plane;
-            BaseAddress(http, o.BaseUrl);
-            http.DefaultRequestHeaders.Add("X-API-Key", o.Token);
-        });
         services.AddHttpClient<KarakeepClient>((sp, http) =>
         {
             var o = Settings(sp).Karakeep;
             BaseAddress(http, o.BaseUrl);
             Bearer(http, o.Token);
         });
-        services.AddHttpClient<GitHubStarsClient>((sp, http) =>
-        {
-            http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.5.0");
-            Bearer(http, Settings(sp).GitHub.Token);
-        });
+        services.AddHttpClient<GitHubStarsClient>((sp, http) => GitHub(sp, http));
+        services.AddHttpClient<GitHubIssues>((sp, http) => GitHub(sp, http));
 
         // Only the feed client trusts Source:AllowedHosts: article and linked-page URLs come from untrusted entries.
         services.AddHttpClient(SafeFetcher.ClientName).ConfigurePrimaryHttpMessageHandler(() => SafeFetcher.CreateHandler());
@@ -140,10 +130,10 @@ public static class ServiceRegistration
         services.AddSingleton<LibraryStore>();
         services.AddSingleton<LibraryService>();
         services.AddSingleton<DigestRun>();
-        services.AddSingleton<PlaneIdeaSink>();
+        services.AddSingleton<GitHubIdeaSink>();
         services.AddSingleton<LocalIdeaSink>();
-        services.AddSingleton<IIdeaSink>(sp => Settings(sp).IdeaSink == IdeasOptions.PlaneSink
-            ? sp.GetRequiredService<PlaneIdeaSink>()
+        services.AddSingleton<IIdeaSink>(sp => Settings(sp).IdeaSink == IdeasOptions.GitHubSink
+            ? sp.GetRequiredService<GitHubIdeaSink>()
             : sp.GetRequiredService<LocalIdeaSink>());
         services.AddSingleton<IdeaFiler>();
         services.AddSingleton<WeeklyIdeaStore>();
@@ -202,7 +192,7 @@ public static class ServiceRegistration
             if (delivers)
             {
                 services.AddHostedService<WeeklyReview>();
-                if (settings.WeeklyIdeas.Enabled && settings.Plane.Enabled)
+                if (settings.WeeklyIdeas.Enabled && settings.GitHub.IssuesEnabled)
                 {
                     services.AddHostedService<WeeklyIdeasJob>();
                     services.AddSingleton<IdeaDecisions>();
@@ -257,6 +247,14 @@ public static class ServiceRegistration
     private static FeedEaterOptions Settings(IServiceProvider sp) => sp.GetRequiredService<IOptions<FeedEaterOptions>>().Value;
 
     /// <summary>An integration that is off has no URL; its client is never called, and must still be buildable.</summary>
+    /// <summary>Every GitHub client: the API URL, the user agent GitHub requires and <c>GitHub:Token</c>.</summary>
+    private static void GitHub(IServiceProvider sp, HttpClient http)
+    {
+        http.BaseAddress = new Uri(Settings(sp).GitHub.BaseUrl);
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("feed-eater/0.5.0");
+        Bearer(http, Settings(sp).GitHub.Token);
+    }
+
     private static void BaseAddress(HttpClient http, string url)
     {
         if (url.Length > 0)

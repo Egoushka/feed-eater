@@ -122,8 +122,8 @@ public sealed class ApiRunTests(PostgresFixture pg) : IAsyncLifetime
     private static HttpClient? http;
 
     private WebApplicationFactory<Program> App => app ??= ApiHost.Create(pg.ConnectionString, null,
-        ("FeedEater:RunJobs", "true"), ("FeedEater:Follow:Enabled", "false"), ("FeedEater:Plane:BaseUrl", "http://plane.invalid"),
-        ("FeedEater:Plane:Token", "t"), ("FeedEater:Plane:Workspace", "w"));
+        ("FeedEater:RunJobs", "true"), ("FeedEater:Follow:Enabled", "false"), ("FeedEater:GitHub:BaseUrl", "http://github.invalid"),
+        ("FeedEater:GitHub:Token", "t"), ("FeedEater:GitHub:FallbackRepo", "octo/feed"));
     private HttpClient Http => http ??= App.CreateClient();
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body = null) =>

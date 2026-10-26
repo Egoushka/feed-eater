@@ -36,7 +36,6 @@ public sealed class FeedEaterOptions
     public TelegramOptions Telegram { get; set; } = new();
     public IdeasOptions Ideas { get; set; } = new();
     public WeeklyIdeasOptions WeeklyIdeas { get; set; } = new();
-    public PlaneOptions Plane { get; set; } = new();
     public KarakeepOptions Karakeep { get; set; } = new();
     public LibraryOptions Library { get; set; } = new();
     public GitHubOptions GitHub { get; set; } = new();
@@ -53,16 +52,16 @@ public sealed class FeedEaterOptions
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
-    /// <summary>Where 💡 ideas go: the configured sink, else Plane when it is configured, else the local list.</summary>
-    public string IdeaSink => Ideas.Sink is IdeasOptions.PlaneSink or IdeasOptions.LocalSink ? Ideas.Sink : Plane.Enabled ? IdeasOptions.PlaneSink : IdeasOptions.LocalSink;
+    /// <summary>Where 💡 ideas go: the configured sink, else GitHub issues when they are configured, else the local list.</summary>
+    public string IdeaSink => Ideas.Sink is IdeasOptions.GitHubSink or IdeasOptions.LocalSink ? Ideas.Sink : GitHub.IssuesEnabled ? IdeasOptions.GitHubSink : IdeasOptions.LocalSink;
 }
 
 public sealed class IdeasOptions
 {
-    public const string PlaneSink = "plane";
+    public const string GitHubSink = "github";
     public const string LocalSink = "local";
 
-    [Description("Where 💡 ideas go: plane, local, or auto (plane when Plane is configured, else local). Local keeps them on /ui/ideas and in the feed_ideas MCP tool.")]
+    [Description("Where 💡 ideas go: github, local, or auto (github when GitHub issues are configured, else local). GitHub opens an issue labelled triage in the project's repo; local keeps them on /ui/ideas and in the feed_ideas MCP tool.")]
     public string Sink { get; set; } = "auto";
 }
 
@@ -416,43 +415,24 @@ public sealed class TelegramOptions
 
 public sealed class WeeklyIdeasOptions
 {
-    [Description("Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Ideas are filed in Plane only after Keep (Telegram button, swipe card). Needs Plane, and Telegram or Swipe. False turns the job off.")]
+    [Description("Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, with the top few on Telegram. Ideas are filed as GitHub issues labelled triage only after Keep (Telegram button, swipe card). Needs GitHub issues (GitHub:Token and GitHub:FallbackRepo), and Telegram or Swipe. False turns the job off.")]
     public bool Enabled { get; set; } = true;
 
     [Description("Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start.")]
     public TimeSpan At { get; set; } = new(9, 0, 0);
 
-    [Description("Most ideas filed in Plane per week.")]
+    [Description("Most ideas filed as GitHub issues per week.")]
     public int MaxFiled { get; set; } = 5;
 
     [Description("Ideas listed in the Telegram message, best first.")]
     public int TopInMessage { get; set; } = 3;
 
-    [Description("GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; Plane items and earlier shortlists still are.")]
+    [Description("GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; GitHub issues and earlier shortlists still are.")]
     public string BacklogUrl { get; set; } = "";
 
     [Secret]
     [Description("GitHub token that can read the backlog file; empty for a public repository.")]
     public string BacklogToken { get; set; } = "";
-}
-
-public sealed class PlaneOptions
-{
-    /// <summary>On when the server, its API key and the workspace are set.</summary>
-    public bool Enabled => BaseUrl.Length > 0 && Token.Length > 0 && Workspace.Length > 0;
-
-    [Description("Plane server URL. Empty means no Plane.")]
-    public string BaseUrl { get; set; } = "";
-
-    [Secret]
-    [Description("Plane API key.")]
-    public string Token { get; set; } = "";
-
-    [Description("Plane workspace slug.")]
-    public string Workspace { get; set; } = "";
-
-    [Description("Plane project identifier for ideas whose item matches no project of its own.")]
-    public string FallbackProject { get; set; } = "";
 }
 
 public sealed class KarakeepOptions
@@ -491,6 +471,9 @@ public sealed class GitHubOptions
     /// <summary>Off without a user: no stars import.</summary>
     public bool Enabled => User.Length > 0;
 
+    /// <summary>On when the token and the fallback repo are set: ideas become issues.</summary>
+    public bool IssuesEnabled => Token.Length > 0 && FallbackRepo.Length > 0;
+
     [Description("GitHub API URL.")]
     public string BaseUrl { get; set; } = "https://api.github.com/";
 
@@ -498,8 +481,11 @@ public sealed class GitHubOptions
     public string User { get; set; } = "";
 
     [Secret]
-    [Description("GitHub token, sent on every GitHub call. Optional: it lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it). A token with no scopes is enough.")]
+    [Description("GitHub token, sent on every GitHub call. It lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it); a token with no scopes is enough for that. Filing ideas as issues needs one that can write issues in every repo of the profile (classic: repo, or public_repo when all are public).")]
     public string Token { get; set; } = "";
+
+    [Description("Repo (owner/name) for ideas whose item matches no project with a repo of its own. With GitHub:Token it turns GitHub issues on: ideas are filed as issues labelled triage.")]
+    public string FallbackRepo { get; set; } = "";
 }
 
 public sealed class HindsightOptions

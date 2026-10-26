@@ -7,7 +7,7 @@ using FeedEater.Hype;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Memory;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Profiles;
 using FeedEater.Signals;
 using FeedEater.Storage;
@@ -235,26 +235,24 @@ internal sealed class MinifluxCheck(IServiceProvider services, IOptions<FeedEate
     protected override string Fix(Exception ex) => Hints.Http(ex, "Miniflux:BaseUrl", "Miniflux:Token");
 }
 
-internal sealed class PlaneCheck(IServiceProvider services, IOptions<FeedEaterOptions> options) : ServiceCheck(services, options)
+internal sealed class GitHubIssuesCheck(IServiceProvider services, IOptions<FeedEaterOptions> options) : ServiceCheck(services, options)
 {
-    public override string Name => "plane";
-    protected override string? OffReason => Settings.Plane.Enabled ? null : "not configured";
+    public override string Name => "github-issues";
+    protected override string? OffReason => Settings.GitHub.IssuesEnabled ? null : "not configured";
 
     protected override async Task<string> ProbeAsync(CancellationToken ct)
     {
-        var plane = Services.GetRequiredService<PlaneClient>();
-        if (Settings.Plane.FallbackProject.Length > 0)
-        {
-            await plane.ProjectIdAsync(Settings.Plane.FallbackProject, ct);
-            return $"workspace {Settings.Plane.Workspace}, project {Settings.Plane.FallbackProject} found";
-        }
-
-        return $"workspace {Settings.Plane.Workspace}, {await plane.ProjectCountAsync(ct)} projects";
+        await Services.GetRequiredService<GitHubIssues>().CheckAsync(Settings.GitHub.FallbackRepo, ct);
+        return $"repo {Settings.GitHub.FallbackRepo} found, token can file issues";
     }
 
-    protected override string Fix(Exception ex) => ex is InvalidOperationException
-        ? $"Create that project in Plane, or fix {Hints.Env("Plane:FallbackProject")}."
-        : Hints.Http(ex, "Plane:BaseUrl", "Plane:Token");
+    protected override string Fix(Exception ex) => ex switch
+    {
+        InvalidOperationException => $"Give the token write access to that repo's issues, or fix {Hints.Env("GitHub:FallbackRepo")}.",
+        HttpRequestException { StatusCode: HttpStatusCode.NotFound } =>
+            $"GitHub has no such repo, or the token cannot see it: check {Hints.Env("GitHub:FallbackRepo")} and {Hints.Env("GitHub:Token")}.",
+        _ => Hints.Http(ex, "GitHub:BaseUrl", "GitHub:Token"),
+    };
 }
 
 internal sealed class KarakeepCheck(IServiceProvider services, IOptions<FeedEaterOptions> options) : ServiceCheck(services, options)

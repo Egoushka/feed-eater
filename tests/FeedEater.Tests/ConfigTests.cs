@@ -28,7 +28,7 @@ public sealed class ConfigTests
         Assert.Contains("FeedEater:DigestAt=07:30:00", lines);
         Assert.Contains("FeedEater:Taste:Learn=false", lines);
         Assert.Contains("FeedEater:Quiet:From=", lines);
-        Assert.Contains("FeedEater:Plane:BaseUrl=", lines);
+        Assert.Contains("FeedEater:GitHub:FallbackRepo=", lines);
         Assert.Contains("FeedEater:Fetch:BlockedHosts=facebook.com,instagram.com,x.com,twitter.com,linkedin.com,tiktok.com,youtube.com,youtu.be,t.me,discord.com,medium.com,nytimes.com,wsj.com,bloomberg.com,ft.com", lines);
         Assert.All(lines, l => Assert.Contains('=', l));
     }
@@ -48,18 +48,18 @@ public sealed class ConfigTests
     public void Print_config_masks_secrets_but_still_shows_that_they_are_set()
     {
         var lines = ConfigPrinter.Lines(Config(
-            ("FeedEater:Llm:ApiKey", "sk-very-secret"), ("FeedEater:Telegram:Token", "123:abc"), ("FeedEater:Plane:Token", ""),
+            ("FeedEater:Llm:ApiKey", "sk-very-secret"), ("FeedEater:Telegram:Token", "123:abc"), ("FeedEater:Hindsight:Token", ""),
             ("FeedEater:Watch:Source", "https://example.com/pins?access_token=SECRET"), ("FeedEater:Watch:Token", "wt"), ("FeedEater:GitHub:Token", "gh-secret-token"),
-            ("FeedEater:Plane:BaseUrl", "https://user:pw@plane.example/"),
+            ("FeedEater:Karakeep:BaseUrl", "https://user:pw@karakeep.example/"),
             ("ConnectionStrings:FeedEater", "Host=db;Database=feed;Username=u;Password=hunter2;Pooling=true"), ("Mcp:Token", "mcp-secret")));
 
         Assert.Contains("FeedEater:Llm:ApiKey=***", lines);
         Assert.Contains("FeedEater:Telegram:Token=***", lines);
         Assert.Contains("FeedEater:Watch:Token=***", lines);
         Assert.Contains("FeedEater:GitHub:Token=***", lines);
-        Assert.Contains("FeedEater:Plane:Token=", lines);   // unset stays visibly unset
+        Assert.Contains("FeedEater:Hindsight:Token=", lines);   // unset stays visibly unset
         Assert.Contains("FeedEater:Watch:Source=https://example.com/pins?***", lines);
-        Assert.Contains("FeedEater:Plane:BaseUrl=https://plane.example/", lines);
+        Assert.Contains("FeedEater:Karakeep:BaseUrl=https://karakeep.example/", lines);
         Assert.Contains("ConnectionStrings:FeedEater=Host=db;Database=feed;Username=u;Password=***;Pooling=True", lines);
         Assert.Contains("Mcp:Token=***", lines);
         var everything = string.Join('\n', lines);
@@ -112,15 +112,14 @@ public sealed class ConfigTests
         Assert.False(new MinifluxOptions { BaseUrl = "http://m/" }.Enabled);
         Assert.True(new MinifluxOptions { BaseUrl = "http://m/", Token = "t" }.Enabled);
 
-        Assert.False(new PlaneOptions { BaseUrl = "http://p/", Token = "t" }.Enabled);   // no workspace
-        Assert.False(new PlaneOptions { BaseUrl = "http://p/", Workspace = "w" }.Enabled);   // no key
-        Assert.True(new PlaneOptions { BaseUrl = "http://p/", Token = "t", Workspace = "w" }.Enabled);
-
         Assert.False(new KarakeepOptions { Token = "t" }.Enabled);
         Assert.True(new KarakeepOptions { BaseUrl = "http://k/", Token = "t" }.Enabled);
 
         Assert.False(new GitHubOptions().Enabled);   // the API URL has a default; the user does not
         Assert.True(new GitHubOptions { User = "octocat" }.Enabled);
+        Assert.False(new GitHubOptions { Token = "t" }.IssuesEnabled);   // no fallback repo
+        Assert.False(new GitHubOptions { FallbackRepo = "o/r" }.IssuesEnabled);   // no token
+        Assert.True(new GitHubOptions { Token = "t", FallbackRepo = "o/r" }.IssuesEnabled);
 
         Assert.False(new HindsightOptions { Token = "t" }.Enabled);
         Assert.True(new HindsightOptions { BaseUrl = "http://h/" }.Enabled);   // a server that needs no key
@@ -134,14 +133,15 @@ public sealed class ConfigTests
     }
 
     [Fact]
-    public void The_idea_sink_is_the_configured_one_else_Plane_when_it_is_on_else_local()
+    public void The_idea_sink_is_the_configured_one_else_GitHub_when_it_is_on_else_local()
     {
-        var plane = new PlaneOptions { BaseUrl = "http://p/", Token = "t", Workspace = "w" };
+        var github = new GitHubOptions { Token = "t", FallbackRepo = "o/r" };
 
         Assert.Equal("local", new FeedEaterOptions().IdeaSink);
-        Assert.Equal("plane", new FeedEaterOptions { Plane = plane }.IdeaSink);
-        Assert.Equal("local", new FeedEaterOptions { Plane = plane, Ideas = new IdeasOptions { Sink = "local" } }.IdeaSink);
-        Assert.Equal("plane", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "plane" } }.IdeaSink);
+        Assert.Equal("github", new FeedEaterOptions { GitHub = github }.IdeaSink);
+        Assert.Equal("local", new FeedEaterOptions { GitHub = github, Ideas = new IdeasOptions { Sink = "local" } }.IdeaSink);
+        Assert.Equal("github", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "github" } }.IdeaSink);
+        Assert.Equal("local", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "plane" } }.IdeaSink);   // Plane is gone: the default
         Assert.Equal("local", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "webhook" } }.IdeaSink);   // unknown: the always-on default
     }
 }
@@ -181,7 +181,7 @@ internal static class ConfigDocs
     private static readonly (string Name, string On, string Off)[] Integrations =
     [
         ("Miniflux", "`Miniflux:BaseUrl` and `Miniflux:Token`", "Nothing is copied from Miniflux and no full text is fetched through it."),
-        ("Plane", "`Plane:BaseUrl`, `Plane:Token` and `Plane:Workspace`", "Ideas go to the local list (see `Ideas:Sink`); open Plane work is not read into project vectors."),
+        ("GitHub issues", "`GitHub:Token` and `GitHub:FallbackRepo`", "Ideas go to the local list (see `Ideas:Sink`); open issues are not read into project vectors and there is no weekly ideas shortlist."),
         ("Karakeep", "`Karakeep:BaseUrl` and `Karakeep:Token`", "No 📌 button and no bookmark import."),
         ("GitHub stars", "`GitHub:User`", "No stars import."),
         ("Hype autopsy", "`GitHub:User` and `Telegram:Token`", "No repo snapshots and no monthly autopsy; `GitHub:Token` is optional and lifts the 60 requests an hour limit."),

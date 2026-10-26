@@ -18,7 +18,7 @@ public static class SetupServices
         services.AddSingleton<IIntegrationCheck, FeedSourceCheck>();
         services.AddSingleton<IIntegrationCheck, ProfileCheck>();
         services.AddSingleton<IIntegrationCheck, MinifluxCheck>();
-        services.AddSingleton<IIntegrationCheck, PlaneCheck>();
+        services.AddSingleton<IIntegrationCheck, GitHubIssuesCheck>();
         services.AddSingleton<IIntegrationCheck, KarakeepCheck>();
         services.AddSingleton<IIntegrationCheck, GitHubCheck>();
         services.AddSingleton<IIntegrationCheck, HindsightCheck>();

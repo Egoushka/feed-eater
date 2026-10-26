@@ -2,7 +2,7 @@ using Dapper;
 
 namespace FeedEater.Storage;
 
-public sealed record FiledIdea(string CanonicalUrl, string Week, string Title, string PlaneProject, string PlaneIssueId);
+public sealed record FiledIdea(string CanonicalUrl, string Week, string Title, string Repo, int IssueNumber);
 
 /// <summary>An item that may become an idea: why it is a candidate (<see cref="Signal"/>: liked, saved or improve) comes with its card.</summary>
 public sealed record IdeaCandidate : ItemView
@@ -70,8 +70,8 @@ public sealed class WeeklyIdeaStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into weekly_ideas (canonical_url, week, title, plane_project, plane_issue_id)
-            values (@CanonicalUrl, @Week, @Title, @PlaneProject, @PlaneIssueId)
+            insert into weekly_ideas (canonical_url, week, title, repo, issue_number)
+            values (@CanonicalUrl, @Week, @Title, @Repo, @IssueNumber)
             on conflict (canonical_url) do nothing
             """, idea, cancellationToken: ct));
     }
@@ -82,8 +82,8 @@ public sealed class WeeklyIdeaStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into weekly_ideas (canonical_url, week, title, plane_project, plane_issue_id, outcome)
-            values (@canonicalUrl, @week, @title, @project, null, 'dropped')
+            insert into weekly_ideas (canonical_url, week, title, repo, outcome)
+            values (@canonicalUrl, @week, @title, @project, 'dropped')
             on conflict (canonical_url) do nothing
             """, new { canonicalUrl, week, title, project }, cancellationToken: ct));
     }

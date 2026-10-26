@@ -1,5 +1,5 @@
 using FeedEater.Inbox;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Storage;
 
 namespace FeedEater.WeeklyIdeas;
@@ -8,8 +8,8 @@ public enum IdeaOutcome { Filed, Dropped, AlreadyDecided, NotFound, Failed }
 
 public sealed record IdeaDecision(IdeaOutcome Outcome, string? Project = null, string? Error = null);
 
-/// <summary>Keep files a staged idea in Plane Intake; Drop remembers its source. The inbox row's done_at is the decision, so a second press changes nothing.</summary>
-public sealed class IdeaDecisions(InboxStore inbox, WeeklyIdeaStore ideas, PlaneClient plane, TimeProvider time)
+/// <summary>Keep files a staged idea as a GitHub issue labelled triage; Drop remembers its source. The inbox row's done_at is the decision, so a second press changes nothing.</summary>
+public sealed class IdeaDecisions(InboxStore inbox, WeeklyIdeaStore ideas, GitHubIssues issues, TimeProvider time)
 {
     public async Task<IdeaDecision> KeepAsync(long inboxId, CancellationToken ct)
     {
@@ -20,10 +20,11 @@ public sealed class IdeaDecisions(InboxStore inbox, WeeklyIdeaStore ideas, Plane
         }
 
         var p = row.Payload;
-        string issue;
+        var repo = Str(p, "project");
+        int issue;
         try
         {
-            issue = await plane.CreateIntakeAsync(Str(p, "project"), Str(p, "title"), Str(p, "html"), ct);
+            issue = await issues.CreateAsync(repo, Str(p, "title"), Str(p, "body"), ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Text.Json.JsonException
             || (ex is TaskCanceledException && !ct.IsCancellationRequested))
@@ -37,8 +38,8 @@ public sealed class IdeaDecisions(InboxStore inbox, WeeklyIdeaStore ideas, Plane
             throw;
         }
 
-        await ideas.AddAsync(new FiledIdea(Str(p, "url"), Str(p, "week"), Str(p, "title"), Str(p, "project"), issue), ct);
-        return new(IdeaOutcome.Filed, Str(p, "project"));
+        await ideas.AddAsync(new FiledIdea(Str(p, "url"), Str(p, "week"), Str(p, "title"), repo, issue), ct);
+        return new(IdeaOutcome.Filed, repo);
     }
 
     public async Task<IdeaDecision> DropAsync(long inboxId, CancellationToken ct)

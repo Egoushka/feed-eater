@@ -9,7 +9,7 @@ public sealed record ProjectTally(string Project, int Up, int Down);
 
 public sealed record FeedCount(long FeedId, string Title, int Count);
 
-public sealed record WeeklyIdea(long ItemId, string Title, string PlaneProject);
+public sealed record WeeklyIdea(long ItemId, string Title, string Project);
 
 public sealed record WeeklyReport(
     DateTimeOffset Since, DateTimeOffset Until, int Items, int Shown, int Up, int Down, int Ideas,
@@ -78,7 +78,7 @@ public sealed class WeeklyStore(FeedDb db)
             group by 1 order by count(*) desc, 1
             """, args, cancellationToken: ct));
         var ideas = await c.QueryAsync<WeeklyIdea>(new CommandDefinition(
-            "select item_id, title, plane_project from ideas where at >= @since and at < @until order by at, item_id", args, cancellationToken: ct));
+            "select item_id, title, coalesce(repo, plane_project) as project from ideas where at >= @since and at < @until order by at, item_id", args, cancellationToken: ct));
         var feeds = await c.QueryAsync<FeedCount>(new CommandDefinition(
             """
             select f.id as feed_id, f.title, count(*)::int as count

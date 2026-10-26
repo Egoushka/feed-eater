@@ -1,7 +1,6 @@
-using System.Net;
 using FeedEater.Storage;
 
-namespace FeedEater.Plane;
+namespace FeedEater.Issues;
 
 /// <summary>Turns an item's suggestion into an idea in the matched project, else the sink's fallback project. Once per item.</summary>
 public sealed class IdeaFiler(
@@ -21,7 +20,7 @@ public sealed class IdeaFiler(
     {
         if (await feedback.GetIdeaAsync(itemId, ct) is { } existing)
         {
-            return existing.PlaneProject;
+            return existing.Project;
         }
 
         var item = await items.GetAsync(itemId, ct) ?? throw new InvalidOperationException($"item {itemId} does not exist");
@@ -29,14 +28,11 @@ public sealed class IdeaFiler(
         var key = item.Project ?? item.ProfileKey;
         project ??= sink.ProjectOf((await profiles.AllAsync(ct)).FirstOrDefault(p => p.Key == key))
             ?? sink.FallbackProject
-            ?? throw new InvalidOperationException("this item matches no project and no fallback project is set (Plane:FallbackProject)");
+            ?? throw new InvalidOperationException("this item matches no project and no fallback repo is set (GitHub:FallbackRepo)");
         var title = idea.Length <= MaxTitle ? idea : idea[..(MaxTitle - 1)] + "…";
-        var html = $"<p>{E(idea)}</p><p>{E(item.Why ?? "")}</p>"
-            + $"<p>Source: <a href=\"{E(item.Url)}\">{E(item.Title)}</a> ({E(item.Feed)}, feed-eater item {item.Id})</p>";
-        var issueId = await sink.FileAsync(new IdeaDraft(project, title, html), ct);
-        await feedback.AddIdeaAsync(new Idea { ItemId = itemId, PlaneProject = project, PlaneIssueId = issueId, Title = title, At = time.GetUtcNow().UtcDateTime }, ct);
+        var body = $"{Markdown.Text(idea)}\n\n{Markdown.Text(item.Why ?? "")}\n\nSource: {Markdown.Link(item.Title, item.Url)} ({Markdown.Text(item.Feed)}, feed-eater item {item.Id})";
+        var number = await sink.FileAsync(new IdeaDraft(project, title, body), ct);
+        await feedback.AddIdeaAsync(new Idea { ItemId = itemId, Project = project, IssueNumber = number, Title = title, At = time.GetUtcNow().UtcDateTime }, ct);
         return project;
     }
-
-    private static string E(string text) => WebUtility.HtmlEncode(text);
 }

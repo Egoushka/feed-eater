@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Dapper;
 using FeedEater.Inbox;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Ui;
@@ -24,12 +24,9 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
     private const string Token = "swipe-token";
 
     private static readonly ShiftedTime Time = new();
-    private static readonly StubHandler Plane = new((request, _) => request.RequestUri!.AbsolutePath switch
-    {
-        "/api/v1/workspaces/w/projects/" => StubHandler.Json("""{"results":[{"id":"p-lab","identifier":"LAB"}]}"""),
-        var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) => StubHandler.Json("""{"issue":"issue-1"}""", HttpStatusCode.Created),
-        _ => StubHandler.Json("{}", HttpStatusCode.NotFound),
-    });
+    private static readonly StubHandler GitHub = new((request, _) => request.Method == HttpMethod.Post
+        ? StubHandler.Json("""{"number":1}""", HttpStatusCode.Created)
+        : StubHandler.Json("{}", HttpStatusCode.NotFound));
 
     /// <summary>The real clock plus an offset, so the app's time and the database's now() stay comparable; each test starts at zero.</summary>
     private sealed class ShiftedTime : TimeProvider
@@ -45,13 +42,13 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
 
     private HttpClient http = null!;
 
-    private static IReadOnlyList<string> PlaneCreated
+    private static IReadOnlyList<string> IssuesCreated
     {
         get
         {
-            lock (Plane.Calls)
+            lock (GitHub.Calls)
             {
-                return [.. Plane.Calls.Where(c => c.Method == HttpMethod.Post && c.Uri.EndsWith("/intake-issues/", StringComparison.Ordinal)).Select(c => c.Uri)];
+                return [.. GitHub.Calls.Where(c => c.Method == HttpMethod.Post && c.Uri.EndsWith("/issues", StringComparison.Ordinal)).Select(c => c.Uri)];
             }
         }
     }
@@ -60,9 +57,9 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
     {
         await pg.ResetAsync();
         Time.Reset();
-        lock (Plane.Calls)
+        lock (GitHub.Calls)
         {
-            Plane.Calls.Clear();
+            GitHub.Calls.Clear();
         }
 
         http = host.Client;
@@ -96,10 +93,9 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
                     ("FeedEater:ProfilePath", "/nope/profile.json"),
                     ("FeedEater:Swipe:Enabled", "true"),
                     ("FeedEater:Swipe:Cards", "3"),
-                    ("FeedEater:Plane:BaseUrl", "http://plane/"),
-                    ("FeedEater:Plane:Token", "t"),
-                    ("FeedEater:Plane:Workspace", "w"),
-                    ("FeedEater:Plane:FallbackProject", "FEED"),
+                    ("FeedEater:GitHub:BaseUrl", "http://github/"),
+                    ("FeedEater:GitHub:Token", "t"),
+                    ("FeedEater:GitHub:FallbackRepo", "octo/feed"),
                 ];
                 foreach (var (key, value) in settings)
                 {
@@ -112,7 +108,7 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
                     s.RemoveAll<TimeProvider>();
                     s.AddSingleton<TimeProvider>(Time);
                     s.AddSingleton<IdeaDecisions>();
-                    s.AddHttpClient<PlaneClient>().ConfigurePrimaryHttpMessageHandler(() => Plane);
+                    s.AddHttpClient<GitHubIssues>().ConfigurePrimaryHttpMessageHandler(() => GitHub);
                 });
             });
             Client = app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
@@ -165,8 +161,8 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
         {
             ["week"] = "2026-W43",
             ["title"] = "Cache it",
-            ["project"] = "LAB",
-            ["html"] = "<p>x</p>",
+            ["project"] = "octo/homelab",
+            ["body"] = "x",
             ["url"] = "https://example.com/i",
             ["sourceTitle"] = "S",
             ["why"] = "w",
@@ -215,14 +211,14 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
     }
 
     [Fact]
-    public async Task Concurrent_repeats_of_one_keep_file_one_Plane_item()
+    public async Task Concurrent_repeats_of_one_keep_file_one_issue()
     {
         var (session, position) = await IdeaCardAsync();
         var id = Guid.NewGuid();
 
         await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => ActAsync(session, position, "keep", id)));
 
-        Assert.Single(PlaneCreated);
+        Assert.Single(IssuesCreated);
     }
 
     [Fact]
@@ -322,8 +318,8 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
         var undo = await UndoAsync(session, position, id);
 
         Assert.False(undo.Ok);
-        Assert.Contains("Plane", undo.Message);
-        Assert.Single(PlaneCreated);
+        Assert.Contains("filed", undo.Message);
+        Assert.Single(IssuesCreated);
     }
 
     [Fact]

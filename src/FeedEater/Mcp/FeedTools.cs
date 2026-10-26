@@ -53,12 +53,12 @@ public sealed class FeedTools(ArchiveSearch search, ItemStore items, DigestStore
     }
 
     [McpServerTool(Name = "feed_ideas", ReadOnly = true)]
-    [Description("Ideas the owner filed from digests, newest first, with the project (a Plane project when Plane is the idea sink) and the source item id.")]
+    [Description("Ideas the owner filed from digests, newest first, with the project (a GitHub repo, owner/name, when GitHub is the idea sink; a Plane project for ideas filed before) and the source item id.")]
     public async Task<string> IdeasAsync(
-        [Description("Project identifier to filter by.")] string? planeProject = null,
+        [Description("Project to filter by: a repo (owner/name) or a project key.")] string? project = null,
         [Description("At most this many, 1 to 50; default 20.")] int limit = 20,
         CancellationToken ct = default) =>
-        Json(await feedback.IdeasAsync(planeProject, Math.Clamp(limit, 1, 50), ct));
+        Json(await feedback.IdeasAsync(project, Math.Clamp(limit, 1, 50), ct));
 
     private static string Date(string text) =>
         DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)

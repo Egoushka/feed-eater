@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using System.Net;
 using FeedEater.Inbox;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.WeeklyIdeas;
 using FeedEater.Storage;
 using FeedEater.Swipe;
@@ -462,19 +462,15 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(("digest", item), (await ScalarAsync<string>("select kind from swipe_events"), await ScalarAsync<long>("select ref_id from swipe_events")));
     }
 
-    private SwipeService IdeaService(bool planeDown, out StubHandler plane)
+    private SwipeService IdeaService(bool githubDown, out StubHandler github)
     {
-        var options = Options.Create(new FeedEaterOptions { Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "t", Workspace = "w", FallbackProject = "FEED" } });
-        plane = new StubHandler((request, _) => request.RequestUri!.AbsolutePath switch
-        {
-            "/api/v1/workspaces/w/projects/" => StubHandler.Json("""{"results":[{"id":"p-lab","identifier":"LAB"}]}"""),
-            var p when p.EndsWith("/intake-issues/", StringComparison.Ordinal) => planeDown
+        github = new StubHandler((request, _) => request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath.EndsWith("/issues", StringComparison.Ordinal)
+            ? githubDown
                 ? StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable)
-                : StubHandler.Json("""{"issue":"issue-1"}""", HttpStatusCode.Created),
-            _ => StubHandler.Json("{}", HttpStatusCode.NotFound),
-        });
+                : StubHandler.Json("""{"number":7}""", HttpStatusCode.Created)
+            : StubHandler.Json("{}", HttpStatusCode.NotFound));
         var sp = app!.Services;
-        var decisions = new IdeaDecisions(new InboxStore(pg.Db), new WeeklyIdeaStore(pg.Db), new PlaneClient(plane.Client("http://plane/"), options), TimeProvider.System);
+        var decisions = new IdeaDecisions(new InboxStore(pg.Db), new WeeklyIdeaStore(pg.Db), new GitHubIssues(github.Client("http://github/")), TimeProvider.System);
         var cards = new InboxCards(new InboxStore(pg.Db), sp.GetRequiredService<ItemStore>(), new DuelStore(pg.Db), sp.GetRequiredService<FeedEater.Follow.StoryFollower>(), sp.GetRequiredService<FeedEater.Library.LibraryStore>(), sp.GetRequiredService<FeedEater.Library.LibraryService>(), TimeProvider.System, decisions);
         return ActivatorUtilities.CreateInstance<SwipeService>(sp, cards);
     }
@@ -483,8 +479,8 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
     {
         ["week"] = "2026-W43",
         ["title"] = "Cache it",
-        ["project"] = "LAB",
-        ["html"] = "<p>x</p>",
+        ["project"] = "octo/homelab",
+        ["body"] = "x",
         ["url"] = "https://example.com/i",
         ["sourceTitle"] = "S",
         ["signal"] = "s",
@@ -498,37 +494,39 @@ public sealed class SwipeStackTests(PostgresFixture pg) : IAsyncLifetime
     {
         Service();
         await IdeaAsync();
-        var svc = IdeaService(false, out var plane);
+        var svc = IdeaService(false, out var github);
         var card = await ShowAsync(svc);
 
         var kept = await ActAsync(svc, card, "keep");
         var again = await ActAsync(svc, card, "drop");
 
-        Assert.Equal(new ActResult(true, "Filed in LAB"), kept);
+        Assert.Equal(new ActResult(true, "Filed in octo/homelab"), kept);
         Assert.Equal(new ActResult(true, "Already decided"), again);
-        Assert.Contains(plane.Calls, c => c.Uri.EndsWith("/intake-issues/", StringComparison.Ordinal));
-        Assert.Equal("issue-1", await ScalarAsync<string>("select plane_issue_id from weekly_ideas"));
+        var post = Assert.Single(github.Calls);
+        Assert.Equal("http://github/repos/octo/homelab/issues", post.Uri);
+        Assert.Contains("\"labels\":[\"triage\"]", post.Body, StringComparison.Ordinal);
+        Assert.Equal(("octo/homelab", 7), (await ScalarAsync<string>("select repo from weekly_ideas"), await ScalarAsync<int>("select issue_number from weekly_ideas")));
         Assert.Equal(1, await DoneCountAsync());
     }
 
     [Fact]
-    public async Task Drop_marks_the_idea_dropped_without_calling_Plane()
+    public async Task Drop_marks_the_idea_dropped_without_calling_GitHub()
     {
         Service();
         await IdeaAsync();
-        var svc = IdeaService(false, out var plane);
+        var svc = IdeaService(false, out var github);
         var card = await ShowAsync(svc);
 
         var result = await ActAsync(svc, card, "drop");
 
         Assert.Equal(new ActResult(true, "Dropped"), result);
         Assert.Equal("dropped", await ScalarAsync<string>("select outcome from weekly_ideas"));
-        Assert.DoesNotContain(plane.Calls, c => c.Uri.EndsWith("/intake-issues/", StringComparison.Ordinal));
+        Assert.Empty(github.Calls);
         Assert.Equal(1, await DoneCountAsync());
     }
 
     [Fact]
-    public async Task Keep_while_Plane_is_down_fails_and_leaves_the_idea_open()
+    public async Task Keep_while_GitHub_is_down_fails_and_leaves_the_idea_open()
     {
         Service();
         await IdeaAsync();

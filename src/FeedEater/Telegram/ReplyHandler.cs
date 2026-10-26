@@ -2,7 +2,7 @@ using System.Net;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
 using FeedEater.Llm;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Search;
 using FeedEater.Storage;
 
@@ -84,7 +84,7 @@ public sealed class ReplyHandler(
                 return intent.Action == "up" ? "👍 saved" : "👎 saved";
 
             case "idea" when intent.UnknownProject is { } unknown:
-                return E($"No {(sink.Name == IdeasOptions.PlaneSink ? "Plane project" : "project")} called {unknown}. Known: {string.Join(", ", projects)}.");
+                return E($"No {(sink.Name == IdeasOptions.GitHubSink ? "repo" : "project")} called {unknown}. Known: {string.Join(", ", projects)}.");
 
             case "idea":
                 var (project, error) = await callbacks.FileIdeaAsync(item.Id, intent.Project, intent.Idea, ct);

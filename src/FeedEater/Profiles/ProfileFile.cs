@@ -1,10 +1,11 @@
 using System.Text.Json;
+using FeedEater.Issues;
 
 namespace FeedEater.Profiles;
 
-public sealed record ProfileEntry(string Key, string Description, string? Plane = null);
+public sealed record ProfileEntry(string Key, string Description, string? Repo = null);
 
-/// <summary>Hand-written description of the reader, their projects (with optional Plane identifiers) and their topics.</summary>
+/// <summary>Hand-written description of the reader, their projects (with optional GitHub repos, owner/name) and their topics.</summary>
 public sealed record ProfileFile(string About, IReadOnlyList<ProfileEntry> Projects, IReadOnlyList<ProfileEntry> Topics)
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
@@ -52,6 +53,11 @@ public sealed record ProfileFile(string About, IReadOnlyList<ProfileEntry> Proje
         if (entries.Any(e => string.IsNullOrWhiteSpace(e.Key) || string.IsNullOrWhiteSpace(e.Description)))
         {
             throw new InvalidDataException("every profile entry needs a key and a description");
+        }
+
+        if (file.Projects.FirstOrDefault(p => p.Repo is not null && !GitHubIssues.IsRepo(p.Repo)) is { } bad)
+        {
+            throw new InvalidDataException($"profile key '{bad.Key}': repo '{bad.Repo}' is not owner/name");
         }
 
         var duplicate = entries.GroupBy(e => e.Key, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);

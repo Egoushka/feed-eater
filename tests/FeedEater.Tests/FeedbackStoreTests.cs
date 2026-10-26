@@ -56,7 +56,7 @@ public sealed class FeedbackStoreTests(PostgresFixture pg) : IAsyncLifetime
         await store.SetVoteAsync(filedAndWeak, 1, default, weight: 0.5);
         foreach (var item in new[] { filed, filedAndWeak })
         {
-            await store.AddIdeaAsync(new Idea { ItemId = item, PlaneProject = "FEED", PlaneIssueId = "i", Title = "t", At = DateTime.UtcNow }, default);
+            await store.AddIdeaAsync(new Idea { ItemId = item, Project = "FEED", IssueNumber = 1, Title = "t", At = DateTime.UtcNow }, default);
         }
 
         var positives = (await store.PositiveWeightedAsync(500, default)).ToDictionary(v => Array.IndexOf(v.X, 1f), v => v.Weight);
@@ -82,7 +82,7 @@ public sealed class FeedbackStoreTests(PostgresFixture pg) : IAsyncLifetime
         await Seed.SignalAsync(pg, "k1", TestVectors.OneHot(4));
         await store.SetVoteAsync(up, 1, default);
         await store.SetVoteAsync(down, -1, default);
-        await store.AddIdeaAsync(new Idea { ItemId = filed, PlaneProject = "FEED", PlaneIssueId = "i1", Title = "t", At = DateTime.UtcNow }, default);
+        await store.AddIdeaAsync(new Idea { ItemId = filed, Project = "FEED", IssueNumber = 1, Title = "t", At = DateTime.UtcNow }, default);
 
         var positives = await store.PositiveVectorsAsync(500, default);
         var negatives = await store.NegativeVectorsAsync(500, default);
@@ -100,7 +100,7 @@ public sealed class FeedbackStoreTests(PostgresFixture pg) : IAsyncLifetime
         var store = new FeedbackStore(pg.Db);
         var id = await Seed.ItemAsync(pg, 1, "both", TestVectors.OneHot(1));
         await store.SetVoteAsync(id, 1, default);
-        await store.AddIdeaAsync(new Idea { ItemId = id, PlaneProject = "FEED", PlaneIssueId = "i1", Title = "t", At = DateTime.UtcNow }, default);
+        await store.AddIdeaAsync(new Idea { ItemId = id, Project = "FEED", IssueNumber = 1, Title = "t", At = DateTime.UtcNow }, default);
 
         var positives = await store.PositiveVectorsAsync(500, default);
 
@@ -114,12 +114,12 @@ public sealed class FeedbackStoreTests(PostgresFixture pg) : IAsyncLifetime
         var a = await Seed.ItemAsync(pg, 1, "a", TestVectors.OneHot(0));
         var b = await Seed.ItemAsync(pg, 1, "b", TestVectors.OneHot(1));
 
-        await store.AddIdeaAsync(new Idea { ItemId = a, PlaneProject = "SKAR", PlaneIssueId = "first", Title = "x", At = DateTime.UtcNow }, default);
-        await store.AddIdeaAsync(new Idea { ItemId = a, PlaneProject = "SKAR", PlaneIssueId = "second", Title = "x", At = DateTime.UtcNow }, default);
-        await store.AddIdeaAsync(new Idea { ItemId = b, PlaneProject = "FEED", PlaneIssueId = "third", Title = "y", At = DateTime.UtcNow }, default);
+        await store.AddIdeaAsync(new Idea { ItemId = a, Project = "SKAR", IssueNumber = 1, Title = "x", At = DateTime.UtcNow }, default);
+        await store.AddIdeaAsync(new Idea { ItemId = a, Project = "SKAR", IssueNumber = 2, Title = "x", At = DateTime.UtcNow }, default);
+        await store.AddIdeaAsync(new Idea { ItemId = b, Project = "FEED", IssueNumber = 3, Title = "y", At = DateTime.UtcNow }, default);
 
-        Assert.Equal("first", (await store.GetIdeaAsync(a, default))!.PlaneIssueId);
-        Assert.Equal(["third"], (await store.IdeasAsync("FEED", 10, default)).Select(i => i.PlaneIssueId));
+        Assert.Equal(1, (await store.GetIdeaAsync(a, default))!.IssueNumber);
+        Assert.Equal([3], (await store.IdeasAsync("FEED", 10, default)).Select(i => i.IssueNumber));
         Assert.Equal(2, (await store.IdeasAsync(null, 10, default)).Count);
     }
 }
