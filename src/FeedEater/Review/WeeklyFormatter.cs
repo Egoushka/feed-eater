@@ -40,7 +40,7 @@ public static class WeeklyFormatter
             h.Append("\n\n<b>Ideas filed</b>");
             foreach (var idea in r.IdeasFiled.Take(MaxIdeas))
             {
-                h.Append($"\n• {E(Clip(idea.Title, 90))} ({E(idea.PlaneProject)})");
+                h.Append($"\n• {E(Clip(idea.Title, 90))} ({E(idea.Project)})");
             }
 
             if (r.IdeasFiled.Count > MaxIdeas)

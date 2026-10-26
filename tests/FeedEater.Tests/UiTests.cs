@@ -52,9 +52,9 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
                 ("FeedEater:Llm:MonthlyBudget", "5"),
                 ("FeedEater:Karakeep:BaseUrl", "http://127.0.0.1:9/"),   // nothing listens: saving reports Karakeep as down
                 ("FeedEater:Karakeep:Token", token.Length > 0 ? "k" : ""),
-                ("FeedEater:Plane:BaseUrl", "http://127.0.0.1:9/"),
-                ("FeedEater:Plane:Token", "p"),
-                ("FeedEater:Plane:Workspace", "homelab"),
+                ("FeedEater:GitHub:BaseUrl", "http://127.0.0.1:9/"),
+                ("FeedEater:GitHub:Token", "p"),
+                ("FeedEater:GitHub:FallbackRepo", "octo/homelab"),
                 ("FeedEater:Watch:FallbackPath", Path.Combine(AppContext.BaseDirectory, "config", "watch.example.json")),
                 ("FeedEater:ProfilePath", "Fixtures/profile.json"),
             ];
@@ -355,7 +355,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Every_page_renders_for_a_signed_in_user_with_data()
     {
         var (item, today) = await SeedDigestAsync();
-        await new FeedbackStore(pg.Db).AddIdeaAsync(new Idea { ItemId = item, PlaneProject = "LAB", PlaneIssueId = "i-1", Title = "Upgrade the box.", At = DateTime.UtcNow }, default);
+        await new FeedbackStore(pg.Db).AddIdeaAsync(new Idea { ItemId = item, Project = "LAB", IssueNumber = 1, Title = "Upgrade the box.", At = DateTime.UtcNow }, default);
         await new UsageStore(pg.Db).AddAsync("triage", "gpt-4.1-nano", 100, 20, 0.5m, default);
         var cookie = await LoginAsync();
 
@@ -406,7 +406,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Feed_content_is_encoded_and_unsafe_links_are_not_linked()
     {
         var (item, today) = await SeedDigestAsync($"{Hostile} title", "javascript:alert(document.cookie)", $"{Hostile} feed", $"{Hostile} suggestion");
-        await new FeedbackStore(pg.Db).AddIdeaAsync(new Idea { ItemId = item, PlaneProject = "LAB", PlaneIssueId = "i", Title = $"{Hostile} idea", At = DateTime.UtcNow }, default);
+        await new FeedbackStore(pg.Db).AddIdeaAsync(new Idea { ItemId = item, Project = "LAB", IssueNumber = 1, Title = $"{Hostile} idea", At = DateTime.UtcNow }, default);
         await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
         {
             await c.ExecuteAsync("update items set content = @content where id = @item", new { item, content = $"{Hostile} \" onmouseover=\"x" });
@@ -693,7 +693,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         await feedback.SetVoteAsync(liked, 1, default);
         await feedback.SetVoteAsync(disliked, -1, default);
         await feedback.SetVoteAsync(filed, 1, default);
-        await feedback.AddIdeaAsync(new Idea { ItemId = filed, PlaneProject = "LAB", PlaneIssueId = "i-9", Title = "t", At = DateTime.UtcNow }, default);
+        await feedback.AddIdeaAsync(new Idea { ItemId = filed, Project = "LAB", IssueNumber = 9, Title = "t", At = DateTime.UtcNow }, default);
         var cookie = await LoginAsync();
 
         var up = await GetAsync("/ui/feedback", cookie);
@@ -750,7 +750,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         await new FeedbackStore(pg.Db).SetVoteAsync(id, 1, default);
-        await new FeedbackStore(pg.Db).AddIdeaAsync(new Idea { ItemId = id, PlaneProject = "LAB", PlaneIssueId = "i", Title = Hostile, At = DateTime.UtcNow }, default);
+        await new FeedbackStore(pg.Db).AddIdeaAsync(new Idea { ItemId = id, Project = "LAB", IssueNumber = 1, Title = Hostile, At = DateTime.UtcNow }, default);
         var cookie = await LoginAsync();
         var pages = new[]
         {
@@ -1048,16 +1048,16 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, (await PostAsync("/ui/quiet", cookie, ("mode", "sideways"))).StatusCode);
     }
     [Fact]
-    public async Task Without_Plane_or_Karakeep_the_idea_button_saves_locally_and_the_save_button_stays()
+    public async Task Without_GitHub_issues_or_Karakeep_the_idea_button_saves_locally_and_the_save_button_stays()
     {
-        await using var app = Factory(Token, false, ("FeedEater:Plane:BaseUrl", ""), ("FeedEater:Karakeep:BaseUrl", ""));
+        await using var app = Factory(Token, false, ("FeedEater:GitHub:FallbackRepo", ""), ("FeedEater:Karakeep:BaseUrl", ""));
         var http = Client(app);
         var (item, _) = await SeedDigestAsync();
         var cookie = await LoginAsync(http);
         var page = await (await http.SendAsync(Req(HttpMethod.Get, "/ui", cookie))).Content.ReadAsStringAsync();
 
         Assert.Contains("💡 Save idea", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("File to Plane", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("File as issue", page, StringComparison.Ordinal);
         Assert.Contains("📌 Save", page, StringComparison.Ordinal);
 
         var response = await http.SendAsync(Req(HttpMethod.Post, "/ui/vote", cookie, "http://localhost",
@@ -1065,7 +1065,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal("/ui?notice=saved-idea#item-1", response.Headers.Location!.OriginalString);
         var idea = (await new FeedbackStore(pg.Db).GetIdeaAsync(item, default))!;
-        Assert.Equal(("inbox", ""), (idea.PlaneProject, idea.PlaneIssueId));
+        Assert.Equal(("inbox", (int?)null), (idea.Project, idea.IssueNumber));
         var after = await (await http.SendAsync(Req(HttpMethod.Get, "/ui?notice=saved-idea", cookie))).Content.ReadAsStringAsync();
         Assert.Contains("Saved as an idea.", after, StringComparison.Ordinal);
         Assert.Contains("Upgrade the box.", await (await http.SendAsync(Req(HttpMethod.Get, "/ui/ideas", cookie))).Content.ReadAsStringAsync(), StringComparison.Ordinal);

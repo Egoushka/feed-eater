@@ -17,7 +17,7 @@ prints the effective values with secrets masked.
 | `FeedEater:Telegram:Token`, `AllowedUserId` | yes | its own bot; the poller only starts with a token. While `AllowedUserId` is 0 the bot answers only `/start`, with your id |
 | `FeedEater:Miniflux:BaseUrl`, `Token` | no | use Miniflux as the feed source instead of the built-in reader; read-only use |
 | `FeedEater:TimeZone` | no | default `UTC`; set an IANA name such as `Europe/Berlin` for the digest time, quiet hours and shown dates |
-| `FeedEater:Plane:BaseUrl`, `Token`, `Workspace` | no | without them 💡 saves ideas to the local list (`/ui/ideas`) |
+| `FeedEater:GitHub:Token`, `FallbackRepo` | no | ideas become issues labelled `triage`; without them 💡 saves ideas to the local list (`/ui/ideas`) |
 | `FeedEater:Karakeep:BaseUrl`, `Token` | no | without them there is no Karakeep mirror and no bookmark import |
 | `FeedEater:Hindsight:BaseUrl` | no | weekly summary to the `feed-eater` bank; off without it |
 | `FeedEater:GitHub:User` | no | stars of this user count as liked items; off without it. With a Telegram token it also turns on the hype autopsy (`/ui/autopsy`) |
@@ -126,7 +126,7 @@ vote kind and per profile for use without the picture. It needs at least 3 embed
 - **Reply to an item.** Reply to a digest item or a search result with free text. The small model turns it into one action: 👍, 👎,
   file an idea (in a project you name, in your words: "idea for <project>: …"), save to Karakeep, mute the feed, or answer a question
   from the item's own text. A bare 👍 or 👎 needs no model call. The item is found from the buttons on the message you replied to, so
-  nothing new is stored. A project name that is not a known project (a Plane project when Plane is the idea sink) files nothing and lists the known ones.
+  nothing new is stored. A project name that is not a known project (a repo, or its bare name, when GitHub is the idea sink) files nothing and lists the known ones.
 - **`/learn`.** `/learn status` gives the vote count and, with enough votes, the held-out agreement of the current and learned rankings.
   `/learn on|off` switches the learned term from the next digest and wins over `FeedEater:Taste:Learn`. The weekly review adds a
   "Ranking" line when the learned model is ahead by the required margin and still off.
@@ -170,11 +170,11 @@ snapshotted like any other.
 
 ## Weekly ideas
 
-With Plane and a Telegram token set, Mondays at `FeedEater:WeeklyIdeas:At` (09:00 in `FeedEater:TimeZone`) a job collects the week's items
+With GitHub issues and a Telegram token set, Mondays at `FeedEater:WeeklyIdeas:At` (09:00 in `FeedEater:TimeZone`) a job collects the week's items
 the model marked `improve`, the items you 👍 or 📌 saved, and your new Karakeep bookmarks. One model call ranks them into at most
 `MaxFiled` (5) ideas, each with the project it belongs to, the repo or workflow it changes, an effort (S under an hour, M up to a day, L
-longer) and a reason. Every idea becomes a Plane Intake item in that project (`FeedEater:Plane:FallbackProject` when none fits), and the
-top `TopInMessage` (3) go to Telegram. The model sees the latest 100 work items of each project, the ideas earlier runs filed and, with
+longer) and a reason. Every idea waits for Keep or Drop; Keep files it as an issue labelled `triage` in that project's repo (`FeedEater:GitHub:FallbackRepo` when none fits), and the
+top `TopInMessage` (3) go to Telegram. The model sees the latest 100 issues of each repo (closed ones too, pull requests left out), the ideas earlier runs filed and, with
 `FeedEater:WeeklyIdeas:BacklogUrl` (a GitHub contents API URL, token in `BacklogToken`), a backlog file, and leaves out whatever repeats
 them; a source URL that was filed once is never offered again (`weekly_ideas`). A configured backlog that cannot be read fails the run,
 which is retried with backoff, so nothing is filed without the check. Quiet hours hold it; a run missed while down happens at start; `/ideas` on Telegram runs it now.

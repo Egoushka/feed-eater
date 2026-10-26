@@ -55,7 +55,7 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
         await feedback.SetVoteAsync(liked1, 1, default);
         await feedback.SetVoteAsync(liked2, 1, default);
         await feedback.SetVoteAsync(disliked, -1, default);
-        await feedback.AddIdeaAsync(new Idea { ItemId = liked1, PlaneProject = "LAB", PlaneIssueId = "x", Title = "Try it", At = Until.UtcDateTime.AddDays(-1) }, default);
+        await feedback.AddIdeaAsync(new Idea { ItemId = liked1, Project = "LAB", IssueNumber = 1, Title = "Try it", At = Until.UtcDateTime.AddDays(-1) }, default);
         await SqlAsync("update votes set at = @at", new { at = Until.UtcDateTime.AddDays(-1) });
         await SqlAsync("insert into digests (local_date, status, item_ids) values ('2026-10-08', 'sent', @ids), ('2026-10-01', 'sent', @old)",
             new { ids = new[] { liked1, shownOnly }, old = new[] { liked2 } });
@@ -71,7 +71,7 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal((8, 2, 2, 1, 1), (r.Items, r.Shown, r.Up, r.Down, r.Ideas));   // "Last week" and the 1 Oct digest are outside
         Assert.Equal(["Liked one", "Liked two"], r.TopLiked.Select(i => i.Title).Order());
         Assert.Equal([("homelab", 1, 0), ("other", 0, 1), ("postgres", 1, 0)], r.Projects.OrderBy(p => p.Project).Select(p => (p.Project, p.Up, p.Down)));
-        Assert.Equal(("Try it", "LAB"), (r.IdeasFiled.Single().Title, r.IdeasFiled.Single().PlaneProject));
+        Assert.Equal(("Try it", "LAB"), (r.IdeasFiled.Single().Title, r.IdeasFiled.Single().Project));
         Assert.Equal(("Feed 1", 2), (r.TopFeeds.Single().Title, r.TopFeeds.Single().Count));
         Assert.Equal([("Feed 3", 3)], r.MuteCandidates.Select(f => (f.Title, f.Count)));   // feed 2 had one shown, feed 4 is muted already
     }

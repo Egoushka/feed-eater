@@ -127,7 +127,7 @@ public sealed class PostsStoreTests(PostgresFixture pg) : IAsyncLifetime
         await feedback.SetVoteAsync(a, 1, default);
         await feedback.SetVoteAsync(b, 1, default);
         await feedback.SetVoteAsync(c, -1, default);
-        await feedback.AddIdeaAsync(new Idea { ItemId = b, PlaneProject = "LAB", PlaneIssueId = "x", Title = "t", At = DateTime.UtcNow }, default);
+        await feedback.AddIdeaAsync(new Idea { ItemId = b, Project = "LAB", IssueNumber = 1, Title = "t", At = DateTime.UtcNow }, default);
         await using (var conn = await pg.Db.DataSource.OpenConnectionAsync())
         {
             await conn.ExecuteAsync("update votes set at = @at where item_id = @a", new { a, at = DateTime.UtcNow.AddHours(-5) });
@@ -154,7 +154,7 @@ public sealed class PostsStoreTests(PostgresFixture pg) : IAsyncLifetime
         var b = await ItemAsync(1, "b", 2);
         await feedback.SetVoteAsync(a, 1, default);
         await feedback.SetVoteAsync(b, -1, default);
-        await feedback.AddIdeaAsync(new Idea { ItemId = a, PlaneProject = "LAB", PlaneIssueId = "x", Title = "t", At = DateTime.UtcNow }, default);
+        await feedback.AddIdeaAsync(new Idea { ItemId = a, Project = "LAB", IssueNumber = 1, Title = "t", At = DateTime.UtcNow }, default);
 
         var before = await feedback.TotalsAsync(default);
         Assert.Equal((1, 1, 1), (before.Up, before.Down, before.Ideas));

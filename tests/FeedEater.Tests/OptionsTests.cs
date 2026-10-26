@@ -20,7 +20,7 @@ public sealed class OptionsTests
         Assert.Equal("text-embedding-3-small", o.Llm.EmbedModel);
         Assert.Equal(0.5, o.Weights.Taste);
         Assert.Equal(0.2, o.Weights.Prior);
-        Assert.Equal("", o.Plane.FallbackProject);
+        Assert.Equal("", o.GitHub.FallbackRepo);
         Assert.Equal("UTC", o.Zone.Id);
         Assert.Equal("https://api.openai.com/v1/", o.Llm.BaseUrl);
     }

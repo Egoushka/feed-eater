@@ -26,7 +26,7 @@ public sealed class WeeklyRetainTests(PostgresFixture pg) : IAsyncLifetime
         var liked = await Seed.ItemAsync(pg, 1, "pgvector 0.8.7 released", TestVectors.OneHot(0));
         var feedback = new FeedbackStore(pg.Db);
         await feedback.SetVoteAsync(liked, 1, default);
-        await feedback.AddIdeaAsync(new Idea { ItemId = liked, PlaneProject = "LAB", PlaneIssueId = "i", Title = "Upgrade pgvector", At = DateTime.UtcNow }, default);
+        await feedback.AddIdeaAsync(new Idea { ItemId = liked, Project = "LAB", IssueNumber = 1, Title = "Upgrade pgvector", At = DateTime.UtcNow }, default);
         await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
         {
             await c.ExecuteAsync("insert into digests (local_date, status, item_ids, sent_at) values ('2026-10-04', 'sent', @ids, now())", new { ids = new[] { liked } });

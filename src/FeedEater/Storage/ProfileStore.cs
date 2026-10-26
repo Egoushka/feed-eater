@@ -6,7 +6,8 @@ public sealed record Profile
 {
     public string Key { get; init; } = "";
     public string Kind { get; init; } = "";
-    public string? PlaneIdentifier { get; init; }
+    /// <summary>The GitHub repo (owner/name) ideas about this project go to.</summary>
+    public string? Repo { get; init; }
     public string Description { get; init; } = "";
     public float[] Embedding { get; init; } = [];
 }
@@ -23,10 +24,10 @@ public sealed class ProfileStore(FeedDb db)
         {
             await c.ExecuteAsync(new CommandDefinition(
                 """
-                insert into profiles (key, kind, plane_identifier, description, embedding, built_at)
-                values (@Key, @Kind, @PlaneIdentifier, @Description, @Embedding::real[]::vector, @builtAt)
+                insert into profiles (key, kind, repo, description, embedding, built_at)
+                values (@Key, @Kind, @Repo, @Description, @Embedding::real[]::vector, @builtAt)
                 """,
-                new { p.Key, p.Kind, p.PlaneIdentifier, p.Description, p.Embedding, builtAt = builtAt.UtcDateTime },
+                new { p.Key, p.Kind, p.Repo, p.Description, p.Embedding, builtAt = builtAt.UtcDateTime },
                 tx, cancellationToken: ct));
         }
 
@@ -37,7 +38,7 @@ public sealed class ProfileStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QueryAsync<Profile>(new CommandDefinition(
-            "select key, kind, plane_identifier, description, embedding::real[] as embedding from profiles order by kind, key",
+            "select key, kind, repo, description, embedding::real[] as embedding from profiles order by kind, key",
             cancellationToken: ct))).ToList();
     }
 }

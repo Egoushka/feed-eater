@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 using FeedEater.Ingest;
 using FeedEater.Llm;
 using FeedEater.Memory;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Setup;
 using FeedEater.Signals;
 using FeedEater.Telegram;
@@ -341,14 +341,14 @@ public sealed class SetupChecksTests
     {
         IIntegrationCheck[] checks =
         [
-            new MinifluxCheck(Services(_ => { }), Options.Create(Opts())), new PlaneCheck(Services(_ => { }), Options.Create(Opts())),
+            new MinifluxCheck(Services(_ => { }), Options.Create(Opts())), new GitHubIssuesCheck(Services(_ => { }), Options.Create(Opts())),
             new KarakeepCheck(Services(_ => { }), Options.Create(Opts())), new GitHubCheck(Services(_ => { }), Options.Create(Opts())),
             new HindsightCheck(Services(_ => { }), Options.Create(Opts())), new WatchCheck(Services(_ => { }), Options.Create(Opts())),
         ];
 
         var rows = await new CheckRunner(checks, Options.Create(Opts()), Config()).RunAsync(default);
 
-        Assert.Equal(["miniflux", "plane", "karakeep", "github", "hindsight", "release watch"], rows.Select(r => r.Name));
+        Assert.Equal(["miniflux", "github-issues", "karakeep", "github", "hindsight", "release watch"], rows.Select(r => r.Name));
         Assert.All(rows, r =>
         {
             Assert.Equal(CheckStatus.Off, r.Result.Status);
@@ -360,35 +360,36 @@ public sealed class SetupChecksTests
     private static StubHandler Svc(HttpStatusCode status, string body = "{}") => new((_, _) => StubHandler.Json(body, status));
 
     [Fact]
-    public async Task Plane_is_ok_when_the_fallback_project_exists_and_fails_when_it_does_not()
+    public async Task GitHub_issues_are_ok_when_the_token_can_write_to_the_fallback_repo()
     {
-        var o = Opts(x => x.Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "pk-plane-key", Workspace = "ws", FallbackProject = "FEED" });
-        var plane = Svc(HttpStatusCode.OK, """{"results":[{"id":"p1","identifier":"FEED"}]}""");
-        var missing = Svc(HttpStatusCode.OK, """{"results":[{"id":"p2","identifier":"OTHER"}]}""");
+        var o = Opts(x => x.GitHub = new GitHubOptions { Token = "gh-secret-key", FallbackRepo = "octo/feed" });
+        var writable = Svc(HttpStatusCode.OK, """{"full_name":"octo/feed","permissions":{"push":true}}""");
+        var readOnly = Svc(HttpStatusCode.OK, """{"full_name":"octo/feed","permissions":{"push":false}}""");
 
-        var ok = await RunAsync((s, opts) => new PlaneCheck(s, opts), o, s => s.AddSingleton(new PlaneClient(plane.Client("http://plane/"), Options.Create(o))));
-        var fail = await RunAsync((s, opts) => new PlaneCheck(s, opts), o, s => s.AddSingleton(new PlaneClient(missing.Client("http://plane/"), Options.Create(o))));
+        var ok = await RunAsync((s, opts) => new GitHubIssuesCheck(s, opts), o, s => s.AddSingleton(new GitHubIssues(writable.Client("http://github/"))));
+        var fail = await RunAsync((s, opts) => new GitHubIssuesCheck(s, opts), o, s => s.AddSingleton(new GitHubIssues(readOnly.Client("http://github/"))));
 
         Assert.Equal(CheckStatus.Ok, ok.Result.Status);
-        Assert.Equal("workspace ws, project FEED found", ok.Result.Detail);
+        Assert.Equal("repo octo/feed found, token can file issues", ok.Result.Detail);
         Assert.Equal(CheckStatus.Fail, fail.Result.Status);
-        Assert.Contains("FEED does not exist", fail.Result.Detail, StringComparison.Ordinal);
-        Assert.Contains("FeedEater__Plane__FallbackProject", fail.Result.Fix, StringComparison.Ordinal);
+        Assert.Contains("cannot write to octo/feed", fail.Result.Detail, StringComparison.Ordinal);
+        Assert.Contains("FeedEater__GitHub__FallbackRepo", fail.Result.Fix, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Plane_without_a_fallback_project_counts_the_projects_and_a_refused_key_fails()
+    public async Task GitHub_issues_fail_on_a_missing_repo_and_on_a_refused_token()
     {
-        var o = Opts(x => x.Plane = new PlaneOptions { BaseUrl = "http://plane/", Token = "pk-plane-key", Workspace = "ws" });
-        var plane = Svc(HttpStatusCode.OK, """{"results":[{"id":"p1","identifier":"A"},{"id":"p2","identifier":"B"}]}""");
-        var refused = Svc(HttpStatusCode.Unauthorized);
+        var o = Opts(x => x.GitHub = new GitHubOptions { Token = "gh-secret-key", FallbackRepo = "octo/feed" });
 
-        var ok = await RunAsync((s, opts) => new PlaneCheck(s, opts), o, s => s.AddSingleton(new PlaneClient(plane.Client("http://plane/"), Options.Create(o))));
-        var fail = await RunAsync((s, opts) => new PlaneCheck(s, opts), o, s => s.AddSingleton(new PlaneClient(refused.Client("http://plane/"), Options.Create(o))));
+        var missing = await RunAsync((s, opts) => new GitHubIssuesCheck(s, opts), o,
+            s => s.AddSingleton(new GitHubIssues(Svc(HttpStatusCode.NotFound).Client("http://github/"))));
+        var refused = await RunAsync((s, opts) => new GitHubIssuesCheck(s, opts), o,
+            s => s.AddSingleton(new GitHubIssues(Svc(HttpStatusCode.Unauthorized).Client("http://github/"))));
 
-        Assert.Equal("workspace ws, 2 projects", ok.Result.Detail);
-        Assert.Equal(CheckStatus.Fail, fail.Result.Status);
-        Assert.Contains("FeedEater__Plane__Token", fail.Result.Fix, StringComparison.Ordinal);
+        Assert.Equal(CheckStatus.Fail, missing.Result.Status);
+        Assert.Contains("FeedEater__GitHub__FallbackRepo", missing.Result.Fix, StringComparison.Ordinal);
+        Assert.Equal(CheckStatus.Fail, refused.Result.Status);
+        Assert.Contains("FeedEater__GitHub__Token", refused.Result.Fix, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -521,7 +522,7 @@ public sealed class SetupChecksTests
         var options = Opts(x =>
         {
             x.Telegram = new TelegramOptions { Token = "123456:telegram-secret" };
-            x.Plane = new PlaneOptions { Token = "plane-secret-key" };
+            x.Karakeep = new KarakeepOptions { Token = "karakeep-secret-key" };
         });
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -529,13 +530,13 @@ public sealed class SetupChecksTests
             ["ConnectionStrings:FeedEater"] = "Host=db;Database=feed;Username=feed;Password=hunter2hunter2",
         }).Build();
         var leaky = new FakeCheck("leaky", _ => Task.FromResult(CheckResult.Fail(
-            $"401 for key {Key}\nand token 123456:telegram-secret, plane-secret-key, mcp-secret-token, hunter2hunter2",
+            $"401 for key {Key}\nand token 123456:telegram-secret, karakeep-secret-key, mcp-secret-token, hunter2hunter2",
             $"Fix {Key}.\n\n   Again {Key}")), required: true);
 
         var row = (await new CheckRunner([leaky], Options.Create(options), config).RunAsync(default)).Single();
 
         var text = row.Result.Detail + "|" + row.Result.Fix;
-        foreach (var secret in new[] { Key, "123456:telegram-secret", "plane-secret-key", "mcp-secret-token", "hunter2hunter2" })
+        foreach (var secret in new[] { Key, "123456:telegram-secret", "karakeep-secret-key", "mcp-secret-token", "hunter2hunter2" })
         {
             Assert.DoesNotContain(secret, text, StringComparison.Ordinal);
         }
@@ -563,7 +564,7 @@ public sealed class SetupChecksTests
             new("database", true, CheckResult.Ok("Postgres 18.0, pgvector 0.8.1")),
             new("llm chat", true, CheckResult.Fail("401 from llm.example", "Check FeedEater__Llm__ApiKey.")),
             new("profile", false, CheckResult.Warn("example interests in use", "Copy profile.example.json.")),
-            new("plane", false, CheckResult.Off("not configured")),
+            new("karakeep", false, CheckResult.Off("not configured")),
         ];
 
         var lines = DoctorReport.Lines(rows).ToList();
@@ -571,7 +572,7 @@ public sealed class SetupChecksTests
         Assert.Equal("ok    database  Postgres 18.0, pgvector 0.8.1", lines[0]);
         Assert.Equal("FAIL  llm chat  401 from llm.example - fix: Check FeedEater__Llm__ApiKey.", lines[1]);
         Assert.Equal("warn  profile   example interests in use - fix: Copy profile.example.json.", lines[2]);
-        Assert.Equal("off   plane     not configured", lines[3]);
+        Assert.Equal("off   karakeep  not configured", lines[3]);
         Assert.Equal("1 required check failing: llm chat.", lines[^1]);
     }
 

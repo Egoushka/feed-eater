@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using FeedEater.Digest;
 using FeedEater.Loops;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Telegram;
@@ -145,7 +145,7 @@ public sealed class FeedsCommandTests(PostgresFixture pg) : IAsyncLifetime
         var items = new ItemStore(pg.Db);
         var feedback = new FeedbackStore(pg.Db);
         var llm = new FeedEater.Llm.LiteLlmClient(new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable)).Client("http://llm/"), new UsageStore(pg.Db), options);
-        IIdeaSink sink = new PlaneIdeaSink(new PlaneClient(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://plane/"), options), options);
+        IIdeaSink sink = new GitHubIdeaSink(new GitHubIssues(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://github/")), options);
         var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
         var callbacks = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), Seed.Library(pg, options), options, NullLogger<CallbackHandler>.Instance);
         var search = new FeedEater.Search.ArchiveSearch(items, llm);

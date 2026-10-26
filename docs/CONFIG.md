@@ -18,7 +18,7 @@ An integration is off until its required settings are filled. An off integration
 | Integration | On when | Off means |
 |---|---|---|
 | Miniflux | `Miniflux:BaseUrl` and `Miniflux:Token` | Nothing is copied from Miniflux and no full text is fetched through it. |
-| Plane | `Plane:BaseUrl`, `Plane:Token` and `Plane:Workspace` | Ideas go to the local list (see `Ideas:Sink`); open Plane work is not read into project vectors. |
+| GitHub issues | `GitHub:Token` and `GitHub:FallbackRepo` | Ideas go to the local list (see `Ideas:Sink`); open issues are not read into project vectors and there is no weekly ideas shortlist. |
 | Karakeep | `Karakeep:BaseUrl` and `Karakeep:Token` | No 📌 button and no bookmark import. |
 | GitHub stars | `GitHub:User` | No stars import. |
 | Hype autopsy | `GitHub:User` and `Telegram:Token` | No repo snapshots and no monthly autopsy; `GitHub:Token` is optional and lifts the 60 requests an hour limit. |
@@ -98,7 +98,9 @@ An integration is off until its required settings are filled. An off integration
 | Key | Default | Description |
 |---|---|---|
 | `FeedEater:GitHub:BaseUrl` | `https://api.github.com/` | GitHub API URL. |
-| `FeedEater:GitHub:Token` | (empty) | GitHub token, sent on every GitHub call. Optional: it lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it). A token with no scopes is enough. |
+| `FeedEater:GitHub:FallbackRepo` | (empty) | Repo (owner/name) for ideas whose item matches no project with a repo of its own. With GitHub:Token it turns GitHub issues on: ideas are filed as issues labelled triage. |
+| `FeedEater:GitHub:OwnerTokens` | (empty) | Tokens for owners that GitHub:Token cannot reach (a fine-grained token covers one owner), as owner=token pairs separated by commas, e.g. some-org=ghp_x. A repo of a listed owner is called with that token instead of GitHub:Token. |
+| `FeedEater:GitHub:Token` | (empty) | GitHub token, sent on every GitHub call. It lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it); a token with no scopes is enough for that. Filing ideas as issues needs one that can write issues in every repo of the profile (classic: repo, or public_repo when all are public). |
 | `FeedEater:GitHub:User` | (empty) | GitHub user whose public stars count as liked items. Empty means no stars import. |
 
 ## Hindsight
@@ -113,7 +115,7 @@ An integration is off until its required settings are filled. An off integration
 
 | Key | Default | Description |
 |---|---|---|
-| `FeedEater:Ideas:Sink` | `auto` | Where 💡 ideas go: plane, local, or auto (plane when Plane is configured, else local). Local keeps them on /ui/ideas and in the feed_ideas MCP tool. |
+| `FeedEater:Ideas:Sink` | `auto` | Where 💡 ideas go: github, local, or auto (github when GitHub issues are configured, else local). GitHub opens an issue labelled triage in the project's repo; local keeps them on /ui/ideas and in the feed_ideas MCP tool. |
 
 ## Karakeep
 
@@ -155,15 +157,6 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Miniflux:PageSize` | `100` | Entries per Miniflux request. |
 | `FeedEater:Miniflux:PollInterval` | `00:30:00` | How often new entries are copied. |
 | `FeedEater:Miniflux:Token` | (empty) | Miniflux API key; only read from. |
-
-## Plane
-
-| Key | Default | Description |
-|---|---|---|
-| `FeedEater:Plane:BaseUrl` | (empty) | Plane server URL. Empty means no Plane. |
-| `FeedEater:Plane:FallbackProject` | (empty) | Plane project identifier for ideas whose item matches no project of its own. |
-| `FeedEater:Plane:Token` | (empty) | Plane API key. |
-| `FeedEater:Plane:Workspace` | (empty) | Plane workspace slug. |
 
 ## Quiet
 
@@ -239,9 +232,9 @@ An integration is off until its required settings are filled. An off integration
 |---|---|---|
 | `FeedEater:WeeklyIdeas:At` | `09:00:00` | Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start. |
 | `FeedEater:WeeklyIdeas:BacklogToken` | (empty) | GitHub token that can read the backlog file; empty for a public repository. |
-| `FeedEater:WeeklyIdeas:BacklogUrl` | (empty) | GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; Plane items and earlier shortlists still are. |
-| `FeedEater:WeeklyIdeas:Enabled` | `true` | Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, filed as Plane Intake items with the top few on Telegram. Ideas are filed in Plane only after Keep (Telegram button, swipe card). Needs Plane, and Telegram or Swipe. False turns the job off. |
-| `FeedEater:WeeklyIdeas:MaxFiled` | `5` | Most ideas filed in Plane per week. |
+| `FeedEater:WeeklyIdeas:BacklogUrl` | (empty) | GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; GitHub issues and earlier shortlists still are. |
+| `FeedEater:WeeklyIdeas:Enabled` | `true` | Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, with the top few on Telegram. Ideas are filed as GitHub issues labelled triage only after Keep (Telegram button, swipe card). Needs GitHub issues (GitHub:Token and GitHub:FallbackRepo), and Telegram or Swipe. False turns the job off. |
+| `FeedEater:WeeklyIdeas:MaxFiled` | `5` | Most ideas filed as GitHub issues per week. |
 | `FeedEater:WeeklyIdeas:TopInMessage` | `3` | Ideas listed in the Telegram message, best first. |
 
 ## Weights

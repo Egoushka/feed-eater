@@ -1,9 +1,9 @@
 {
   "about": "A backend developer who builds web services in C# and PostgreSQL and is curious about self-hosting and about using LLMs in production.",
   "projects": [
-    // Optional on a project: "plane": "<Plane project identifier>" files 💡 ideas for it into that Plane project.
+    // Optional on a project: "repo": "<owner/name>" files 💡 ideas for it as GitHub issues labelled triage in that repo.
     { "key": "web-api", "description": "A REST API in ASP.NET Core with PostgreSQL. Cares about framework upgrades, query performance and reliable deployments." },
-    { "key": "side-project", "description": "A small side project; ideas for it land in the fallback project." }
+    { "key": "side-project", "description": "A small side project; ideas for it land in the fallback repo." }
   ],
   "topics": [
     { "key": "postgres", "description": "PostgreSQL internals, releases, extensions and performance." },

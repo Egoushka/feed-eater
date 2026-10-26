@@ -50,7 +50,7 @@ public sealed class WeeklyRetain(
 
         if (r.Ideas.Count > 0)
         {
-            text += $" Ideas filed: {string.Join("; ", r.Ideas.Select(i => $"{i.Title} ({i.PlaneProject})"))}.";
+            text += $" Ideas filed: {string.Join("; ", r.Ideas.Select(i => $"{i.Title} ({i.Project})"))}.";
         }
 
         return text;

@@ -71,7 +71,7 @@ public sealed class DigestFormatterTests
     [Fact]
     public void Optional_buttons_follow_the_style_and_the_save_button_never_needs_Karakeep()
     {
-        var local = new ButtonStyle(CanSave: false, ToPlane: false);
+        var local = new ButtonStyle(CanSave: false, ToGitHub: false);
 
         var fresh = DigestFormatter.Buttons(42, null, null, style: local);
         var filed = DigestFormatter.Buttons(42, 1, "inbox", style: local);
@@ -84,7 +84,7 @@ public sealed class DigestFormatterTests
         Assert.Equal(new ButtonStyle(true, true), ButtonStyle.From(new FeedEaterOptions
         {
             Karakeep = new KarakeepOptions { BaseUrl = "http://k/", Token = "t" },
-            Plane = new PlaneOptions { BaseUrl = "http://p/", Token = "t", Workspace = "w" },
+            GitHub = new GitHubOptions { Token = "t", FallbackRepo = "o/r" },
         }));
     }
 

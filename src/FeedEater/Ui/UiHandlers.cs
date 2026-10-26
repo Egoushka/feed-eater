@@ -266,7 +266,7 @@ public sealed class UiHandlers(
                 return SeeOther(ctx, saved == SaveOutcome.NoItem ? WithNotice(back, "save-missing") : back);
             case "idea":
                 var (project, _) = await callbacks.FileIdeaAsync(id, ct);
-                return SeeOther(ctx, WithNotice(back, project is null ? "file-failed" : Settings.IdeaSink == IdeasOptions.PlaneSink ? "filed" : "saved-idea"));
+                return SeeOther(ctx, WithNotice(back, project is null ? "file-failed" : Settings.IdeaSink == IdeasOptions.GitHubSink ? "filed" : "saved-idea"));
             default:
                 return Results.BadRequest();
         }

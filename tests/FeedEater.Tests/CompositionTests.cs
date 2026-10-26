@@ -8,7 +8,7 @@ using FeedEater.Hype;
 using FeedEater.Ingest;
 using FeedEater.Library;
 using FeedEater.Memory;
-using FeedEater.Plane;
+using FeedEater.Issues;
 using FeedEater.Profiles;
 using FeedEater.Review;
 using FeedEater.Watch;
@@ -27,9 +27,8 @@ public sealed class CompositionTests
         ["FeedEater:GitHub:User"] = "octocat",
         ["FeedEater:Hindsight:BaseUrl"] = "http://hindsight/",
         ["FeedEater:Watch:FallbackPath"] = "/watch.json",
-        ["FeedEater:Plane:BaseUrl"] = "http://plane/",
-        ["FeedEater:Plane:Token"] = "plane-token",
-        ["FeedEater:Plane:Workspace"] = "ws",
+        ["FeedEater:GitHub:Token"] = "github-token",
+        ["FeedEater:GitHub:FallbackRepo"] = "octo/feed",
     };
 
     /// <summary>Builds the container the way the host does, but never starts it.</summary>
@@ -144,14 +143,14 @@ public sealed class CompositionTests
     }
 
     [Fact]
-    public void The_idea_sink_is_local_without_Plane_and_Plane_once_it_is_configured()
+    public void The_idea_sink_is_local_without_GitHub_issues_and_GitHub_once_they_are_configured()
     {
         using var without = Build(runJobs: false);
         using var with = Build(runJobs: false, extra: AllIntegrations);
         using var forced = Build(runJobs: false, extra: new Dictionary<string, string?>(AllIntegrations) { ["FeedEater:Ideas:Sink"] = "local" });
 
         Assert.IsType<LocalIdeaSink>(without.Services.GetRequiredService<IIdeaSink>());
-        Assert.IsType<PlaneIdeaSink>(with.Services.GetRequiredService<IIdeaSink>());
+        Assert.IsType<GitHubIdeaSink>(with.Services.GetRequiredService<IIdeaSink>());
         Assert.IsType<LocalIdeaSink>(forced.Services.GetRequiredService<IIdeaSink>());
     }
 
