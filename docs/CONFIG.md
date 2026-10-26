@@ -99,6 +99,7 @@ An integration is off until its required settings are filled. An off integration
 |---|---|---|
 | `FeedEater:GitHub:BaseUrl` | `https://api.github.com/` | GitHub API URL. |
 | `FeedEater:GitHub:FallbackRepo` | (empty) | Repo (owner/name) for ideas whose item matches no project with a repo of its own. With GitHub:Token it turns GitHub issues on: ideas are filed as issues labelled triage. |
+| `FeedEater:GitHub:OwnerTokens` | (empty) | Tokens for owners that GitHub:Token cannot reach (a fine-grained token covers one owner), as owner=token pairs separated by commas, e.g. some-org=ghp_x. A repo of a listed owner is called with that token instead of GitHub:Token. |
 | `FeedEater:GitHub:Token` | (empty) | GitHub token, sent on every GitHub call. It lifts the 60 requests an hour limit of anonymous calls (the hype autopsy snapshots stop at 40 requests a run without it); a token with no scopes is enough for that. Filing ideas as issues needs one that can write issues in every repo of the profile (classic: repo, or public_repo when all are public). |
 | `FeedEater:GitHub:User` | (empty) | GitHub user whose public stars count as liked items. Empty means no stars import. |
 

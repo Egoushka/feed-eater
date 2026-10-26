@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Options;
 using FeedEater.Issues;
 
 namespace FeedEater.Tests;
@@ -31,6 +32,25 @@ public sealed class GitHubIssuesTests
         Assert.Equal(["A"], await Client(handler).RecentTitlesAsync("octo/repo", default));
         Assert.Contains("state=open", handler.Calls[0].Uri, StringComparison.Ordinal);
         Assert.Contains("state=all", handler.Calls[1].Uri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_repo_of_a_listed_owner_is_called_with_that_owners_token_and_others_with_the_default()
+    {
+        var options = Options.Create(new FeedEaterOptions { GitHub = new GitHubOptions { Token = "main-key", OwnerTokens = "Some-Org=org-key, other=" } });
+        var auth = new List<string?>();
+        var handler = new StubHandler((request, _) =>
+        {
+            auth.Add(request.Headers.Authorization?.ToString());
+            return StubHandler.Json("""{"number":1}""", HttpStatusCode.Created);
+        });
+        var issues = new GitHubIssues(handler.Client("http://github/"), options);
+
+        await issues.CreateAsync("some-org/server", "t", "b", default);
+        await issues.CreateAsync("octo/repo", "t", "b", default);
+        await issues.CreateAsync("other/repo", "t", "b", default);
+
+        Assert.Equal(["Bearer org-key", "Bearer main-key", "Bearer main-key"], auth);
     }
 
     [Theory]

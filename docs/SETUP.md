@@ -182,7 +182,7 @@ Switching between the two on a database that already holds entries is not suppor
 `feed_ideas`). Set `FeedEater__GitHub__Token` and `FeedEater__GitHub__FallbackRepo` (`owner/name`) and each idea becomes an issue
 labelled `triage` in the repo named in the profile entry (`"repo": "owner/name"`), else in the fallback repo. The token must be able to
 write issues in every one of those repos: a classic token with the `repo` scope (`public_repo` when all are public), or a fine-grained
-one with Issues read and write, which covers the repos of one owner only. Without write access GitHub drops the label. The `github-issues`
+one with Issues read and write, which covers the repos of one owner only: put the other owners' tokens in `FeedEater__GitHub__OwnerTokens` as `owner=token` pairs separated by commas. Without write access GitHub drops the label. The `github-issues`
 check in `doctor` and on `/ui/setup` reads the fallback repo. `FeedEater__Ideas__Sink=local` keeps ideas local even with GitHub configured.
 
 **Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). The 📌 button always shows and saves to the library; Karakeep
