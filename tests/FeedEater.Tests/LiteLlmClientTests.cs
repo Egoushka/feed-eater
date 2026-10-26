@@ -195,4 +195,82 @@ public sealed class LiteLlmClientTests
         Assert.Equal(HttpStatusCode.BadGateway, error.StatusCode);
         Assert.Equal(3, handler.Calls.Count);
     }
+
+    private static HttpResponseMessage TokenLimitResponse(string retryAfterSeconds = "0")
+    {
+        var r = StubHandler.Json(
+            """{"error":{"message":"token limit exceeded (600000/600000, resets every 1h)"}}""", HttpStatusCode.TooManyRequests);
+        r.Headers.Add("Retry-After", retryAfterSeconds);
+        return r;
+    }
+
+    [Fact]
+    public async Task A_429_token_limit_waits_then_completes_and_marks_the_result_rate_limited()
+    {
+        var calls = 0;
+        var handler = new StubHandler((_, _) => ++calls == 1
+            ? TokenLimitResponse()
+            : StubHandler.Json("""{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}"""));
+
+        var result = await Client(handler, new Sink()).ChatAsync("m", "s", "u", 10, "triage", default);
+
+        Assert.Equal("ok", result.Content);
+        Assert.True(result.RateLimited);
+        Assert.Equal(2, handler.Calls.Count);
+    }
+
+    [Fact]
+    public async Task A_429_with_Retry_After_but_no_token_limit_wording_still_waits()
+    {
+        var calls = 0;
+        var handler = new StubHandler((_, _) =>
+        {
+            if (++calls > 1)
+            {
+                return StubHandler.Json("""{"choices":[{"message":{"content":"ok"}}]}""");
+            }
+
+            var r = StubHandler.Json("{}", HttpStatusCode.TooManyRequests);
+            r.Headers.Add("Retry-After", "0");
+            return r;
+        });
+
+        var result = await Client(handler, new Sink()).ChatAsync("m", "s", "u", 10, "triage", default);
+
+        Assert.Equal("ok", result.Content);
+        Assert.True(result.RateLimited);
+    }
+
+    [Fact]
+    public async Task A_plain_429_with_no_Retry_After_and_no_token_limit_wording_still_throws()
+    {
+        var handler = new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.TooManyRequests));
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => Client(handler, new Sink()).ChatAsync("m", "s", "u", 10, "read", default));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, error.StatusCode);
+        Assert.Single(handler.Calls);
+    }
+
+    [Fact]
+    public async Task A_token_limit_wait_longer_than_the_cap_is_shortened_to_it()
+    {
+        var saved = LiteLlmClient.MaxRateLimitWait;
+        LiteLlmClient.MaxRateLimitWait = TimeSpan.Zero;
+        try
+        {
+            var calls = 0;
+            var handler = new StubHandler((_, _) => ++calls == 1
+                ? TokenLimitResponse("3600")
+                : StubHandler.Json("""{"choices":[{"message":{"content":"ok"}}]}"""));
+
+            var result = await Client(handler, new Sink()).ChatAsync("m", "s", "u", 10, "triage", default);
+
+            Assert.Equal("ok", result.Content);
+        }
+        finally
+        {
+            LiteLlmClient.MaxRateLimitWait = saved;
+        }
+    }
 }
