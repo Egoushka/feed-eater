@@ -52,6 +52,14 @@ Node 24 at build time only.
 - `OwnerTermsTests` stays green and, from W1, scans `web/src`.
 - Server checks: `dotnet format FeedEater.slnx --verify-no-changes` and `dotnet test FeedEater.slnx` (needs Docker).
   Web checks (from W1): `cd web && npm ci && npm run check && npm test && npm run e2e && npm run build && npm run size`.
+- **Where checks run.** chargehand's driven sessions have no Docker client, Node or Playwright (session image; ADR 0078 in chargehand). A
+  worker writes the tests first, verifies in the session with `dotnet build FeedEater.slnx -c Release` and `dotnet format FeedEater.slnx
+  --verify-no-changes`, and leaves the Testcontainers suite and the web checks to the PR's CI, which runs them all. A step's **Acceptance**
+  commands are what CI runs; the PR is done when CI is green. When the session image gains Node (the planned mise image), the web checks
+  move into the session too.
+- **Contract fixtures without Docker.** From W1, when `ContractTests` fail in CI, the job reruns them with `UPDATE_CONTRACT=1` and uploads
+  `tests/contract/` as the artifact `contract-fixtures`; the worker downloads it (`gh run download <run> -n contract-fixtures -D tests/contract`),
+  reviews the diff and commits it.
 - Comments: few, and only about why. No secrets, env dumps or process listings in logs, tests or transcripts.
 - If `dotnet restore` returns 401, a user-level NuGet config is adding a private feed: pass `--source https://api.nuget.org/v3/index.json`.
 
@@ -125,7 +133,8 @@ the system; the Dockerfile builds it and the app serves it; `/app/api` with its 
 - Modify `src/FeedEater/Program.cs` (map both after `MapFeedEaterUi`), `src/FeedEater/Ui/UiHandlers.cs` (login keeps `return` if it is a
   path starting with `/app` or `/ui` and redirects there after login), `Dockerfile` (stage `FROM node:24-bookworm-slim AS web`, `npm ci && npm run build`,
   copy `web/build` to `/app/wwwroot/app` in the final stage), `.github/workflows/ci.yml` (job `web`: setup-node 24, the web checks, Playwright
-  browsers installed with `npx playwright install --with-deps chromium`), `tests/FeedEater.Tests/OwnerTermsTests.cs` (scan `web/src`),
+  browsers installed with `npx playwright install --with-deps chromium`; in job `test`, on failure of `ContractTests` a step reruns them with
+  `UPDATE_CONTRACT=1` and uploads `tests/contract/` as artifact `contract-fixtures`, per Global constraints), `tests/FeedEater.Tests/OwnerTermsTests.cs` (scan `web/src`),
   `.gitignore` (`web/node_modules`, `web/build`, `web/.svelte-kit`, `src/FeedEater/wwwroot/app`).
 - `src/lib/api.ts`: `get<T>(path, {signal})`, `send<T>(method, path, body)` adding `X-CSRF` from `session.ts`; in-flight dedupe by URL;
   LRU of 500 GET responses with `invalidate(prefix)`; `prefetch(path)`; on 401 → `location.assign('/ui/login?return=' + current path)`.
