@@ -34,6 +34,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private int _triageCalls;
     private bool _llmDown;
     private bool _readsDown;
+    private bool _rateLimitFirstTriage;
     private bool _vetoA;
     private bool _marginalA;
     private bool _vetoAll;
@@ -75,6 +76,15 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         if (body.Contains("\"model\":\"gpt-4.1-nano\"", StringComparison.Ordinal))
         {
             Interlocked.Increment(ref _triageCalls);
+            if (_rateLimitFirstTriage)
+            {
+                _rateLimitFirstTriage = false;
+                var limited = StubHandler.Json(
+                    """{"error":{"message":"token limit exceeded (600000/600000, resets every 1h)"}}""", HttpStatusCode.TooManyRequests);
+                limited.Headers.Add("Retry-After", "0");
+                return limited;
+            }
+
             var keep = body.Contains("Title: Keep", StringComparison.Ordinal);
             return StubHandler.Json(Chat(keep ? """{"relevance":3,"project":"homelab","kind":"improve","reason":"r"}""" : """{"relevance":0,"kind":"fyi"}"""));
         }
@@ -557,6 +567,21 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(3, _sent.Count);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+    }
+
+    [Fact]
+    public async Task A_429_token_limit_during_triage_waits_then_completes_and_the_digest_is_sent()
+    {
+        await SeedAsync();
+        _rateLimitFirstTriage = true;
+        var (run, digests, _) = Build();
+
+        await run.RunAsync(Today, default);
+
+        Assert.Equal(3, _sent.Count);
+        var digest = (await digests.GetAsync(Today, default))!;
+        Assert.Equal("sent", digest.Status);
+        Assert.Contains("waited for the token limit to reset", digest.Note ?? "");
     }
 
     [Fact]

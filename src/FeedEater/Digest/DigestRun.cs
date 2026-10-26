@@ -158,6 +158,7 @@ public sealed class DigestRun(
         var about = readContext.About;
 
         var budgetSpent = false;
+        var rateLimited = false;
         var triaged = new List<(Scored Score, TriageResult Triage)>();
         int triageCalls = 0, triageTransportFailures = 0;
         foreach (var s in scored.OrderByDescending(s => s.Score).Take(o.Caps.Triage))
@@ -175,7 +176,14 @@ public sealed class DigestRun(
                 triageCalls++;
                 try
                 {
-                    t = LlmJson.Triage((await llm.ChatAsync(o.Llm.TriageModel, system, user, TriageMaxTokens, "triage", ct)).Content, keys);
+                    var chat = await llm.ChatAsync(o.Llm.TriageModel, system, user, TriageMaxTokens, "triage", ct);
+                    if (chat.RateLimited && !rateLimited)
+                    {
+                        notes.Add("waited for the token limit to reset");
+                        rateLimited = true;
+                    }
+
+                    t = LlmJson.Triage(chat.Content, keys);
                     await analysis.SaveTriageAsync(s.ItemId, t, o.Llm.TriageModel, ct);
                 }
                 catch (BudgetExceededException)
