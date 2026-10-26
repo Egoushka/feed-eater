@@ -157,7 +157,8 @@ public sealed class FeedDiscovererTests(PostgresFixture pg) : IAsyncLifetime
         await LikeAsync("ancient.example", 2);
         await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
         {
-            await c.ExecuteAsync("update votes set at = now() - interval '200 days'");
+            // From the test's clock, not the database's: now() - 200 days falls inside the window once the real date passes Now + 20 days.
+            await c.ExecuteAsync("update votes set at = @at", new { at = Now.AddDays(-200).UtcDateTime });
         }
 
         Assert.Empty(await Build().Discoverer.SuggestionsAsync(default));
