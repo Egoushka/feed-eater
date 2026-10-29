@@ -20,3 +20,11 @@ reply=$(call feed_ideas '{}'); grep -q '"result"' <<<"$reply" && echo "feed_idea
 # An id or date may not exist yet: any well-formed JSON-RPC reply proves the tool is wired.
 reply=$(call feed_read '{"id":1}'); grep -q '"jsonrpc"' <<<"$reply" && echo "feed_read ok"
 reply=$(call feed_digest "{\"date\":\"$(date +%F)\"}"); grep -q '"jsonrpc"' <<<"$reply" && echo "feed_digest ok"
+# The prior-art tools: a reply carries `coverage`; the first fact of a search is explained (an empty base has none, so that part is skipped).
+reply=$(call prior_art_search '{"question":"how do tools detect a stuck agent loop"}'); grep -q 'coverage' <<<"$reply" && echo "prior_art_search ok"
+fact_id=$(sed -n 's/^data: //p' <<<"$reply" | jq -r '.result.content[0].text | fromjson | .facts[0].id // empty' 2>/dev/null || true)
+if [ -n "$fact_id" ]; then
+  reply=$(call prior_art_explain "{\"fact_id\":\"$fact_id\"}"); grep -q 'sources' <<<"$reply" && echo "prior_art_explain ok"
+else
+  echo "prior_art_explain skipped: the base holds no fact yet"
+fi

@@ -45,7 +45,7 @@ searchable for an AI assistant instead of throwing it away.
 - **Answers questions from the archive**, citing the items it used, in Telegram or through the API.
 - **Saves items to its own library**, where they get full text and a summary, and come back if left unread.
 - **Lets any MCP client search it.** MCP (Model Context Protocol) is how AI assistants call outside tools; feed-eater
-  exposes five read-only ones.
+  exposes five read-only ones, and three more for a prior-art base: how existing tools solve a problem, with the evidence.
 
 Smaller jobs ride along: a twice-daily "which would you rather read" duel, following one story for two weeks,
 release alerts for software you run, a weekly review, and weekly project ideas.

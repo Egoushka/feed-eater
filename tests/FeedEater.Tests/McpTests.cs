@@ -77,11 +77,11 @@ public sealed class McpTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Lists_the_five_tools()
+    public async Task Lists_the_eight_tools()
     {
         var body = await (await _app.CreateClient().SendAsync(Rpc("tools/list", "{}", "test-token"))).Content.ReadAsStringAsync();
 
-        foreach (var tool in new[] { "feed_search", "feed_read", "feed_digests", "feed_digest", "feed_ideas" })
+        foreach (var tool in new[] { "feed_search", "feed_read", "feed_digests", "feed_digest", "feed_ideas", "prior_art_search", "prior_art_explain", "prior_art_ingest" })
         {
             Assert.Contains(tool, body, StringComparison.Ordinal);
         }
@@ -97,6 +97,39 @@ public sealed class McpTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Contains("pgvector HNSW tuning", search, StringComparison.Ordinal);
         Assert.Contains("Set ef_search higher.", read, StringComparison.Ordinal);
+    }
+
+    private async Task<System.Text.Json.JsonElement> ToolJsonAsync(string tool, object arguments)
+    {
+        var body = await CallAsync(tool, System.Text.Json.JsonSerializer.Serialize(arguments));
+        var data = body.Split('\n').FirstOrDefault(l => l.StartsWith("data:", StringComparison.Ordinal))?[5..] ?? body;   // a reply is JSON, or one SSE event
+        using var doc = System.Text.Json.JsonDocument.Parse(data);
+        var text = doc.RootElement.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString()!;
+        return System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task Prior_art_tools_ingest_search_and_explain()
+    {
+        const string audit = "| # | Candidate | What it does | Verdict |\n|---|---|---|---|\n| 1 | [a/one](https://github.com/a/one) | Admits jobs by a spend budget | **watch** |\n";
+
+        var ingested = await ToolJsonAsync("prior_art_ingest", new { format = "audit", content = audit, source_ref = "audits/2026-10-29-x.md" });
+        var found = await ToolJsonAsync("prior_art_search", new { question = "spend budget" });
+        var id = found.GetProperty("facts")[0].GetProperty("id").GetGuid();
+        var why = await ToolJsonAsync("prior_art_explain", new { fact_id = id });
+
+        Assert.Equal(2, ingested.GetProperty("written").GetInt32());
+        Assert.Contains(found.GetProperty("coverage").GetString(), new[] { "hit", "thin", "miss" });
+        Assert.Equal("audit", why.GetProperty("sources")[0].GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public async Task Prior_art_tools_explain_bad_arguments()
+    {
+        Assert.Contains("question is empty", await CallAsync("prior_art_search", """{"question":" "}"""), StringComparison.Ordinal);
+        Assert.Contains("no fact", await CallAsync("prior_art_explain", $$"""{"fact_id":"{{Guid.NewGuid()}}"}"""), StringComparison.Ordinal);
+        Assert.Contains("format is", await CallAsync("prior_art_ingest", """{"format":"csv","content":"x"}"""), StringComparison.Ordinal);
+        Assert.Contains("problem is required", await CallAsync("prior_art_ingest", """{"format":"result_v1","content":"{\"contract_version\":\"result/v1\",\"status\":\"completed\"}","tool":"a/b"}"""), StringComparison.Ordinal);
     }
 
     [Fact]
