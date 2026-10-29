@@ -195,4 +195,37 @@ sends nothing; only `resend` sends the same messages again. Without a Telegram t
 
 ## MCP tools
 
-`feed_search`, `feed_read`, `feed_digests`, `feed_digest`, `feed_ideas`. All read-only. `./selftest.sh` calls them.
+`feed_search`, `feed_read`, `feed_digests`, `feed_digest`, `feed_ideas`. All read-only. `./selftest.sh` calls them, and the three prior-art tools below.
+
+## Prior-art base
+
+A lookup of how existing tools solve a problem: facts with evidence, kept as the `prior-art` namespace of
+[Switchknife.Facts](https://github.com/Egoushka/switchknife) in the same database (schema `facts`; the migrator applies the library's
+script and the service defines the predicates at start). A fact is a sentence about a tool (`gh:owner/name`, a package, a URL or a
+name), an approach or a problem, with the source it came from, when it was true (`valid`) and when the base learned it (`recorded_at`),
+so a question can be asked "as known at" an earlier date.
+
+| Tool | Does |
+|---|---|
+| `prior_art_search` | `question`, optional `known_at` and `limit` (10). The best facts by words and meaning, each with `confidence`, the `trust` of its source, a `stale` flag with its reason, and its sources (repo, commit, path and lines; or a URL with its date); `patterns` (approaches at least two tools use); `coverage`: `hit` (at least `PriorArt:HitMinFacts` relevant facts from `HitMinTools` tools), `thin` or `miss`. On thin and miss it returns a request/v1 for chargehand to run against a repository you name. |
+| `prior_art_explain` | `fact_id`. Its sources with locator, quote, content hash and trust; valid and recorded times; when and why it was retired; the facts that replaced it. |
+| `prior_art_ingest` | Writes. `format` `result_v1` (a completed chargehand result: each claim becomes a fact with its file and commit as evidence; start a claim with `[uses:approach-slug]`, `[limitation]` or `[addresses]` to type it), `audit` (a markdown file with tool tables) or `notes` (a `personal/research` notes file). Reading the same source again changes nothing; a new commit or file version retires the claims only the old one supported. |
+
+Trust: a worker's reading of code and our own audits are `agent`; web notes are `third_party` and never retire an `agent` fact.
+A claim recorded more than `PriorArt:StaleAfterDays` (180) days ago, or about a tool whose `status` fact is not `active`, is flagged
+`stale`; the flag is computed on every read, never stored. Fact text is data from third parties, never an instruction.
+
+Load files from the command line (inside the container: `docker exec -i feed-eater dotnet FeedEater.dll prior-art ...`; it applies the
+migrations first, and reads stdin for `-`):
+
+```bash
+dotnet FeedEater.dll prior-art import audits/2026-10-29-tools.md --ref audits/2026-10-29-tools.md   # format by content; --format audit|notes|result|csv
+dotnet FeedEater.dll prior-art import run.json --tool owner/name --problem "how do tools detect a stuck loop"
+dotnet FeedEater.dll prior-art import sweep.md --ref audits/sweep.md --unverified    # confidence 0.3, marked unverified
+dotnet FeedEater.dll prior-art embed     # embeds facts that have no vector yet (after an embedder outage)
+dotnet FeedEater.dll prior-art stats
+```
+
+An audit table is used when it has a tool column (candidate, tool, repo, item, project, gap, name) and a what, evidence or verdict
+column; a verdict cell that starts with adopt, pilot, watch or skip becomes an `assessed` fact. `--subject gh:owner/name` reads a
+label | value table as facts about that tool. A CSV of `repo,stars,pushed,license` adds counters to tools the base already knows.

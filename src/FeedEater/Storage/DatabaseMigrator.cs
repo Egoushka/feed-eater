@@ -5,7 +5,7 @@ using Npgsql;
 
 namespace FeedEater.Storage;
 
-/// <summary>Applies <c>db/migrations/*.sql</c> in name order, once each, journalled in <c>schemaversions</c>.</summary>
+/// <summary>Applies <c>db/migrations/*.sql</c> and the Switchknife.Facts schema in name order, once each, journalled in <c>schemaversions</c>.</summary>
 public sealed class DatabaseMigrator(string connectionString, ILogger<DatabaseMigrator> logger)
 {
     public void Run()
@@ -17,6 +17,10 @@ public sealed class DatabaseMigrator(string connectionString, ILogger<DatabaseMi
             .PostgresqlDatabase(connectionString)
             .WithScriptsEmbeddedInAssembly(
                 Assembly.GetExecutingAssembly(),
+                name => name.Contains(".Migrations.", StringComparison.Ordinal))
+            // The facts schema ships inside the library; its script is journalled here under its own name.
+            .WithScriptsEmbeddedInAssembly(
+                typeof(Switchknife.Facts.FactsSchema).Assembly,
                 name => name.Contains(".Migrations.", StringComparison.Ordinal))
             .WithTransactionPerScript()
             .LogTo(new MigrationLog(logger))

@@ -158,6 +158,15 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Miniflux:PollInterval` | `00:30:00` | How often new entries are copied. |
 | `FeedEater:Miniflux:Token` | (empty) | Miniflux API key; only read from. |
 
+## PriorArt
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:PriorArt:HitMinFacts` | `3` | Prior-art search: coverage is hit when at least this many relevant facts come from at least PriorArt:HitMinTools tools; some relevant facts but fewer is thin; none is miss. |
+| `FeedEater:PriorArt:HitMinTools` | `2` | Prior-art search: the number of different tools the relevant facts of a hit must come from. |
+| `FeedEater:PriorArt:MinSimilarity` | `0.35` | Prior-art search: cosine similarity at or above which a fact counts as relevant to the question. A fact below it is still listed, flagged not relevant, and does not count toward coverage. |
+| `FeedEater:PriorArt:StaleAfterDays` | `180` | Prior-art search: a claim recorded more than this many days ago is flagged stale. |
+
 ## Quiet
 
 | Key | Default | Description |

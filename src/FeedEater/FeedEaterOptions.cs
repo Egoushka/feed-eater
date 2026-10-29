@@ -49,6 +49,7 @@ public sealed class FeedEaterOptions
     public FollowOptions Follow { get; set; } = new();
     public SwipeOptions Swipe { get; set; } = new();
     public ApiOptions Api { get; set; } = new();
+    public PriorArtOptions PriorArt { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -511,4 +512,19 @@ public sealed class HindsightOptions
 
     [Description("Hindsight bank the weekly summary goes to.")]
     public string Bank { get; set; } = "feed-eater";
+}
+
+public sealed class PriorArtOptions
+{
+    [Description("Prior-art search: cosine similarity at or above which a fact counts as relevant to the question. A fact below it is still listed, flagged not relevant, and does not count toward coverage.")]
+    public double MinSimilarity { get; set; } = 0.35;
+
+    [Description("Prior-art search: a claim recorded more than this many days ago is flagged stale.")]
+    public int StaleAfterDays { get; set; } = 180;
+
+    [Description("Prior-art search: coverage is hit when at least this many relevant facts come from at least PriorArt:HitMinTools tools; some relevant facts but fewer is thin; none is miss.")]
+    public int HitMinFacts { get; set; } = 3;
+
+    [Description("Prior-art search: the number of different tools the relevant facts of a hit must come from.")]
+    public int HitMinTools { get; set; } = 2;
 }

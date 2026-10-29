@@ -42,6 +42,11 @@ if (args.FirstOrDefault() == "import-karakeep")
     return await FeedEater.Library.ImportKarakeepCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "prior-art")
+{
+    return await FeedEater.PriorArt.PriorArtCommand.RunAsync(args[1..], Console.In, Console.Out, Console.Error);
+}
+
 if (args.FirstOrDefault() == "token")
 {
     return await ApiTokenCommand.RunAsync(args[1..]);
@@ -79,6 +84,7 @@ if (feedEater.Source.KindProblem is { } kindProblem)
 }
 
 app.Services.GetRequiredService<DatabaseMigrator>().Run();
+await app.Services.GetRequiredService<FeedEater.PriorArt.PriorArtStore>().EnsureReadyAsync(CancellationToken.None);
 
 var token = app.Configuration["Mcp:Token"];
 if (string.IsNullOrEmpty(token))
