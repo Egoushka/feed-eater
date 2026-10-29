@@ -102,7 +102,7 @@ public static class PriorArtCommand
             "audit" => ImportFormat.Audit,
             "notes" => ImportFormat.Notes,
             "csv" or "snapshot" => ImportFormat.Snapshot,
-            "auto" => Detect(file, content),
+            "auto" => Detect(sourceRef ?? file, content),
             _ => throw new PriorArtInputException("format is auto, result, audit, notes or csv."),
         };
         DateOnly? day = null;
@@ -135,9 +135,10 @@ public static class PriorArtCommand
         return report.Facts == 0 && !report.Duplicate ? 1 : 0;
     }
 
-    private static ImportFormat Detect(string file, string content)
+    /// <summary>By the name the source goes by (stdin has none, so <c>--ref</c> counts), then by what the text looks like.</summary>
+    private static ImportFormat Detect(string name, string content)
     {
-        if (file.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        if (name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
         {
             return ImportFormat.Snapshot;
         }
