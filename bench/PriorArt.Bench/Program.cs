@@ -37,30 +37,55 @@ async Task<int> RecallAsync()
     foreach (var system in systems)
     {
         var rows = new List<object>();
-        int found = 0, total = 0;
+        int found = 0, total = 0, falseHits = 0;
         double sum = 0;
         foreach (var d in decisions)
         {
-            var results = system switch
+            var coverage = "";
+            IReadOnlyList<Result> results;
+            if (system == "warm")
             {
-                "warm" => await Systems.WarmAsync(mcp, d, limit, CancellationToken.None),
-                "b0" => await Systems.B0Async(mcp, d, audits, null, limit, CancellationToken.None),
-                "b0seed" => await Systems.B0Async(mcp, d, audits, seedFiles, limit, CancellationToken.None),
-                "b1" when b1 is { } file => Systems.B1(file, d, limit),
-                _ => throw new InvalidOperationException($"system {system} needs its input (b1: --b1 FILE) or is unknown."),
-            };
+                var outcome = await Systems.WarmAsync(mcp, d, limit, CancellationToken.None);
+                (results, coverage) = (outcome.Results, outcome.Coverage);
+            }
+            else
+            {
+                results = system switch
+                {
+                    "b0" => await Systems.B0Async(mcp, d, audits, null, limit, CancellationToken.None),
+                    "b0seed" => await Systems.B0Async(mcp, d, audits, seedFiles, limit, CancellationToken.None),
+                    "b1" when b1 is { } file => Systems.B1(file, d, limit),
+                    _ => throw new InvalidOperationException($"system {system} needs its input (b1: --b1 FILE) or is unknown."),
+                };
+            }
+
             var kept = guard == "strict" ? results.Where(r => r.Date is not { } day || day <= d.Date).ToList() : results.ToList();
             var hit = d.Found(kept.Select(r => r.Text));
             found += hit.Count;
             total += d.Gold.Count;
-            sum += (double)hit.Count / d.Gold.Count;
-            rows.Add(new { d.Id, d.Title, results = results.Count, kept = kept.Count, found = hit, missed = d.Gold.Except(hit).ToList() });
+            var recallAt10 = (double)hit.Count / d.Gold.Count;
+            sum += recallAt10;
+            if (coverage == "hit" && recallAt10 == 0)
+            {
+                falseHits++;
+            }
+
+            rows.Add(new { d.Id, d.Title, results = results.Count, kept = kept.Count, found = hit, missed = d.Gold.Except(hit).ToList(), coverage });
         }
 
         var (lo, hi) = Wilson(found, total);
         macro[system] = sum / decisions.Count;
-        report[system] = new { recall_at_10 = Math.Round(macro[system], 4), micro = Math.Round((double)found / total, 4), wilson95 = new[] { Math.Round(lo, 4), Math.Round(hi, 4) }, found, total, per_decision = rows };
-        Console.WriteLine($"{system,-7} recall@{limit} = {macro[system]:0.000} (micro {found}/{total} = {(double)found / total:0.000}, Wilson 95% {lo:0.000} to {hi:0.000})");
+        report[system] = new
+        {
+            recall_at_10 = Math.Round(macro[system], 4),
+            micro = Math.Round((double)found / total, 4),
+            wilson95 = new[] { Math.Round(lo, 4), Math.Round(hi, 4) },
+            found,
+            total,
+            false_hits = falseHits,
+            per_decision = rows,
+        };
+        Console.WriteLine($"{system,-7} recall@{limit} = {macro[system]:0.000} (micro {found}/{total} = {(double)found / total:0.000}, Wilson 95% {lo:0.000} to {hi:0.000}, false-hits {falseHits}/{decisions.Count})");
     }
 
     var failures = new List<string>();
