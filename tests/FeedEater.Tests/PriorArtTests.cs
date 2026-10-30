@@ -219,6 +219,25 @@ public sealed class PriorArtTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Search_does_not_count_a_word_match_below_similarity_threshold_as_relevant()
+    {
+        await ImportResultAsync(Result(
+            Claim(
+                "[limitation] Keeps a historic archive of stuck loop reports mixed into payroll tax filings, grocery delivery routes, " +
+                "weather radar calibration notes, municipal zoning permits, migratory bird surveys and antique furniture auctions from last decade.",
+                "e1"),
+            File("e1", "a.py:1", "abcdef0")));
+
+        var answer = await search.SearchAsync("stuck loop detection", null, 10, CancellationToken.None);
+
+        var fact = Assert.Single(answer.Facts);
+        Assert.True(fact.Similarity is not null, "the embedder was up: the fact should have a similarity score");
+        Assert.True(fact.Similarity < 0.35, $"expected a similarity below the threshold, got {fact.Similarity}");
+        Assert.False(fact.Relevant);
+        Assert.Equal("miss", answer.Coverage);
+    }
+
+    [Fact]
     public async Task Search_answers_from_words_when_the_embedder_is_down()
     {
         await importer.ImportAsync(new ImportRequest(ImportFormat.Audit, "| Candidate | What it does |\n|---|---|\n| [a/one](https://github.com/a/one) | Detects stuck loops |\n", SourceRef: "a.md"), CancellationToken.None);
