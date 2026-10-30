@@ -50,6 +50,7 @@ public sealed class FeedEaterOptions
     public SwipeOptions Swipe { get; set; } = new();
     public ApiOptions Api { get; set; } = new();
     public PriorArtOptions PriorArt { get; set; } = new();
+    public PeerHarvestOptions PeerHarvest { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -512,6 +513,29 @@ public sealed class HindsightOptions
 
     [Description("Hindsight bank the weekly summary goes to.")]
     public string Bank { get; set; } = "feed-eater";
+}
+
+public sealed class PeerHarvestOptions
+{
+    /// <summary>On when the peer set file is configured.</summary>
+    public bool Enabled => SetUrl.Length > 0;
+
+    [Description("Peer harvester: GitHub contents API URL of the peer set file (one own repo plus its public peers, YAML), to fingerprint and " +
+        "card each repo into the prior-art namespace. Empty turns peer-harvest off for the whole configured set (a single repo can still be run by name).")]
+    public string SetUrl { get; set; } = "";
+
+    [Secret]
+    [Description("GitHub token that can read the peer set file; empty for a public repository.")]
+    public string SetToken { get; set; } = "";
+
+    [Description("Bytes of a peer's README kept for the card step; the rest is cut before the model sees it.")]
+    public int ReadmeMaxBytes { get; set; } = 32_768;
+
+    [Description("Small model: writes the card (addresses, features, uses) from a peer's README and file tree, one call per repo.")]
+    public string CardModel { get; set; } = "gpt-4.1-nano";
+
+    [Description("Tokens the card model may answer with.")]
+    public int CardMaxTokens { get; set; } = 700;
 }
 
 public sealed class PriorArtOptions
