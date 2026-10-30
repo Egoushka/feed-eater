@@ -15,6 +15,7 @@ using FeedEater.Loops;
 using FeedEater.Memory;
 using FeedEater.Mcp;
 using FeedEater.PriorArt;
+using FeedEater.PriorArt.Peers;
 using FeedEater.Issues;
 using FeedEater.Profiles;
 using FeedEater.Ranking;
@@ -146,6 +147,9 @@ public static class ServiceRegistration
         services.AddSingleton<PriorArtImporter>();
         services.AddSingleton<PriorArtSearch>();
         services.AddSingleton<PriorArtExplain>();
+        services.AddHttpClient<PeerSetClient>();
+        services.AddHttpClient<PeerGitHubClient>((sp, http) => GitHub(sp, http));
+        services.AddSingleton<PeerHarvestJob>();
         services.AddSingleton<ArchiveAnswer>();
         services.AddSingleton<ItemAnswer>();
         services.AddSingleton<ItemText>();

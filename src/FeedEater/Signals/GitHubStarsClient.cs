@@ -50,7 +50,8 @@ public sealed class GitHubStarsClient(HttpClient http, IOptions<FeedEaterOptions
             body.TryGetProperty("pushed_at", out var pushed) && pushed.ValueKind == JsonValueKind.String ? pushed.GetDateTimeOffset() : null,
             body.TryGetProperty("stargazers_count", out var stars) ? stars.GetInt32() : 0,
             tag, released,
-            body.TryGetProperty("archived", out var archived) && archived.ValueKind == JsonValueKind.True);
+            body.TryGetProperty("archived", out var archived) && archived.ValueKind == JsonValueKind.True,
+            body.TryGetProperty("size", out var size) && size.ValueKind == JsonValueKind.Number ? size.GetInt32() : 0);
         return new RepoLookup(outcome, facts, 2);
     }
 

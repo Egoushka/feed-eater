@@ -158,6 +158,16 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Miniflux:PollInterval` | `00:30:00` | How often new entries are copied. |
 | `FeedEater:Miniflux:Token` | (empty) | Miniflux API key; only read from. |
 
+## PeerHarvest
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:PeerHarvest:CardMaxTokens` | `700` | Tokens the card model may answer with. |
+| `FeedEater:PeerHarvest:CardModel` | `gpt-4.1-nano` | Small model: writes the card (addresses, features, uses) from a peer's README and file tree, one call per repo. |
+| `FeedEater:PeerHarvest:ReadmeMaxBytes` | `32768` | Bytes of a peer's README kept for the card step; the rest is cut before the model sees it. |
+| `FeedEater:PeerHarvest:SetToken` | (empty) | GitHub token that can read the peer set file; empty for a public repository. |
+| `FeedEater:PeerHarvest:SetUrl` | (empty) | Peer harvester: GitHub contents API URL of the peer set file (one own repo plus its public peers, YAML), to fingerprint and card each repo into the prior-art namespace. Empty turns peer-harvest off for the whole configured set (a single repo can still be run by name). |
+
 ## PriorArt
 
 | Key | Default | Description |

@@ -94,6 +94,19 @@ public sealed class PriorArtStore(FeedDb db, TimeProvider time)
 
     public Task<Guid> ApproachAsync(string slug, CancellationToken ct) => Facts.EnsureEntityAsync(PriorArtSchema.EntityApproach, slug.Replace('-', ' '), "approach:" + slug, ct);
 
+    public Task<Guid> PackageAsync(string name, string purlNoVersion, CancellationToken ct) => Facts.EnsureEntityAsync(PriorArtSchema.EntityPackage, name, purlNoVersion, ct);
+
+    public Task<Guid> FeatureAsync(string slug, CancellationToken ct) => Facts.EnsureEntityAsync(PriorArtSchema.EntityFeature, slug.Replace('-', ' '), "feature:" + slug, ct);
+
+    /// <summary>Whether this exact episode (source kind, ref and content hash) is already recorded: a caller's cheap check before it spends a model call again.</summary>
+    public async Task<bool> HasEpisodeAsync(string sourceKind, string sourceRef, string contentHash, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return await c.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "select exists(select 1 from facts.episodes where namespace = @ns and source_kind = @sourceKind and source_ref = @sourceRef and content_hash = @contentHash)",
+            new { ns = Ns, sourceKind, sourceRef, contentHash }, cancellationToken: ct));
+    }
+
     /// <summary>The id of the entity with this reference, or null: a lookup that creates nothing.</summary>
     public async Task<Guid?> FindAsync(string externalRef, CancellationToken ct)
     {

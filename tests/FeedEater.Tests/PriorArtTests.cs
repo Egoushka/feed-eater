@@ -182,6 +182,43 @@ public sealed class PriorArtTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_fingerprint_episode_with_the_same_hash_twice_is_duplicate()
+    {
+        await store.EnsureReadyAsync(CancellationToken.None);
+        var tool = await store.ToolAsync("widget", "gh:acme/widget", CancellationToken.None);
+        var package = await store.PackageAsync("left-pad", "pkg:npm/left-pad", CancellationToken.None);
+        var episode = new NewEpisode(PriorArtSchema.SourceFingerprint, "acme/widget", "pkg:npm/left-pad@1.0.0|v1.0.0", Trust: PriorArtSchema.TrustOf(PriorArtSchema.SourceFingerprint));
+        List<NewFact> facts = [new(tool, PriorArtSchema.DependsOn, null, time.GetUtcNow(), Text: "acme/widget depends on left-pad 1.0.0.", ObjectEntity: package)];
+
+        var first = await store.Facts.IngestAsync(episode, facts);
+        var second = await store.Facts.IngestAsync(episode, facts);
+
+        Assert.False(first.Duplicate);
+        Assert.True(second.Duplicate);
+        Assert.Equal(0, second.Written);
+    }
+
+    [Fact]
+    public async Task A_card_fact_cannot_retire_an_agent_trust_fact()
+    {
+        await store.EnsureReadyAsync(CancellationToken.None);
+        var tool = await store.ToolAsync("widget", "gh:acme/widget", CancellationToken.None);
+        var from = Start.AddDays(-30);
+        await store.Facts.IngestAsync(
+            new NewEpisode(PriorArtSchema.SourceRepoRead, "gh:acme/widget#status", "aaaaaaa", Trust: PriorArtSchema.TrustOf(PriorArtSchema.SourceRepoRead)),
+            [new NewFact(tool, "status", "active", from, Text: "widget is active")]);
+
+        time.Advance(TimeSpan.FromMinutes(5));
+        var card = await store.Facts.IngestAsync(
+            new NewEpisode(PriorArtSchema.SourceCard, "acme/widget", "readme-sha-1", Trust: PriorArtSchema.TrustOf(PriorArtSchema.SourceCard)),
+            [new NewFact(tool, "status", "archived", Start, Text: "widget is archived")]);
+
+        Assert.Equal(1, card.Outranked);
+        var now = await store.Facts.AsOfAsync(tool, "status", time.GetUtcNow());
+        Assert.Equal("active", Assert.Single(now).Value);
+    }
+
+    [Fact]
     public async Task Search_flags_claim_older_than_180_days_as_stale()
     {
         await ImportResultAsync(Result(Claim("[uses:window] Compares the last calls to find a stuck loop.", "e1"), File("e1", "a.py:1-2", "abcdef0")));
