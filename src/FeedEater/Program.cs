@@ -47,6 +47,11 @@ if (args.FirstOrDefault() == "prior-art")
     return await FeedEater.PriorArt.PriorArtCommand.RunAsync(args[1..], Console.In, Console.Out, Console.Error);
 }
 
+if (args.FirstOrDefault() == "peer-harvest")
+{
+    return await FeedEater.PriorArt.Peers.PeerHarvestCommand.RunAsync(args[1..], Console.Out, Console.Error);
+}
+
 if (args.FirstOrDefault() == "token")
 {
     return await ApiTokenCommand.RunAsync(args[1..]);

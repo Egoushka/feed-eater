@@ -68,4 +68,14 @@ public sealed class GitHubReposTests
     [InlineData(HttpStatusCode.Forbidden)]
     public async Task A_missing_repo_or_a_rate_limit_gives_no_facts(HttpStatusCode status) =>
         Assert.Null(await Client(_ => StubHandler.Json("""{"message":"x"}""", status)).RepoFactsAsync("acme", "widget", default));
+
+    [Fact]
+    public async Task Facts_carry_the_repo_size_as_disk_usage()
+    {
+        var client = Client(path => path.EndsWith("/releases/latest", StringComparison.Ordinal)
+            ? StubHandler.Json("""{"message":"Not Found"}""", HttpStatusCode.NotFound)
+            : StubHandler.Json("""{"created_at":"2024-03-02T08:00:00Z","pushed_at":null,"stargazers_count":3,"size":4096}"""));
+
+        Assert.Equal(4096, (await client.RepoFactsAsync("acme", "widget", default))!.DiskUsageKb);
+    }
 }

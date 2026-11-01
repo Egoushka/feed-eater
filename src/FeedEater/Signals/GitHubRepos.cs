@@ -3,7 +3,8 @@ using System.Text.RegularExpressions;
 
 namespace FeedEater.Signals;
 
-public sealed record RepoFacts(string FullName, DateTimeOffset CreatedAt, DateTimeOffset? PushedAt, int Stars, string? ReleaseTag, DateTimeOffset? ReleasedAt, bool Archived = false)
+public sealed record RepoFacts(
+    string FullName, DateTimeOffset CreatedAt, DateTimeOffset? PushedAt, int Stars, string? ReleaseTag, DateTimeOffset? ReleasedAt, bool Archived = false, int DiskUsageKb = 0)
 {
     /// <summary>"created 2024-03-02, last push 2026-10-01, 1,240 stars, latest release v2.3.0 on 2026-09-20"</summary>
     public string Line()
