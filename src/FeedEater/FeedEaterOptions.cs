@@ -543,10 +543,10 @@ public sealed class PeerHarvestOptions
     public int ReadmeMaxBytes { get; set; } = 32_768;
 
     [Description("Small model: writes the card (addresses, features, uses) from a peer's README and file tree, one call per repo.")]
-    public string CardModel { get; set; } = "gpt-4.1-nano";
+    public string CardModel { get; set; } = "gpt-6-luna";
 
-    [Description("Tokens the card model may answer with.")]
-    public int CardMaxTokens { get; set; } = 700;
+    [Description("Most the card model may answer with, in tokens.")]
+    public int CardAnswerLimit { get; set; } = 700;
 }
 
 public sealed class PriorArtOptions

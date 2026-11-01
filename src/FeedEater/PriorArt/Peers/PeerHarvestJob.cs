@@ -129,7 +129,7 @@ public sealed class PeerHarvestJob(
         PeerCardResult card;
         try
         {
-            var reply = await llm.ChatAsync(settings.CardModel, PeerCard.System, PeerCard.User(repo, readme.Text, tree), settings.CardMaxTokens, "peer-harvest-card", ct);
+            var reply = await llm.ChatAsync(settings.CardModel, PeerCard.System, PeerCard.User(repo, readme.Text, tree), settings.CardAnswerLimit, "peer-harvest-card", ct);
             card = PeerCard.Parse(reply.Content);
         }
         catch (Exception e) when (e is HttpRequestException or BudgetExceededException)
