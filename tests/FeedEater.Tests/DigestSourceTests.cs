@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using FeedEater.Approvals;
 using FeedEater.Digest;
 using FeedEater.Ingest;
 using FeedEater.Inbox;
@@ -38,9 +39,10 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    private (DigestRun Run, StubHandler Miniflux, SourceKit Kit) Build(Func<HttpRequestMessage, HttpResponseMessage>? network = null)
+    private (DigestRun Run, StubHandler Miniflux, SourceKit Kit) Build(Func<HttpRequestMessage, HttpResponseMessage>? network = null, StubHandler? approvals = null)
     {
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 },
+            Approvals = approvals is null ? new ApprovalsOptions() : new ApprovalsOptions { BaseUrl = "http://approvals/", Token = new string('a', 32) } });
         var kit = new SourceKit(pg, network ?? (_ => _articleStatus == HttpStatusCode.OK
             ? SourceKit.Xml($"<html><head><title>Real article</title></head><body><article>{Article}</article></body></html>", "text/html")
             : SourceKit.Status(_articleStatus)));
@@ -73,7 +75,7 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
             new TelegramClient(telegram.Client("http://tg/botT/")),
             new InboxService(new InboxStore(pg.Db), new TelegramClient(telegram.Client("http://tg/botT/")), options, time), new InboxStore(pg.Db),
             new LoopHealth(time), new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), options, time, NullLogger<DigestRun>.Instance,
-            kit.Poller);
+            kit.Poller, approvals is null ? null : new ApprovalsClient(approvals.Client("http://approvals/"), options, NullLogger<ApprovalsClient>.Instance));
         return (run, miniflux, kit);
     }
 
@@ -110,6 +112,38 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Empty(miniflux.Calls);
         Assert.Single(kit.Stub.Calls);
         Assert.Equal(2, _sent.Count);   // header and the item
+    }
+
+    [Fact]
+    public async Task A_sent_digest_puts_one_info_card_in_the_approvals_inbox_and_a_resend_rewrites_it()
+    {
+        await SeedItemAsync("A short teaser.");
+        var approvals = new StubHandler((_, _) => StubHandler.Json("{}"));
+        var (run, _, _) = Build(approvals: approvals);
+
+        await run.RunAsync(Today, default);
+        await run.ForceAsync(Today, resend: true, default);
+
+        Assert.Equal(2, approvals.Calls.Count);
+        Assert.All(approvals.Calls, c => Assert.Equal(("http://approvals/items/feed-eater:digest:2026-10-05", HttpMethod.Put), (c.Uri, c.Method)));
+        var card = JsonDocument.Parse(approvals.Calls[0].Body).RootElement;
+        Assert.Equal("info", card.GetProperty("kind").GetString());
+        Assert.Equal("feed-eater", card.GetProperty("source").GetString());
+        Assert.Equal("Digest 2026-10-05: 1 items", card.GetProperty("title").GetString());
+        Assert.Equal("1 homelab", card.GetProperty("summary").GetString());
+    }
+
+    [Fact]
+    public async Task Without_approvals_settings_no_card_is_sent_and_an_approvals_outage_does_not_fail_the_digest()
+    {
+        await SeedItemAsync("A short teaser.");
+        var down = new StubHandler((_, _) => throw new HttpRequestException("down"));
+        var (run, _, _) = Build(approvals: down);
+
+        await run.RunAsync(Today, default);
+
+        Assert.Single(down.Calls);
+        Assert.Equal("sent", (await new DigestStore(pg.Db).GetAsync(Today, default))!.Status);
     }
 
     [Fact]

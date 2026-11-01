@@ -42,6 +42,13 @@ An integration is off until its required settings are filled. An off integration
 |---|---|---|
 | `FeedEater:Api:BaseUrl` | (empty) | The address the phone app uses; the pairing QR carries it. Empty: the address the setup page was opened on. |
 
+## Approvals
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Approvals:BaseUrl` | (empty) | Address of the approvals server (the phone shell's inbox). The digest and the notices arrive there as cards. Empty, or an empty token, turns it off. |
+| `FeedEater:Approvals:Token` | (empty) | Source token for `feed-eater`: the approvals server's APPROVALS_SOURCE_TOKENS entry, at least 32 characters. |
+
 ## Caps
 
 | Key | Default | Description |

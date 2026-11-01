@@ -34,6 +34,7 @@ public sealed class FeedEaterOptions
     public CapsOptions Caps { get; set; } = new();
     public WeightsOptions Weights { get; set; } = new();
     public TelegramOptions Telegram { get; set; } = new();
+    public ApprovalsOptions Approvals { get; set; } = new();
     public IdeasOptions Ideas { get; set; } = new();
     public WeeklyIdeasOptions WeeklyIdeas { get; set; } = new();
     public KarakeepOptions Karakeep { get; set; } = new();
@@ -412,6 +413,16 @@ public sealed class TelegramOptions
     /// <summary>The owner's Telegram user id: the only sender whose button presses count, and the chat digests go to.</summary>
     [Description("Your numeric Telegram user id: the only sender the bot answers, and the chat digests go to.")]
     public long AllowedUserId { get; set; }
+}
+
+public sealed class ApprovalsOptions
+{
+    [Description("Address of the approvals server (the phone shell's inbox). The digest and the notices arrive there as cards. Empty, or an empty token, turns it off.")]
+    public string BaseUrl { get; set; } = "";
+
+    [Secret]
+    [Description("Source token for `feed-eater`: the approvals server's APPROVALS_SOURCE_TOKENS entry, at least 32 characters.")]
+    public string Token { get; set; } = "";
 }
 
 public sealed class WeeklyIdeasOptions

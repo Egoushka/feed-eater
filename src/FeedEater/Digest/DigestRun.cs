@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using FeedEater.Ingest;
+using FeedEater.Approvals;
 using FeedEater.Inbox;
 using FeedEater.Llm;
 using FeedEater.Loops;
@@ -28,7 +29,7 @@ public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> 
 public sealed class DigestRun(
     ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
     LiteLlmClient llm, ItemText itemText, GitHubStarsClient github, TelegramClient telegram, IInbox inbox, InboxStore inboxStore, LoopHealth health, TasteSwitch tasteSwitch,
-    IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null)
+    IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null, ApprovalsClient? approvals = null)
 {
     private const int TriageMaxTokens = 200;
 
@@ -328,6 +329,7 @@ public sealed class DigestRun(
             // Delivered to the stack, which reads the digest's items itself.
             await digests.SetSentCountAsync(digest.LocalDate, digest.ItemIds.Length, ct);
             await digests.MarkSentAsync(digest.LocalDate, time.GetUtcNow(), ct);
+            await NotifyApprovalsAsync(digest, ct);
             return;
         }
 
@@ -364,6 +366,26 @@ public sealed class DigestRun(
         }
 
         await digests.MarkSentAsync(digest.LocalDate, time.GetUtcNow(), ct);
+        await NotifyApprovalsAsync(digest, ct);
+    }
+
+    /// <summary>One card in the approvals inbox, after the digest is marked sent (the stack already holds it); the same id on a resend rewrites the card.</summary>
+    private async Task NotifyApprovalsAsync(DigestRow digest, CancellationToken ct)
+    {
+        if (approvals is not { Enabled: true })
+        {
+            return;
+        }
+
+        var shown = await items.DigestItemsAsync(digest.ItemIds, ct);
+        var byProject = string.Join(", ", shown
+            .GroupBy(v => v.Project ?? "other")
+            .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => $"{g.Count()} {g.Key}"));
+        var text = string.Join('\n', new[] { byProject }.Concat(digest.Note is null ? [] : digest.Note.Split('\n')));
+        await approvals.NotifyAsync(new ApprovalsNote(
+            $"{ApprovalsClient.Source}:digest:{digest.LocalDate}", $"Digest {digest.LocalDate}: {shown.Count} items", byProject, text,
+            time.GetUtcNow().AddDays(2)), ct);
     }
 
     private async Task<List<OutMessage>> BuildMessagesAsync(DigestRow d, CancellationToken ct)
