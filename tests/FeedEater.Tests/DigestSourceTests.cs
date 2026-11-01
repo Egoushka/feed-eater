@@ -41,8 +41,12 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
 
     private (DigestRun Run, StubHandler Miniflux, SourceKit Kit) Build(Func<HttpRequestMessage, HttpResponseMessage>? network = null, StubHandler? approvals = null)
     {
-        var options = Options.Create(new FeedEaterOptions { ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 },
-            Approvals = approvals is null ? new ApprovalsOptions() : new ApprovalsOptions { BaseUrl = "http://approvals/", Token = new string('a', 32) } });
+        var options = Options.Create(new FeedEaterOptions
+        {
+            ProfilePath = "Fixtures/profile.json",
+            Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 },
+            Approvals = approvals is null ? new ApprovalsOptions() : new ApprovalsOptions { BaseUrl = "http://approvals/", Token = new string('a', 32) }
+        });
         var kit = new SourceKit(pg, network ?? (_ => _articleStatus == HttpStatusCode.OK
             ? SourceKit.Xml($"<html><head><title>Real article</title></head><body><article>{Article}</article></body></html>", "text/html")
             : SourceKit.Status(_articleStatus)));
