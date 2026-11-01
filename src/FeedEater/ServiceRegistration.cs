@@ -26,6 +26,7 @@ using FeedEater.Signals;
 using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Swipe;
+using FeedEater.Approvals;
 using FeedEater.Telegram;
 using FeedEater.Ui;
 using FeedEater.WeeklyIdeas;
@@ -83,6 +84,13 @@ public static class ServiceRegistration
             var o = Settings(sp).Telegram;
             http.BaseAddress = new Uri($"{o.BaseUrl}bot{o.Token}/");
             http.Timeout = TimeSpan.FromSeconds(70);   // above the 50 s long poll
+        });
+        services.AddHttpClient<ApprovalsClient>((sp, http) =>
+        {
+            var o = Settings(sp).Approvals;
+            BaseAddress(http, o.BaseUrl.Length > 0 ? o.BaseUrl.TrimEnd('/') + "/" : "");
+            Bearer(http, o.Token);
+            http.Timeout = TimeSpan.FromSeconds(10);
         });
         services.AddHttpClient<KarakeepClient>((sp, http) =>
         {
