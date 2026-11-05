@@ -51,7 +51,7 @@ public sealed partial class PriorArtImporter(PriorArtStore store, IPriorArtEmbed
     private const double DefaultConfidence = 0.6;
     private const double UnverifiedConfidence = 0.3;
 
-    [GeneratedRegex(@"^\s*\[(uses|limitation|addresses|statement)(?::\s*([A-Za-z0-9 _-]+))?\]\s*(.+)$", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^\s*\[(uses|feature|limitation|addresses|statement)(?::\s*([A-Za-z0-9 _-]+))?\]\s*(.+)$", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex ClaimTag();
 
     [GeneratedRegex(@"^[0-9a-f]{7,40}$")]
@@ -383,6 +383,10 @@ public sealed partial class PriorArtImporter(PriorArtStore store, IPriorArtEmbed
                     }
 
                     break;
+                case "feature":
+                    Guid? feature = argument is null ? null : await store.FeatureAsync(argument, ct);
+                    facts.Add(feature is null ? Statement(tool, body, from, locator) : new NewFact(tool, PriorArtSchema.HasFeature, null, from, Text: PriorArtText.Cut(body), LocatorJson: locator, ObjectEntity: feature));
+                    break;
                 case "addresses":
                     var target = argument is null ? problemId : await store.ProblemAsync(argument, ct);
                     facts.Add(new NewFact(tool, "addresses", null, from, Text: PriorArtText.Cut(body), LocatorJson: locator, ObjectEntity: target));
@@ -407,7 +411,7 @@ public sealed partial class PriorArtImporter(PriorArtStore store, IPriorArtEmbed
         return new Plan(episode, facts, skipped);
     }
 
-    /// <summary>A claim starts with <c>[uses:approach-slug]</c>, <c>[limitation]</c>, <c>[addresses]</c> or <c>[statement]</c>; without a tag it is filed under the default approach, else it stays a statement.</summary>
+    /// <summary>A claim starts with <c>[uses:approach-slug]</c>, <c>[feature:slug]</c>, <c>[limitation]</c>, <c>[addresses]</c> or <c>[statement]</c>; without a tag it is filed under the default approach, else it stays a statement.</summary>
     private static (string Predicate, string? Argument, string Body) Tagged(string text, string? defaultApproach)
     {
         if (ClaimTag().Match(text) is not { Success: true } m)

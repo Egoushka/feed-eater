@@ -171,7 +171,15 @@ An integration is off until its required settings are filled. An off integration
 |---|---|---|
 | `FeedEater:PeerHarvest:CardAnswerLimit` | `700` | Most the card model may answer with, in tokens. |
 | `FeedEater:PeerHarvest:CardModel` | `gpt-6-luna` | Small model: writes the card (addresses, features, uses) from a peer's README and file tree, one call per repo. |
+| `FeedEater:PeerHarvest:ChargehandKey` | (empty) | Bearer key of the chargehand account (peer-harvest) the deep reads are charged to. |
+| `FeedEater:PeerHarvest:ChargehandUrl` | (empty) | Peer harvester deep read: base URL of the chargehand HTTP server that reads each peer's code (POST /v1/runs). Empty turns the deep read off. |
+| `FeedEater:PeerHarvest:DeepBudgetUsd` | `0.5` | Most one deep read may spend, in USD (request/v1 budget_usd). |
+| `FeedEater:PeerHarvest:DeepPreset` | `prior-art` | Chargehand preset the deep read asks for. |
+| `FeedEater:PeerHarvest:DeepTimeoutMinutes` | `20` | Longest a single deep read may take before it is given up, in minutes. |
+| `FeedEater:PeerHarvest:FeatureMergeSimilarity` | `0.85` | Two feature names whose embeddings are at least this similar (cosine) go to the cheap confirm-or-reject call. |
+| `FeedEater:PeerHarvest:MaxMergeChecks` | `20` | Most feature pairs one read sends to the confirm-or-reject call; the rest wait for the next read. |
 | `FeedEater:PeerHarvest:ReadmeMaxBytes` | `32768` | Bytes of a peer's README kept for the card step; the rest is cut before the model sees it. |
+| `FeedEater:PeerHarvest:SetSpendCapUsd` | `5` | A set run starts no further deep read once its reads have spent this much, in USD; a read whose cost is unknown counts as its full budget. |
 | `FeedEater:PeerHarvest:SetToken` | (empty) | GitHub token that can read the peer set file; empty for a public repository. |
 | `FeedEater:PeerHarvest:SetUrl` | (empty) | Peer harvester: GitHub contents API URL of the peer set file (one own repo plus its public peers, YAML), to fingerprint and card each repo into the prior-art namespace. Empty turns peer-harvest off for the whole configured set (a single repo can still be run by name). |
 

@@ -7,31 +7,40 @@ using FeedEater.Signals;
 
 namespace FeedEater.PriorArt.Peers;
 
-public sealed record PeerHarvestReport(string Repo, bool Fingerprinted, int Packages, bool Carded, IReadOnlyList<string> Skipped);
+public sealed record PeerHarvestReport(string Repo, bool Fingerprinted, int Packages, bool Carded, IReadOnlyList<string> Skipped, DeepReadResult? Deep = null);
 
 /// <summary>
 /// One repo at a time: a <c>fingerprint</c> episode (dependencies, the existing snapshot facts, disk usage; no model) and a
 /// <c>card</c> episode (addresses, has_feature, uses from its README and file tree; one cheap call). Both are idempotent
-/// episodes, so a run cut short just resumes: an unchanged repo stores nothing and spends no budget. No schedule: run on
-/// demand from the CLI or MCP.
+/// episodes, so a run cut short just resumes: an unchanged repo stores nothing and spends no budget. A third step, the deep read
+/// through chargehand (<see cref="PeerDeepRead"/>), runs when <c>PeerHarvest:ChargehandUrl</c> is set. No schedule: run on demand
+/// from the CLI or MCP.
 /// </summary>
 public sealed class PeerHarvestJob(
-    PriorArtStore store, GitHubStarsClient stars, PeerGitHubClient github, PeerSetClient peerSet, LiteLlmClient llm, IOptions<FeedEaterOptions> options, TimeProvider time)
+    PriorArtStore store, GitHubStarsClient stars, PeerGitHubClient github, PeerSetClient peerSet, LiteLlmClient llm, PeerDeepRead deepRead, IOptions<FeedEaterOptions> options, TimeProvider time)
 {
-    public async Task<IReadOnlyList<PeerHarvestReport>> HarvestSetAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<PeerHarvestReport>> HarvestSetAsync(CancellationToken ct) => await HarvestSetAsync(new HarvestMode(), ct);
+
+    public async Task<IReadOnlyList<PeerHarvestReport>> HarvestSetAsync(HarvestMode mode, CancellationToken ct)
     {
         var text = await peerSet.TextAsync(ct) ?? throw new InvalidOperationException("PeerHarvest:SetUrl is not set.");
         var set = PeerSetParser.Parse(text);
+        var spend = new SpendGuard(options.Value.PeerHarvest.SetSpendCapUsd);
         var reports = new List<PeerHarvestReport>();
         foreach (var repo in set.All)
         {
-            reports.Add(await HarvestAsync(repo, ct));
+            reports.Add(await HarvestAsync(repo, set.Template, set.Aspects, mode, spend, ct));
         }
 
         return reports;
     }
 
-    public async Task<PeerHarvestReport> HarvestAsync(string repo, CancellationToken ct)
+    public async Task<PeerHarvestReport> HarvestAsync(string repo, CancellationToken ct) => await HarvestAsync(repo, new HarvestMode(), ct);
+
+    public async Task<PeerHarvestReport> HarvestAsync(string repo, HarvestMode mode, CancellationToken ct) =>
+        await HarvestAsync(repo, "peer-template-v1", PeerQuestion.DefaultAspects, mode, new SpendGuard(options.Value.PeerHarvest.SetSpendCapUsd), ct);
+
+    private async Task<PeerHarvestReport> HarvestAsync(string repo, string template, IReadOnlyList<string> aspects, HarvestMode mode, SpendGuard spend, CancellationToken ct)
     {
         await store.EnsureReadyAsync(ct);
         var (owner, name) = Split(repo);
@@ -44,7 +53,13 @@ public sealed class PeerHarvestJob(
 
         var (fingerprinted, packages) = await FingerprintAsync(repo, owner, name, facts, ct);
         var carded = await CardAsync(repo, owner, name, ct, skipped);
-        return new PeerHarvestReport(repo, fingerprinted, packages, carded, skipped);
+        var deep = await deepRead.ReadAsync(repo, facts?.ReleaseTag, template, aspects, mode, spend, ct);
+        if (deep.Skipped is not null)
+        {
+            skipped.Add(deep.Skipped);
+        }
+
+        return new PeerHarvestReport(repo, fingerprinted, packages, carded, skipped, deep);
     }
 
     private async Task<(bool Changed, int Packages)> FingerprintAsync(string repo, string owner, string name, RepoFacts? facts, CancellationToken ct)

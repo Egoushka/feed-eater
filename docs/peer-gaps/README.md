@@ -18,7 +18,7 @@ The stop rule from Yehor was: fewer than 1 useful gap in 5 (20%) means narrow th
 - **Judged by Claude, not by Yehor.** "Useful" means the gap fits what the project is for and costs less than it gives. Yehor has not reviewed any verdict; treat the ratio as a first estimate.
 - **Every gap has a source URL.** All 49 distinct URLs returned HTTP 200 on 2026-11-01. 19 claims were spot-checked against the page text. Anchors (`#...`) were not click-tested. A gap with no source would be marked UNKNOWN and left out; none was.
 - **"Absent here" was checked** by reading or grepping the repo; the check is written under each gap.
-- **Not produced by the CLI.** The peer-harvest job (`peer-harvest`, PR #56) covers fingerprints and README cards only. The deep read and gap matching (`prior_art_gaps`, #53) is unbuilt and blocked by chargehand#683. These lists came from research subagents given the same task (7 peers, deep read, own-repo check) plus my judgment. The CLI also needs a LiteLLM key, DB, GitHub token and a peer-set file that this session did not have.
+- **Not produced by the CLI.** The peer-harvest job (`peer-harvest`, PR #56) covers fingerprints and README cards only. The deep read, feature matching and the gaps tool (`prior_art_gaps`, #53) exist since that change, but their live run waits on chargehand#683 (`gh:` paths), so none of these lists came from them. These lists came from research subagents given the same task (7 peers, deep read, own-repo check) plus my judgment. The CLI also needs a LiteLLM key, DB, GitHub token and a peer-set file that this session did not have.
 - `nytka-server` is `parked` in `repos.toml`; it was included because the task named it.
 
 ## Files

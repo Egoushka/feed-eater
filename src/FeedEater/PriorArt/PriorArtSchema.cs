@@ -19,6 +19,12 @@ public static class PriorArtSchema
     /// <summary>GitHub's repo size (KB), from the same call the existing snapshot facts come from.</summary>
     public const string DiskUsage = "disk_usage";
 
+    /// <summary>Two feature entities are the same feature: object is the survivor's <c>merged_into</c> target. Kept as a fact so a merge can be listed and undone.</summary>
+    public const string SameAs = "same_as";
+
+    /// <summary>A pair of features that were compared and found different, so they are not asked about again.</summary>
+    public const string DistinctFrom = "distinct_from";
+
     public static readonly IReadOnlyList<(string Name, Cardinality Cardinality)> Predicates =
     [
         ("addresses", Cardinality.Many),
@@ -36,11 +42,13 @@ public static class PriorArtSchema
         (DependsOn, Cardinality.Many),
         (HasFeature, Cardinality.Many),
         (DiskUsage, Cardinality.One),
+        (SameAs, Cardinality.Many),
+        (DistinctFrom, Cardinality.Many),
     ];
 
     /// <summary>Counters read from GitHub: they carry no meaning to search, so they are not embedded.</summary>
     public static readonly FrozenSet<string> NotEmbedded =
-        new[] { "status", "stars", "last_push", "latest_release", "license", DependsOn, DiskUsage }.ToFrozenSet(StringComparer.Ordinal);
+        new[] { "status", "stars", "last_push", "latest_release", "license", DependsOn, DiskUsage, SameAs, DistinctFrom }.ToFrozenSet(StringComparer.Ordinal);
 
     public const string EntityTool = "tool";
     public const string EntityProblem = "problem";
@@ -52,6 +60,9 @@ public static class PriorArtSchema
     public const string SourceAudit = "audit";
     public const string SourceWebNote = "web-note";
     public const string SourceSnapshot = "snapshot";
+
+    /// <summary>The cheap call that confirmed or rejected a pair of feature names.</summary>
+    public const string SourceFeatureMerge = "feature-merge";
 
     /// <summary>A repo's dependency graph and GitHub counters, read with no model.</summary>
     public const string SourceFingerprint = "fingerprint";

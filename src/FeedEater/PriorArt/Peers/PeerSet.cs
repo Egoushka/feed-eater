@@ -5,16 +5,18 @@ namespace FeedEater.PriorArt.Peers;
 /// <summary>What is wrong with the peer set file: the caller fixes the file, nothing was harvested.</summary>
 public sealed class PeerSetFormatException(string message) : Exception(message);
 
-/// <summary>One peer set: a repo plus its public peers, each <c>owner/name</c>.</summary>
-public sealed record PeerSet(string Repo, IReadOnlyList<string> Peers)
+/// <summary>One peer set: a repo plus its public peers, each <c>owner/name</c>, and the template and aspects the deep read is asked about.</summary>
+public sealed record PeerSet(string Repo, IReadOnlyList<string> Peers, string Template = "peer-template-v1", IReadOnlyList<string>? AspectList = null)
 {
+    public IReadOnlyList<string> Aspects => AspectList ?? [];
+
     /// <summary>The repo itself and every peer, own repo first, each once.</summary>
     public IReadOnlyList<string> All => new[] { Repo }.Concat(Peers).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 }
 
 /// <summary>
-/// A minimal reader for the peer set file's own shape: a <c>repo:</c> scalar and a <c>peers:</c> block list of <c>owner/name</c>
-/// strings. Not a general YAML parser.
+/// A minimal reader for the peer set file's own shape: <c>repo:</c>, <c>template:</c> and <c>aspects: [a, b]</c> scalars and a <c>peers:</c> block list
+/// whose items are <c>owner/name</c> or <c>gh: owner/name</c>. Not a general YAML parser.
 /// </summary>
 public static partial class PeerSetParser
 {
@@ -24,6 +26,8 @@ public static partial class PeerSetParser
     public static PeerSet Parse(string yaml)
     {
         string? repo = null;
+        var template = "peer-template-v1";
+        IReadOnlyList<string>? aspects = null;
         var peers = new List<string>();
         var inPeers = false;
         foreach (var raw in yaml.Split('\n'))
@@ -39,7 +43,7 @@ public static partial class PeerSetParser
             {
                 if (inPeers && Unquote(trimmed[1..].Trim()) is { Length: > 0 } peer)
                 {
-                    peers.Add(Require(peer, "a peer"));
+                    peers.Add(Require(peer.StartsWith("gh:", StringComparison.Ordinal) ? Unquote(peer[3..].Trim()) : peer, "a peer"));
                 }
 
                 continue;
@@ -62,9 +66,17 @@ public static partial class PeerSetParser
             {
                 inPeers = true;
             }
+            else if (string.Equals(key, "template", StringComparison.OrdinalIgnoreCase) && Unquote(value) is { Length: > 0 } t)
+            {
+                template = t;
+            }
+            else if (string.Equals(key, "aspects", StringComparison.OrdinalIgnoreCase))
+            {
+                aspects = Unquote(value).Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(Unquote).ToList();
+            }
         }
 
-        return repo is null ? throw new PeerSetFormatException("the peer set has no repo.") : new PeerSet(repo, peers);
+        return repo is null ? throw new PeerSetFormatException("the peer set has no repo.") : new PeerSet(repo, peers, template, aspects);
     }
 
     private static string Require(string value, string what) => RepoName().IsMatch(value) ? value : throw new PeerSetFormatException($"{what} is owner/name, not '{value}'.");

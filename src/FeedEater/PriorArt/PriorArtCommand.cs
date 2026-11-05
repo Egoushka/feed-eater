@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using FeedEater.PriorArt.Peers;
 using FeedEater.Storage;
 
 namespace FeedEater.PriorArt;
@@ -18,11 +19,17 @@ public static class PriorArtCommand
                            [--approach <slug>] [--subject gh:owner/name] [--commit <sha>] [--date yyyy-MM-dd] [--confidence 0..1] [--unverified]
           prior-art embed        embeds the live facts that have no vector yet
           prior-art stats        counts what the base holds
+          prior-art gaps --repo owner/name [--peers a/b,c/d] [--min-peers 2] [--known-at <ISO 8601>]
+                                 features at least min-peers peers have and the repo lacks, as JSON
+          prior-art merges [--undo <fact id>]
+                                 lists the feature names the base merged; --undo reverses one
+          prior-art verify --sample N
+                                 checks that N random code citations exist on GitHub at their commit
         """;
 
     public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output, TextWriter error)
     {
-        if (args.Length == 0 || args[0] is not ("import" or "embed" or "stats"))
+        if (args.Length == 0 || args[0] is not ("import" or "embed" or "stats" or "gaps" or "merges" or "verify"))
         {
             await error.WriteLineAsync(Usage);
             return 2;
@@ -54,6 +61,12 @@ public static class PriorArtCommand
                     var model = services.GetRequiredService<IOptions<FeedEaterOptions>>().Value.Llm.EmbedModel;
                     await output.WriteLineAsync(JsonSerializer.Serialize(await store.StatsAsync(model, CancellationToken.None), new JsonSerializerOptions(FeedEater.Json.Options) { WriteIndented = true }));
                     return 0;
+                case "gaps":
+                    return await GapsAsync(args[1..], services.GetRequiredService<PriorArtGaps>(), output);
+                case "merges":
+                    return await MergesAsync(args[1..], store, services.GetRequiredService<FeatureResolver>(), output, error);
+                case "verify":
+                    return await VerifyAsync(args[1..], services.GetRequiredService<PriorArtVerify>(), output);
                 default:
                     return await ImportAsync(args[1..], importer, input, output, error);
             }
@@ -63,6 +76,91 @@ public static class PriorArtCommand
             await error.WriteLineAsync(e.Message);
             return 2;
         }
+    }
+
+    private static readonly JsonSerializerOptions Indented = new(FeedEater.Json.Options) { WriteIndented = true };
+
+    private static async Task<int> GapsAsync(string[] args, PriorArtGaps gaps, TextWriter output)
+    {
+        string? repo = null;
+        string[]? peers = null;
+        var minPeers = 2;
+        DateTimeOffset? knownAt = null;
+        for (var i = 0; i < args.Length; i++)
+        {
+            string Next() => i + 1 < args.Length ? args[++i] : throw new PriorArtInputException($"{args[i]} needs a value.\n{Usage}");
+            switch (args[i])
+            {
+                case "--repo": repo = Next(); break;
+                case "--peers": peers = Next().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); break;
+                case "--min-peers": minPeers = int.TryParse(Next(), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : throw new PriorArtInputException("min-peers is a whole number."); break;
+                case "--known-at": knownAt = DateTimeOffset.TryParse(Next(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) ? at : throw new PriorArtInputException("known-at is an ISO 8601 time."); break;
+                default: throw new PriorArtInputException($"unknown option {args[i]}.\n{Usage}");
+            }
+        }
+
+        if (repo is null)
+        {
+            throw new PriorArtInputException($"--repo is required.\n{Usage}");
+        }
+
+        try
+        {
+            await output.WriteLineAsync(JsonSerializer.Serialize(await gaps.QueryAsync(repo, peers, minPeers, knownAt, CancellationToken.None), Indented));
+            return 0;
+        }
+        catch (ArgumentException e)
+        {
+            throw new PriorArtInputException(e.Message);
+        }
+    }
+
+    private static async Task<int> MergesAsync(string[] args, PriorArtStore store, FeatureResolver resolver, TextWriter output, TextWriter error)
+    {
+        if (args.Length == 2 && args[0] == "--undo")
+        {
+            if (!Guid.TryParse(args[1], out var id))
+            {
+                throw new PriorArtInputException("--undo takes the id of a merge from the list.");
+            }
+
+            if (!await resolver.UndoAsync(id, CancellationToken.None))
+            {
+                await error.WriteLineAsync($"no live merge with id {id}.");
+                return 1;
+            }
+
+            await output.WriteLineAsync($"Undone: {id}. The pair is recorded as different, so it is not merged again.");
+            return 0;
+        }
+
+        if (args.Length != 0)
+        {
+            throw new PriorArtInputException(Usage);
+        }
+
+        await store.EnsureReadyAsync(CancellationToken.None);
+        var merges = await store.MergesAsync(CancellationToken.None);
+        foreach (var m in merges)
+        {
+            await output.WriteLineAsync($"{m.FactId}  {m.LoserName} -> {m.SurvivorName}  ({m.RecordedAt:yyyy-MM-dd})");
+        }
+
+        await output.WriteLineAsync($"{merges.Count} merged feature names.");
+        return 0;
+    }
+
+    private static async Task<int> VerifyAsync(string[] args, PriorArtVerify verify, TextWriter output)
+    {
+        if (args.Length != 2 || args[0] != "--sample" || !int.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count < 1)
+        {
+            throw new PriorArtInputException(Usage);
+        }
+
+        var report = await verify.SampleAsync(count, CancellationToken.None);
+        await output.WriteLineAsync(JsonSerializer.Serialize(report, Indented));
+        await output.WriteLineAsync($"{report.Resolved} of {report.Sampled} citations resolve.");
+        return 0;
     }
 
     private static async Task<int> ImportAsync(string[] args, PriorArtImporter importer, TextReader input, TextWriter output, TextWriter error)
