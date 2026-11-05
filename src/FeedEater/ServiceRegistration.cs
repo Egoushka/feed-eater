@@ -164,6 +164,7 @@ public static class ServiceRegistration
         services.AddSingleton<IFileLines>(sp => sp.GetRequiredService<PeerGitHubClient>());
         services.AddSingleton<PriorArtVerify>();
         services.AddSingleton<PriorArtGaps>();
+        services.AddSingleton<IPeerGapSource, PeerGapSource>();
         services.AddSingleton<PeerHarvestJob>();
         services.AddSingleton<ArchiveAnswer>();
         services.AddSingleton<ItemAnswer>();

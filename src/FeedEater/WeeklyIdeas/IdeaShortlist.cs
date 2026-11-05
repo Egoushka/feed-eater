@@ -6,8 +6,11 @@ using FeedEater.Issues;
 
 namespace FeedEater.WeeklyIdeas;
 
-/// <summary>Something that might become an idea: an item you liked, saved or that was marked improve, or a Karakeep bookmark.</summary>
-public sealed record Lead(string Signal, string Title, string Url, string Detail);
+/// <summary>
+/// Something that might become an idea: an item you liked, saved or that was marked improve, a Karakeep bookmark, or a feature gap against the peers.
+/// A lead with a <paramref name="Project"/> goes to that repo whatever the model names; <paramref name="Extra"/> is Markdown added to the issue body.
+/// </summary>
+public sealed record Lead(string Signal, string Title, string Url, string Detail, string? Project = null, string? Extra = null);
 
 /// <summary>A repo (owner/name) an idea can go to, with what the model needs to choose it.</summary>
 public sealed record Target(string Repo, string Key, string Description);
@@ -26,6 +29,7 @@ public static class IdeaShortlist
         and everything that is already planned or filed.
 
         Pick at most {{max}} leads that suggest a specific change the owner could make to one of his projects or workflows, best first.
+        A lead tagged [peer-gap] is a feature several peer projects have and the owner's project lacks; weigh it like any other lead, its repo is fixed.
         Skip news, opinions and anything with no action. Skip a lead whose idea repeats a row of the backlog, an issue or an earlier
         shortlist idea, even if the wording differs. Fewer ideas, or none, beats a weak one.
 

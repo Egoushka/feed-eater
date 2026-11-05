@@ -58,6 +58,27 @@ public sealed class WeeklyIdeaStore(FeedDb db)
         return urls.ToHashSet(StringComparer.Ordinal);
     }
 
+    private const string OfferedPrefix = "peer-gap-offered:";
+
+    /// <summary>Gap source URLs that went to a ranking before; they are not offered again, kept or not.</summary>
+    public async Task<IReadOnlySet<string>> OfferedGapUrlsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        var names = await c.QueryAsync<string>(new CommandDefinition(
+            "select name from cursors where starts_with(name, @prefix)", new { prefix = OfferedPrefix }, cancellationToken: ct));
+        return names.Select(n => n[OfferedPrefix.Length..]).ToHashSet(StringComparer.Ordinal);
+    }
+
+    public async Task MarkGapsOfferedAsync(IEnumerable<string> urls, string week, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        foreach (var url in urls)
+        {
+            await c.ExecuteAsync(new CommandDefinition(
+                "insert into cursors (name, value) values (@name, @week) on conflict (name) do nothing", new { name = OfferedPrefix + url, week }, cancellationToken: ct));
+        }
+    }
+
     public async Task<IReadOnlyList<string>> RecentTitlesAsync(int limit, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);

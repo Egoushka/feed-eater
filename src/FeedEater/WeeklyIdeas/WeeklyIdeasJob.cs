@@ -19,7 +19,7 @@ namespace FeedEater.WeeklyIdeas;
 /// An idea whose source was filed before, or that repeats an issue or a backlog row, is left out. Quiet hours hold it.
 /// </summary>
 public sealed class WeeklyIdeasJob(
-    WeeklyIdeaStore store, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, InboxStore inboxStore, QuietHours quiet,
+    WeeklyIdeaStore store, IPeerGapSource gapSource, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, InboxStore inboxStore, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<WeeklyIdeasJob> logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -58,7 +58,15 @@ public sealed class WeeklyIdeasJob(
         var settings = Settings.WeeklyIdeas;
         var since = Time.GetUtcNow().AddDays(-7);
         var filed = await store.FiledUrlsAsync(ct);
+        var monday = DateTime.ParseExact(key, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var week = string.Create(CultureInfo.InvariantCulture, $"{ISOWeek.GetYear(monday)}-W{ISOWeek.GetWeekOfYear(monday):00}");
         var leads = await LeadsAsync(since, filed, ct);
+        var gapUrls = leads.Where(PeerGapLeads.IsGap).Select(l => l.Url).ToList();
+        if (gapUrls.Count > 0)
+        {
+            Logger.LogInformation("Peer-gap candidates offered to the ranking ({Count}): {Urls}", gapUrls.Count, string.Join(", ", gapUrls));
+        }
+
         if (leads.Count == 0)
         {
             Logger.LogInformation("No leads this week; no shortlist");
@@ -96,7 +104,9 @@ public sealed class WeeklyIdeasJob(
         var backlogText = await backlog.TextAsync(ct);
         var reply = await llm.ChatAsync(Settings.Llm.ReadModel, IdeaShortlist.System(settings.MaxFiled),
             IdeaShortlist.User(leads, targets, issueTitles, await store.RecentTitlesAsync(50, ct), backlogText), MaxTokens, "weekly-ideas", ct);
+        await store.MarkGapsOfferedAsync(gapUrls, week, ct);   // offered once, whether or not the ranking keeps it
         var entries = IdeaShortlist.Parse(reply.Content, leads.Count, targets.Select(t => t.Repo).ToList(), fallback.Length > 0 ? fallback : targets[0].Repo)
+            .Select(e => leads[e.Lead].Project is { } fixedRepo ? e with { Project = fixedRepo } : e)
             .Take(settings.MaxFiled).ToList();
         if (entries.Count == 0)
         {
@@ -104,8 +114,6 @@ public sealed class WeeklyIdeasJob(
             return;
         }
 
-        var monday = DateTime.ParseExact(key, "yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var week = string.Create(CultureInfo.InvariantCulture, $"{ISOWeek.GetYear(monday)}-W{ISOWeek.GetWeekOfYear(monday):00}");
         var staged = new List<(ShortlistEntry Entry, Lead Lead, long InboxId)>();
         foreach (var entry in entries)
         {
@@ -131,6 +139,12 @@ public sealed class WeeklyIdeasJob(
         }
 
         Logger.LogInformation("Staged {Count} ideas for {Week}", staged.Count, week);
+        var stagedGaps = staged.Where(s => PeerGapLeads.IsGap(s.Lead)).Select(s => s.Lead.Url).ToList();
+        if (stagedGaps.Count > 0)
+        {
+            Logger.LogInformation("Peer-gap ideas staged ({Count}): {Urls}", stagedGaps.Count, string.Join(", ", stagedGaps));
+        }
+
         if (Settings.Telegram.Token.Length > 0)
         {
             await telegram.SendAsync(Settings.Telegram.AllowedUserId, Message(week, staged, settings.TopInMessage), ct);
@@ -150,8 +164,11 @@ public sealed class WeeklyIdeasJob(
             leads.Add(new Lead("bookmarked", b.Title, b.Url!, ""));
         }
 
+        var offered = await store.OfferedGapUrlsAsync(ct);
+        var gaps = await gapSource.LeadsAsync(new HashSet<string>(filed.Concat(offered), StringComparer.Ordinal), ct);
         var seen = new HashSet<string>(filed, StringComparer.Ordinal);
-        return leads.Where(l => seen.Add(UrlCanonicalizer.Canonical(l.Url))).Take(MaxLeads).ToList();
+        var gapLeads = gaps.Take(PeerGapLeads.PerSet).Where(l => seen.Add(UrlCanonicalizer.Canonical(l.Url))).ToList();
+        return leads.Where(l => seen.Add(UrlCanonicalizer.Canonical(l.Url))).Take(MaxLeads - gapLeads.Count).Concat(gapLeads).ToList();
     }
 
     /// <summary>The issue body, in Markdown.</summary>
@@ -164,7 +181,14 @@ public sealed class WeeklyIdeasJob(
         }
 
         body.Append($"\n\nWhere: {Markdown.Text(e.Where.Length > 0 ? e.Where : e.Project)} · effort {e.Effort}");
-        body.Append($"\n\nSource: {Markdown.Link(lead.Title, lead.Url)} ({Markdown.Text(lead.Signal)}, feed-eater weekly ideas {week})");
+        if (lead.Extra is { Length: > 0 })
+        {
+            body.Append("\n\n").Append(lead.Extra);
+        }
+
+        body.Append(PeerGapLeads.IsGap(lead)
+            ? $"\n\nSource: {Markdown.Text(lead.Title)} ({Markdown.Text(lead.Signal)}, feed-eater weekly ideas {week})"
+            : $"\n\nSource: {Markdown.Link(lead.Title, lead.Url)} ({Markdown.Text(lead.Signal)}, feed-eater weekly ideas {week})");
         return body.ToString();
     }
 
@@ -186,7 +210,7 @@ public sealed class WeeklyIdeasJob(
                 html.Append($"\n   {E(e.Why)}");
             }
 
-            html.Append($"\n   <a href=\"{E(lead.Url)}\">{E(lead.Title)}</a>\n");
+            html.Append(PeerGapLeads.IsGap(lead) ? $"\n   {E(lead.Title)} (peer gap)\n" : $"\n   <a href=\"{E(lead.Url)}\">{E(lead.Title)}</a>\n");
         }
 
         var keyboard = staged.Select((t, i) => (IReadOnlyList<Button>)
