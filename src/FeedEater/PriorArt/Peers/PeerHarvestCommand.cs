@@ -8,7 +8,10 @@ namespace FeedEater.PriorArt.Peers;
 /// </summary>
 public static class PeerHarvestCommand
 {
-    private const string Usage = "Usage:\n  peer-harvest [--repo owner/name]   fingerprint and card either one repo or the configured peer set";
+    private const string Usage =
+        "Usage:\n  peer-harvest [--repo owner/name] [--no-deep] [--force]\n" +
+        "    fingerprint, card and (with PeerHarvest:ChargehandUrl set) deep-read either one repo or the configured peer set.\n" +
+        "    --no-deep skips the chargehand read; --force reads again even without a new minor or major release.";
 
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextWriter error)
     {
@@ -23,11 +26,21 @@ public static class PeerHarvestCommand
     internal static async Task<int> RunAsync(string[] args, IServiceProvider services, TextWriter output, TextWriter error)
     {
         string? repo = null;
+        var deep = true;
+        var force = false;
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] == "--repo" && i + 1 < args.Length)
             {
                 repo = args[++i];
+            }
+            else if (args[i] == "--no-deep")
+            {
+                deep = false;
+            }
+            else if (args[i] == "--force")
+            {
+                force = true;
             }
             else
             {
@@ -37,13 +50,14 @@ public static class PeerHarvestCommand
         }
 
         var job = services.GetRequiredService<PeerHarvestJob>();
+        var mode = new HarvestMode(deep, force);
         try
         {
-            var reports = repo is null ? await job.HarvestSetAsync(CancellationToken.None) : [await job.HarvestAsync(repo, CancellationToken.None)];
+            var reports = repo is null ? await job.HarvestSetAsync(mode, CancellationToken.None) : [await job.HarvestAsync(repo, mode, CancellationToken.None)];
             foreach (var r in reports)
             {
                 await output.WriteLineAsync(
-                    $"{r.Repo}: {(r.Fingerprinted ? $"fingerprinted ({r.Packages} packages)" : "fingerprint unchanged")}, {(r.Carded ? "card written" : "card unchanged or skipped")}");
+                    $"{r.Repo}: {(r.Fingerprinted ? $"fingerprinted ({r.Packages} packages)" : "fingerprint unchanged")}, {(r.Carded ? "card written" : "card unchanged or skipped")}, {Deep(r.Deep)}");
                 foreach (var s in r.Skipped)
                 {
                     await error.WriteLineAsync($"{r.Repo}: {s}");
@@ -63,4 +77,11 @@ public static class PeerHarvestCommand
             return 2;
         }
     }
+
+    private static string Deep(DeepReadResult? d) => d switch
+    {
+        null or { Read: false } => "deep read unchanged or skipped",
+        _ => $"deep read: {d.Facts} facts, ${d.Usd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}" +
+             (d.Merges is { } m ? $", features compared {m.Compared}, merged {m.Merged}, kept apart {m.Rejected}, deferred {m.Deferred}" : ""),
+    };
 }

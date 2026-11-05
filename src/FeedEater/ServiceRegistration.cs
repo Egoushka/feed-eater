@@ -157,6 +157,13 @@ public static class ServiceRegistration
         services.AddSingleton<PriorArtExplain>();
         services.AddHttpClient<PeerSetClient>();
         services.AddHttpClient<PeerGitHubClient>((sp, http) => GitHub(sp, http));
+        services.AddHttpClient<IRepoReader, ChargehandReader>();
+        services.AddSingleton<IFeatureJudge, LiteLlmFeatureJudge>();
+        services.AddSingleton<FeatureResolver>();
+        services.AddSingleton<PeerDeepRead>();
+        services.AddSingleton<IFileLines>(sp => sp.GetRequiredService<PeerGitHubClient>());
+        services.AddSingleton<PriorArtVerify>();
+        services.AddSingleton<PriorArtGaps>();
         services.AddSingleton<PeerHarvestJob>();
         services.AddSingleton<ArchiveAnswer>();
         services.AddSingleton<ItemAnswer>();

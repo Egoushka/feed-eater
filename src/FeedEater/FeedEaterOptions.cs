@@ -547,6 +547,34 @@ public sealed class PeerHarvestOptions
 
     [Description("Most the card model may answer with, in tokens.")]
     public int CardAnswerLimit { get; set; } = 700;
+
+    /// <summary>On when chargehand is configured.</summary>
+    public bool DeepEnabled => ChargehandUrl.Length > 0;
+
+    [Description("Peer harvester deep read: base URL of the chargehand HTTP server that reads each peer's code (POST /v1/runs). Empty turns the deep read off.")]
+    public string ChargehandUrl { get; set; } = "";
+
+    [Secret]
+    [Description("Bearer key of the chargehand account (peer-harvest) the deep reads are charged to.")]
+    public string ChargehandKey { get; set; } = "";
+
+    [Description("Chargehand preset the deep read asks for.")]
+    public string DeepPreset { get; set; } = "prior-art";
+
+    [Description("Most one deep read may spend, in USD (request/v1 budget_usd).")]
+    public double DeepBudgetUsd { get; set; } = 0.50;
+
+    [Description("A set run starts no further deep read once its reads have spent this much, in USD; a read whose cost is unknown counts as its full budget.")]
+    public double SetSpendCapUsd { get; set; } = 5.00;
+
+    [Description("Longest a single deep read may take before it is given up, in minutes.")]
+    public int DeepTimeoutMinutes { get; set; } = 20;
+
+    [Description("Two feature names whose embeddings are at least this similar (cosine) go to the cheap confirm-or-reject call.")]
+    public double FeatureMergeSimilarity { get; set; } = 0.85;
+
+    [Description("Most feature pairs one read sends to the confirm-or-reject call; the rest wait for the next read.")]
+    public int MaxMergeChecks { get; set; } = 20;
 }
 
 public sealed class PriorArtOptions
