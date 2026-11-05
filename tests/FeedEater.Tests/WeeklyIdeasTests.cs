@@ -1,10 +1,12 @@
 using System.Net;
 using System.Text.Json;
 using Dapper;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using FeedEater.Llm;
+using FeedEater.PriorArt.Peers;
 using FeedEater.Loops;
 using FeedEater.Inbox;
 using FeedEater.Issues;
@@ -55,6 +57,8 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     private string _chatReply = "";
     private string? _backlog = "| AIS-1 | Existing row |";
     private readonly List<string> _chatBodies = [];
+    private readonly List<string> _logs = [];
+    private GapReport? _gapReport;
     private bool _githubDown;
     private ManualResetEventSlim? _githubGate;
     private readonly ManualResetEventSlim _githubEntered = new();
@@ -88,11 +92,11 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         var backlog = new StubHandler((_, _) => _backlog is null ? StubHandler.Json("{}", HttpStatusCode.BadGateway) : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(_backlog) });
         var cursors = new CursorStore(pg.Db);
         var job = new WeeklyIdeasJob(
-            new WeeklyIdeaStore(pg.Db), new ProfileStore(pg.Db), new GitHubIssues(github.Client("http://github/")),
+            new WeeklyIdeaStore(pg.Db), new FixtureGaps(() => _gapReport), new ProfileStore(pg.Db), new GitHubIssues(github.Client("http://github/")),
             new BacklogClient(backlog.Client("http://backlog/"), options),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new TelegramClient(telegram.Client("http://tg/botT/")), new InboxStore(pg.Db), new QuietHours(cursors, options, time),
-            cursors, options, new LoopHealth(time), time, NullLogger<WeeklyIdeasJob>.Instance);
+            cursors, options, new LoopHealth(time), time, new ListLogger<WeeklyIdeasJob>(_logs));
         return (job, github, telegram);
     }
 
@@ -323,6 +327,73 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Gap_leads_join_the_ranking_at_most_two_a_week_and_each_is_offered_once()
+    {
+        await SeedAsync();
+        _gapReport = PeerGapLeadsTests.FourRows();
+        _chatReply = """{"ideas":[]}""";
+        var time = new FakeTimeProvider(Monday);
+        var (job, _, _) = Build(time);
+
+        await job.TickAsync(default);
+
+        var first = _chatBodies[0];
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(first, @"\d+\. \[peer-gap\]").Count);   // lead lines, not the prompt's own mention
+        Assert.Contains("feed-eater://gaps/octo/homelab/confident-pair", first, StringComparison.Ordinal);
+        Assert.Contains("feed-eater://gaps/octo/homelab/most-peers", first, StringComparison.Ordinal);
+        Assert.Contains("A bookmarked tool", first, StringComparison.Ordinal);   // the week's other leads still rank
+        Assert.Contains(_logs, l => l.Contains("Peer-gap candidates offered", StringComparison.Ordinal) && l.Contains("confident-pair", StringComparison.Ordinal) && l.Contains("most-peers", StringComparison.Ordinal));
+
+        time.Advance(TimeSpan.FromDays(7));
+        await job.TickAsync(default);
+        var second = _chatBodies[1];
+        Assert.DoesNotContain("confident-pair", second, StringComparison.Ordinal);   // the ranking kept nothing, and they still do not come back
+        Assert.DoesNotContain("most-peers", second, StringComparison.Ordinal);
+        Assert.Contains("feed-eater://gaps/octo/homelab/middle", second, StringComparison.Ordinal);
+        Assert.Contains("feed-eater://gaps/octo/homelab/low-score", second, StringComparison.Ordinal);
+
+        time.Advance(TimeSpan.FromDays(7));
+        await job.TickAsync(default);
+        Assert.Equal(2, _chatBodies.Count);   // nothing left to offer and no other leads: no ranking call
+    }
+
+    [Fact]
+    public async Task A_gap_that_was_filed_or_dropped_is_not_offered()
+    {
+        _gapReport = PeerGapLeadsTests.FourRows();
+        _chatReply = """{"ideas":[]}""";
+        await new WeeklyIdeaStore(pg.Db).DropAsync("feed-eater://gaps/octo/homelab/confident-pair", "2026-W42", "Earlier", "octo/homelab", default);
+        var (job, _, _) = Build(new FakeTimeProvider(Monday));
+
+        await job.TickAsync(default);
+
+        Assert.DoesNotContain("confident-pair", _chatBodies.Single(), StringComparison.Ordinal);
+        Assert.Contains("most-peers", _chatBodies.Single(), StringComparison.Ordinal);
+        Assert.Contains("middle", _chatBodies.Single(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_gap_idea_is_staged_for_the_sets_repo_with_its_peers_and_is_not_a_link_in_Telegram()
+    {
+        _gapReport = PeerGapLeadsTests.FourRows();
+        _chatReply = """{"ideas":[{"lead":1,"idea":"Add the confident feature","project":"octo/feed","where":"homelab","effort":"M","why":"Two peers have it."}]}""";
+        var (job, _, telegram) = Build(new FakeTimeProvider(Monday));
+
+        await job.TickAsync(default);
+
+        Assert.Equal("octo/homelab", await ScalarAsync<string>("select payload->>'project' from inbox where kind = 'idea'"));   // the model named octo/feed
+        Assert.Equal("feed-eater://gaps/octo/homelab/confident-pair", await ScalarAsync<string>("select payload->>'url' from inbox where kind = 'idea'"));
+        var body = await ScalarAsync<string>("select payload->>'body' from inbox where kind = 'idea'");
+        Assert.Contains("https://github.com/peer/a/blob/abc123/src/a.cs#L10-L20", body, StringComparison.Ordinal);
+        Assert.Contains("https://github.com/peer/b/blob/abc123/src/a.cs#L10-L20", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("](feed-eater://", body, StringComparison.Ordinal);
+        var message = Assert.Single(telegram.Calls);
+        Assert.DoesNotContain("feed-eater://", message.Body, StringComparison.Ordinal);
+        Assert.Contains("Add the confident feature", message.Body, StringComparison.Ordinal);
+        Assert.Contains(_logs, l => l.Contains("Peer-gap ideas staged (1)", StringComparison.Ordinal) && l.Contains("confident-pair", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Runs_once_per_Monday()
     {
         await SeedAsync();
@@ -351,5 +422,93 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(2, telegram.Calls.Count);
         Assert.Null(await cursors.GetAsync(WeeklyIdeasJob.ForceCursor, default));
+    }
+}
+
+internal sealed class ListLogger<T>(List<string> lines) : ILogger<T>
+{
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+        lines.Add(formatter(state, exception));
+}
+
+/// <summary>A peer set whose gap report is a fixture, read through the same selection the real source uses.</summary>
+internal sealed class FixtureGaps(Func<GapReport?> report, string repo = "octo/homelab") : IPeerGapSource
+{
+    public Task<IReadOnlyList<Lead>> LeadsAsync(IReadOnlySet<string> skip, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Lead>>(report() is { } r ? PeerGapLeads.Select(repo, r, skip) : []);
+}
+
+public sealed class PeerGapLeadsTests
+{
+    internal static PeerFeature Peer(string tool, double confidence, string path = "src/a.cs", string? lines = "10-20") =>
+        new(tool, "gh:peer/" + tool, Guid.NewGuid(), $"{tool} has it", confidence, new GapEvidence("peer/" + tool, "abc123", path, lines, null));
+
+    internal static GapRow Row(string feature, params PeerFeature[] peers) => new(feature, feature.ToLowerInvariant().Replace(' ', '-'), peers, []);
+
+    internal static GapReport Report(params GapRow[] rows) =>
+        new("octo/homelab", DateTimeOffset.UnixEpoch, 2, "the peer set file", [], rows, [], [], []);
+
+    internal static GapReport FourRows() => Report(
+        Row("Low score", Peer("a", 0.5), Peer("b", 0.5)),                                      // 2 × 0.50 = 1.00
+        Row("Most peers", Peer("a", 0.6), Peer("b", 0.6), Peer("c", 0.6)),                     // 3 × 0.60 = 1.80
+        Row("Confident pair", Peer("a", 0.95), Peer("b", 0.95)),                               // 2 × 0.95 = 1.90
+        Row("Middle", Peer("a", 0.8), Peer("b", 0.7)));                                        // 2 × 0.75 = 1.50
+
+    [Fact]
+    public void Four_gap_rows_offer_two_by_peers_times_confidence_and_the_next_run_offers_the_other_two_then_none()
+    {
+        var report = FourRows();
+        var skip = new HashSet<string>();
+
+        var first = PeerGapLeads.Select("octo/homelab", report, skip);
+        Assert.Equal(["Confident pair", "Most peers"], first.Select(l => l.Title));
+
+        foreach (var l in first)
+        {
+            skip.Add(l.Url);
+        }
+
+        var second = PeerGapLeads.Select("octo/homelab", report, skip);
+        Assert.Equal(["Middle", "Low score"], second.Select(l => l.Title));
+        Assert.Empty(first.Select(l => l.Url).Intersect(second.Select(l => l.Url)));
+
+        foreach (var l in second)
+        {
+            skip.Add(l.Url);
+        }
+
+        Assert.Empty(PeerGapLeads.Select("octo/homelab", report, skip));
+    }
+
+    [Fact]
+    public void A_lead_has_the_gap_url_names_the_feature_and_peers_and_links_each_peer_and_goes_to_the_sets_repo()
+    {
+        var report = Report(Row("Rate limit", Peer("one", 0.9), Peer("two", 0.8, lines: "7"), new PeerFeature("three", "gh:peer/three", Guid.NewGuid(), "no code", 0.7, new GapEvidence(null, null, null, null, null))));
+
+        var lead = Assert.Single(PeerGapLeads.Select("octo/homelab", report, new HashSet<string>()));
+
+        Assert.Equal("feed-eater://gaps/octo/homelab/rate-limit", lead.Url);
+        Assert.Equal("peer-gap", lead.Signal);
+        Assert.Equal("octo/homelab", lead.Project);
+        Assert.Contains("Rate limit", lead.Detail, StringComparison.Ordinal);
+        Assert.Contains("one, two, three", lead.Detail, StringComparison.Ordinal);
+        Assert.Contains("](https://github.com/peer/one/blob/abc123/src/a.cs#L10-L20)", lead.Extra, StringComparison.Ordinal);
+        Assert.Contains("](https://github.com/peer/two/blob/abc123/src/a.cs#L7)", lead.Extra, StringComparison.Ordinal);
+        Assert.Contains("](https://github.com/peer/three)", lead.Extra, StringComparison.Ordinal);   // no cited code: the peer's repo page
+    }
+
+    [Fact]
+    public async Task A_peer_set_that_cannot_be_read_gives_no_leads_instead_of_failing_the_run()
+    {
+        var options = Options.Create(new FeedEaterOptions { PeerHarvest = new PeerHarvestOptions { SetUrl = "http://set/file" } });
+        var set = new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.BadGateway));
+        var source = new PeerGapSource(null!, new PeerSetClient(set.Client("http://set/"), options), NullLogger<PeerGapSource>.Instance, options);
+
+        Assert.Empty(await source.LeadsAsync(new HashSet<string>(), default));
+        Assert.Empty(await new PeerGapSource(null!, new PeerSetClient(set.Client("http://set/"), Options.Create(new FeedEaterOptions())), NullLogger<PeerGapSource>.Instance, Options.Create(new FeedEaterOptions())).LeadsAsync(new HashSet<string>(), default));
     }
 }
