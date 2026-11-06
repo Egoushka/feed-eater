@@ -36,6 +36,43 @@ public sealed class SearchTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task English_plural_finds_singular()
+    {
+        var store = new ItemStore(pg.Db);
+        var id = await Seed.ItemAsync(pg, 1, "Database migrations", TestVectors.OneHot(1));
+        await Seed.ItemAsync(pg, 1, "Unrelated", TestVectors.OneHot(2));
+
+        var hits = await store.SearchAsync(null, "databases", null, null, null, null, null, 10, default);
+
+        Assert.Equal([id], hits.Select(h => h.Id));
+    }
+
+    [Fact]
+    public async Task Stemmed_verb_forms_match()
+    {
+        var store = new ItemStore(pg.Db);
+        var id = await Seed.ItemAsync(pg, 1, "How Postgres indexes work", TestVectors.OneHot(1));
+        await Seed.ItemAsync(pg, 1, "Unrelated", TestVectors.OneHot(2));
+
+        var hits = await store.SearchAsync(null, "indexing", null, null, null, null, null, 10, default);
+
+        Assert.Equal([id], hits.Select(h => h.Id));
+    }
+
+    [Fact]
+    public async Task Exact_title_still_ranks_first()
+    {
+        var store = new ItemStore(pg.Db);
+        var exact = await Seed.ItemAsync(pg, 1, "Database migrations", TestVectors.OneHot(1));
+        await Seed.ItemAsync(pg, 1, "Notes on running database servers", TestVectors.OneHot(2));
+        await Seed.ItemAsync(pg, 1, "Migrations of a different kind", TestVectors.OneHot(3));
+
+        var hits = await store.SearchAsync(null, "database migrations", null, null, null, null, null, 10, default);
+
+        Assert.Equal(exact, hits[0].Id);
+    }
+
+    [Fact]
     public async Task The_keyword_search_uses_the_gin_index_on_search()
     {
         await using var c = await pg.Db.DataSource.OpenConnectionAsync();
