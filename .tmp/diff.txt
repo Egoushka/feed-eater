@@ -1,0 +1,342 @@
+diff --git a/docs/SETUP.md b/docs/SETUP.md
+index a9a1fc6..2399acb 100644
+--- a/docs/SETUP.md
++++ b/docs/SETUP.md
+@@ -185,6 +185,12 @@ write issues in every one of those repos: a classic token with the `repo` scope
+ one with Issues read and write, which covers the repos of one owner only: put the other owners' tokens in `FeedEater__GitHub__OwnerTokens` as `owner=token` pairs separated by commas. Without write access GitHub drops the label. The `github-issues`
+ check in `doctor` and on `/ui/setup` reads the fallback repo. `FeedEater__Ideas__Sink=local` keeps ideas local even with GitHub configured.
+ 
++**Research notes (an idea source).** `docker compose run --rm feed-eater import-notes /config/notes` reads every `*.md` file under the
++folder. Each `### title` entry with `- URL:` and `- Fact:` lines (optional `- Source date:`, `- Retrieved:`, `- Quote:`, `- Label:`)
++becomes one archived item, dated by its source date, or by its retrieved date when it has no source date. A finding whose URL is
++already in the archive, from a feed or an earlier import, is skipped, so running the import again adds only new findings. Notes are
++searchable but never embedded or sent in the digest. Findings imported in the last 7 days go to the weekly ideas shortlist as `research-note` leads.
++
+ **Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). The 📌 button always shows and saves to the library; Karakeep
+ is an optional mirror of those saves, and your Karakeep bookmarks count as liked items in the ranking. See "Library" for the mirror and the one-time import.
+ 
+diff --git a/src/FeedEater/Program.cs b/src/FeedEater/Program.cs
+index 3c2a50b..4c62496 100644
+--- a/src/FeedEater/Program.cs
++++ b/src/FeedEater/Program.cs
+@@ -42,6 +42,11 @@ if (args.FirstOrDefault() == "import-karakeep")
+     return await FeedEater.Library.ImportKarakeepCommand.RunAsync(args[1..]);
+ }
+ 
++if (args.FirstOrDefault() == "import-notes")
++{
++    return await FeedEater.WeeklyIdeas.ImportNotesCommand.RunAsync(args[1..]);
++}
++
+ if (args.FirstOrDefault() == "prior-art")
+ {
+     return await FeedEater.PriorArt.PriorArtCommand.RunAsync(args[1..], Console.In, Console.Out, Console.Error);
+diff --git a/src/FeedEater/Storage/WeeklyIdeaStore.cs b/src/FeedEater/Storage/WeeklyIdeaStore.cs
+index 86bba3b..b583af8 100644
+--- a/src/FeedEater/Storage/WeeklyIdeaStore.cs
++++ b/src/FeedEater/Storage/WeeklyIdeaStore.cs
+@@ -51,6 +51,18 @@ public sealed class WeeklyIdeaStore(FeedDb db)
+             """, new { since = since.UtcDateTime, limit }, cancellationToken: ct))).ToList();
+     }
+ 
++    /// <summary>Research-note findings imported since <paramref name="since"/> that are not duplicates of another item.</summary>
++    public async Task<IReadOnlyList<ItemView>> NotesAsync(DateTimeOffset since, int limit, CancellationToken ct)
++    {
++        await using var c = await db.DataSource.OpenConnectionAsync(ct);
++        return (await c.QueryAsync<ItemView>(new CommandDefinition(
++            """
++            select id, title, url, published_at, left(content, 600) as content from items
++            where starts_with(source_key, 'research:') and duplicate_of is null and ingested_at >= @since
++            order by ingested_at desc, id desc limit @limit
++            """, new { since = since.UtcDateTime, limit }, cancellationToken: ct))).ToList();
++    }
++
+     public async Task<IReadOnlySet<string>> FiledUrlsAsync(CancellationToken ct)
+     {
+         await using var c = await db.DataSource.OpenConnectionAsync(ct);
+diff --git a/src/FeedEater/WeeklyIdeas/ImportNotesCommand.cs b/src/FeedEater/WeeklyIdeas/ImportNotesCommand.cs
+new file mode 100644
+index 0000000..0aad441
+--- /dev/null
++++ b/src/FeedEater/WeeklyIdeas/ImportNotesCommand.cs
+@@ -0,0 +1,35 @@
++using FeedEater.Storage;
++
++namespace FeedEater.WeeklyIdeas;
++
++public static class ImportNotesCommand
++{
++    /// <summary>
++    /// Entry for <c>dotnet FeedEater.dll import-notes &lt;folder&gt;</c>: reads every <c>*.md</c> research notes file under the folder
++    /// into the archive, one item per finding, leaving out findings whose URL is already there. Safe to re-run. Applies the migrations first, like the service does.
++    /// </summary>
++    public static async Task<int> RunAsync(string[] args)
++    {
++        if (args is not [var folder])
++        {
++            await Console.Error.WriteLineAsync("Usage: import-notes <folder>");
++            return 2;
++        }
++
++        if (!Directory.Exists(folder))
++        {
++            await Console.Error.WriteLineAsync($"No such folder: {folder}");
++            return 2;
++        }
++
++        var builder = Host.CreateApplicationBuilder();
++        builder.Configuration["FeedEater:RunJobs"] = "false";
++        builder.Services.AddFeedEater(builder.Configuration);
++        using var host = builder.Build();
++        host.Services.GetRequiredService<DatabaseMigrator>().Run();
++        var importer = new ResearchNotesImporter(host.Services.GetRequiredService<ItemStore>(), TimeProvider.System);
++        var counts = await importer.ImportAsync(folder, CancellationToken.None);
++        Console.WriteLine($"Read {counts.Files} files: imported {counts.Imported} findings, {counts.AlreadyThere} were already there, skipped {counts.Skipped} without a web URL.");
++        return 0;
++    }
++}
+diff --git a/src/FeedEater/WeeklyIdeas/ResearchNotes.cs b/src/FeedEater/WeeklyIdeas/ResearchNotes.cs
+new file mode 100644
+index 0000000..dc49fef
+--- /dev/null
++++ b/src/FeedEater/WeeklyIdeas/ResearchNotes.cs
+@@ -0,0 +1,61 @@
++using FeedEater.PriorArt;
++using FeedEater.Storage;
++using FeedEater.Text;
++
++namespace FeedEater.WeeklyIdeas;
++
++public sealed record NotesImportCounts(int Files, int Imported, int AlreadyThere, int Skipped);
++
++/// <summary>
++/// Reads a folder of research notes (Markdown, <c>### title</c> entries with URL, source date and fact; see <see cref="NotesParser"/>)
++/// into the archive as items, one per finding. A finding whose URL is already an item, from a feed or an earlier import, is left out.
++/// They are archived and searchable but marked backfilled, so they are never embedded or sent in a digest; the weekly ideas run
++/// reads them back as <see cref="Signal"/> leads.
++/// </summary>
++public sealed class ResearchNotesImporter(ItemStore items, TimeProvider time)
++{
++    public const string Signal = "research-note";
++
++    /// <summary>The source key prefix of an imported note; the rest is the finding's canonical URL.</summary>
++    public const string KeyPrefix = "research:";
++
++    private const int MaxUrlLength = 2048;
++
++    public async Task<NotesImportCounts> ImportAsync(string folder, CancellationToken ct)
++    {
++        int files = 0, imported = 0, already = 0, skipped = 0;
++        foreach (var path in Directory.EnumerateFiles(folder, "*.md", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
++        {
++            files++;
++            foreach (var entry in NotesParser.Parse(await File.ReadAllTextAsync(path, ct)))
++            {
++                if (entry.Url.Length > MaxUrlLength || !Uri.TryCreate(entry.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
++                {
++                    skipped++;
++                    continue;
++                }
++
++                var canonical = UrlCanonicalizer.Canonical(entry.Url);
++                if (await items.FindByCanonicalAsync(canonical, ct) is not null)
++                {
++                    already++;
++                    continue;
++                }
++
++                var id = await items.InsertAsync(new NewItem(
++                    null, null, entry.Url, canonical, TitleHash.Of(entry.Title), entry.Title, Published(entry), Content(entry),
++                    SourceKey: KeyPrefix + canonical, Backfilled: true), ct);
++                _ = id is null ? already++ : imported++;
++            }
++        }
++
++        return new NotesImportCounts(files, imported, already, skipped);
++    }
++
++    /// <summary>The finding's own date, else the day it was retrieved, else now.</summary>
++    private DateTime Published(NoteEntry e) =>
++        (e.SourceDate ?? e.Retrieved) is { } d ? d.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) : time.GetUtcNow().UtcDateTime;
++
++    internal static string Content(NoteEntry e) =>
++        string.Join('\n', new[] { e.Fact, e.Quote is { Length: > 0 } q ? $"\"{q}\"" : null, e.Label }.Where(s => !string.IsNullOrEmpty(s)));
++}
+diff --git a/src/FeedEater/WeeklyIdeas/WeeklyIdeasJob.cs b/src/FeedEater/WeeklyIdeas/WeeklyIdeasJob.cs
+index 87f7519..567e832 100644
+--- a/src/FeedEater/WeeklyIdeas/WeeklyIdeasJob.cs
++++ b/src/FeedEater/WeeklyIdeas/WeeklyIdeasJob.cs
+@@ -14,7 +14,7 @@ using FeedEater.Text;
+ namespace FeedEater.WeeklyIdeas;
+ 
+ /// <summary>
+-/// Mondays at <c>WeeklyIdeas:At</c>: the week's improve items and what was liked, saved or bookmarked become a ranked shortlist.
++/// Mondays at <c>WeeklyIdeas:At</c>: the week's improve items, imported research notes and what was liked, saved or bookmarked become a ranked shortlist.
+ /// Each idea waits in the inbox for Keep or Drop (Keep files it as a GitHub issue labelled triage in its project's repo); the top few go to Telegram.
+ /// An idea whose source was filed before, or that repeats an issue or a backlog row, is left out. Quiet hours hold it.
+ /// </summary>
+@@ -164,6 +164,11 @@ public sealed class WeeklyIdeasJob(
+             leads.Add(new Lead("bookmarked", b.Title, b.Url!, ""));
+         }
+ 
++        foreach (var n in await store.NotesAsync(since, MaxLeads, ct))
++        {
++            leads.Add(new Lead(ResearchNotesImporter.Signal, n.Title, n.Url, n.Content));
++        }
++
+         var offered = await store.OfferedGapUrlsAsync(ct);
+         var gaps = await gapSource.LeadsAsync(new HashSet<string>(filed.Concat(offered), StringComparer.Ordinal), ct);
+         var seen = new HashSet<string>(filed, StringComparer.Ordinal);
+diff --git a/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-01-caching.md b/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-01-caching.md
+new file mode 100644
+index 0000000..61ade64
+--- /dev/null
++++ b/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-01-caching.md
+@@ -0,0 +1,12 @@
++# Notes: caching
++
++### Souin: HTTP cache middleware
++- URL: https://github.com/darkweak/souin
++- Source date: 2026-09-28
++- Retrieved: 2026-10-01
++- Fact: RFC 9111 cache with Redis and Olric backends.
++- Quote: "an HTTP cache system"
++- Label: [caching]
++
++### An entry without a fact is dropped
++- URL: https://example.com/no-fact
+diff --git a/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-08-feeds.md b/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-08-feeds.md
+new file mode 100644
+index 0000000..14462a5
+--- /dev/null
++++ b/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-08-feeds.md
+@@ -0,0 +1,11 @@
++# Notes: feed readers
++
++### Miniflux keeps feeds archived
++- URL: https://miniflux.app/docs/?utm_source=notes
++- Source date: 2026-10-05
++- Fact: Entries are kept until removed by a cleanup job.
++
++### Already in the archive from a feed
++- URL: https://already.example/post
++- Retrieved: 2026-10-08
++- Fact: This finding repeats an item feed-eater already holds.
+diff --git a/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-15-search.md b/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-15-search.md
+new file mode 100644
+index 0000000..a074173
+--- /dev/null
++++ b/tests/FeedEater.Tests/Fixtures/research-notes/2026-10-15-search.md
+@@ -0,0 +1,10 @@
++# Notes: search
++
++### Postgres full-text stemming
++- URL: https://www.postgresql.org/docs/current/textsearch-dictionaries.html
++- Retrieved: 2026-10-15
++- Fact: The english snowball dictionary stems plurals and verb forms.
++
++### Not a web link
++- URL: ftp://files.example/notes.txt
++- Fact: An FTP source is not a page and is skipped.
+diff --git a/tests/FeedEater.Tests/ResearchNotesTests.cs b/tests/FeedEater.Tests/ResearchNotesTests.cs
+new file mode 100644
+index 0000000..8aa44bf
+--- /dev/null
++++ b/tests/FeedEater.Tests/ResearchNotesTests.cs
+@@ -0,0 +1,71 @@
++using Dapper;
++using FeedEater.Storage;
++using FeedEater.WeeklyIdeas;
++using Microsoft.Extensions.Time.Testing;
++
++namespace FeedEater.Tests;
++
++[Collection(PostgresCollection.Name)]
++public sealed class ResearchNotesTests(PostgresFixture pg) : IAsyncLifetime
++{
++    private static readonly DateTimeOffset Now = new(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
++    private const string Folder = "Fixtures/research-notes";
++
++    public Task InitializeAsync() => pg.ResetAsync();
++    public Task DisposeAsync() => Task.CompletedTask;
++
++    private ResearchNotesImporter Importer() => new(new ItemStore(pg.Db), new FakeTimeProvider(Now));
++
++    private async Task<long> ExistingItemAsync(string url)
++    {
++        var id = await Seed.ItemAsync(pg, 1, "From a feed", TestVectors.OneHot(1));
++        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
++        await c.ExecuteAsync("update items set url = @url, canonical_url = @url where id = @id", new { url, id });
++        return id;
++    }
++
++    [Fact]
++    public async Task A_folder_of_three_notes_imports_each_finding_once_and_leaves_out_what_the_archive_has()
++    {
++        await ExistingItemAsync("https://already.example/post");
++
++        var counts = await Importer().ImportAsync(Folder, default);
++
++        Assert.Equal(new NotesImportCounts(Files: 3, Imported: 3, AlreadyThere: 1, Skipped: 1), counts);
++        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
++        var rows = (await c.QueryAsync<(string Title, string CanonicalUrl, DateTime PublishedAt, string Content, bool Backfilled, string SourceKey)>(
++            "select title, canonical_url, published_at, content, backfilled, source_key from items where starts_with(source_key, 'research:') order by title")).ToList();
++        Assert.Equal(["Miniflux keeps feeds archived", "Postgres full-text stemming", "Souin: HTTP cache middleware"], rows.Select(r => r.Title));
++        Assert.All(rows, r => Assert.True(r.Backfilled));
++        Assert.All(rows, r => Assert.Equal("research:" + r.CanonicalUrl, r.SourceKey));
++        Assert.DoesNotContain("utm_source", rows[0].CanonicalUrl, StringComparison.Ordinal);
++        Assert.Equal(new DateTime(2026, 10, 5), rows[0].PublishedAt.Date);    // the source date
++        Assert.Equal(new DateTime(2026, 10, 15), rows[1].PublishedAt.Date);   // no source date: the day it was retrieved
++        Assert.Contains("RFC 9111", rows[2].Content, StringComparison.Ordinal);
++        Assert.Contains("an HTTP cache system", rows[2].Content, StringComparison.Ordinal);
++        Assert.Equal(0, await c.ExecuteScalarAsync<int>("select count(*) from items where url like '%no-fact%' or url like 'ftp:%'"));
++    }
++
++    [Fact]
++    public async Task Importing_the_folder_again_adds_nothing()
++    {
++        await Importer().ImportAsync(Folder, default);
++
++        var again = await Importer().ImportAsync(Folder, default);
++
++        Assert.Equal(new NotesImportCounts(Files: 3, Imported: 0, AlreadyThere: 3, Skipped: 1), again);
++        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
++        Assert.Equal(3, await c.ExecuteScalarAsync<int>("select count(*) from items"));
++    }
++
++    [Fact]
++    public async Task Imported_findings_come_back_as_weekly_idea_leads()
++    {
++        await Importer().ImportAsync(Folder, default);
++
++        var notes = await new WeeklyIdeaStore(pg.Db).NotesAsync(DateTimeOffset.UtcNow.AddDays(-7), 60, default);
++
++        Assert.Equal(3, notes.Count);
++        Assert.Contains(notes, n => n.Title == "Souin: HTTP cache middleware" && n.Url == "https://github.com/darkweak/souin" && n.Content.Contains("RFC 9111", StringComparison.Ordinal));
++    }
++}
+diff --git a/tests/FeedEater.Tests/WeeklyIdeasTests.cs b/tests/FeedEater.Tests/WeeklyIdeasTests.cs
+index 6052b2b..582bf05 100644
+--- a/tests/FeedEater.Tests/WeeklyIdeasTests.cs
++++ b/tests/FeedEater.Tests/WeeklyIdeasTests.cs
+@@ -170,6 +170,20 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
+         Assert.Contains("A bookmarked tool", _chatBodies.Single(), StringComparison.Ordinal);
+     }
+ 
++    [Fact]
++    public async Task Imported_research_notes_reach_the_model_as_leads()
++    {
++        await SeedAsync();
++        await new ResearchNotesImporter(new ItemStore(pg.Db), TimeProvider.System).ImportAsync("Fixtures/research-notes", default);
++        _chatReply = """{"ideas":[]}""";
++        var (job, _, _) = Build(new FakeTimeProvider(Monday));
++
++        await job.TickAsync(default);
++
++        Assert.Contains("Souin: HTTP cache middleware", _chatBodies.Single(), StringComparison.Ordinal);
++        Assert.Contains(ResearchNotesImporter.Signal, _chatBodies.Single(), StringComparison.Ordinal);
++    }
++
+     [Fact]
+     public void Every_staged_idea_gets_Keep_and_Drop_buttons_and_only_the_top_are_detailed()
+     {
