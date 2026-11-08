@@ -171,6 +171,20 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Imported_research_notes_reach_the_model_as_leads()
+    {
+        await SeedAsync();
+        await new ResearchNotesImporter(new ItemStore(pg.Db), TimeProvider.System).ImportAsync("Fixtures/research-notes", default);
+        _chatReply = """{"ideas":[]}""";
+        var (job, _, _) = Build(new FakeTimeProvider(Monday));
+
+        await job.TickAsync(default);
+
+        Assert.Contains("Souin: HTTP cache middleware", _chatBodies.Single(), StringComparison.Ordinal);
+        Assert.Contains(ResearchNotesImporter.Signal, _chatBodies.Single(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Every_staged_idea_gets_Keep_and_Drop_buttons_and_only_the_top_are_detailed()
     {
         var staged = Enumerable.Range(1, 5).Select(i => (new ShortlistEntry(i, $"Idea {i}", "LAB", "box", "S", $"Why {i}"), new Lead("improve", $"Source {i}", $"https://e.org/{i}", ""), (long)i)).ToList();

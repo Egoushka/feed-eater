@@ -185,6 +185,12 @@ write issues in every one of those repos: a classic token with the `repo` scope 
 one with Issues read and write, which covers the repos of one owner only: put the other owners' tokens in `FeedEater__GitHub__OwnerTokens` as `owner=token` pairs separated by commas. Without write access GitHub drops the label. The `github-issues`
 check in `doctor` and on `/ui/setup` reads the fallback repo. `FeedEater__Ideas__Sink=local` keeps ideas local even with GitHub configured.
 
+**Research notes (an idea source).** `docker compose run --rm feed-eater import-notes /config/notes` reads every `*.md` file under the
+folder. Each `### title` entry with `- URL:` and `- Fact:` lines (optional `- Source date:`, `- Retrieved:`, `- Quote:`, `- Label:`)
+becomes one archived item, dated by its source date, or by its retrieved date when it has no source date. A finding whose URL is
+already in the archive, from a feed or an earlier import, is skipped, so running the import again adds only new findings. Notes are
+searchable but never embedded or sent in the digest. Findings imported in the last 7 days go to the weekly ideas shortlist as `research-note` leads.
+
 **Karakeep (bookmarks).** Set `FeedEater__Karakeep__BaseUrl` and `__Token` (API key). The 📌 button always shows and saves to the library; Karakeep
 is an optional mirror of those saves, and your Karakeep bookmarks count as liked items in the ranking. See "Library" for the mirror and the one-time import.
 
