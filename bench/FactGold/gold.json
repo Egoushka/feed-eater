@@ -1,0 +1,1199 @@
+{
+ "version": 1,
+ "built": "2026-11-08",
+ "items": [
+  {
+   "id": "a-price-war",
+   "category": "price_change",
+   "negative": false,
+   "origin": "feed-eater archive item 9362 (Simon Willison's Weblog)",
+   "source_url": "https://simonwillison.net/2026/Sep/22/opus-and-sol-and-luna/",
+   "title": "Claude Opus 5.5, GPT-6 Sol, GPT-6 Luna, and a new price war",
+   "source_date": "2026-09-22",
+   "truncated": true,
+   "text": "Yesterday was Grok 4.7 ( pelicans ) and MiMo v2.6 Flash/Pro ( more pelicans ). Today Anthropic released Claude Opus 5.5 , and around an hour later OpenAI released GPT-6 Sol and GPT-6 Luna . It's going to take a while to get a good read on all of these new models, but here are my impressions so far.\n\nGPT-6 Sol and Luna are half the price of their GPT-5.6 equivalents\n\nGPT-5.6 Luna was already my favorite model for building applications against, because it combined excellent performance with being really cheap . Somehow GPT-6 Luna is half the price of that again - and GPT-6 Sol had a similar reduction compared to GPT-5.6 Sol.\n\nHere's what the pricing landscape looks like today:\n\nModel\nInput\nCached input\nOutput\n\nGPT-6 Luna\n$0.10/M\n$0.01/M\n$0.50/M\n\nGPT-5.6 Luna\n$0.20/M\n$0.02/M\n$1.20/M\n\nGrok 4.7\n$2/M\n$0.50/M\n$6/M\n\nGPT-6 Sol\n$2/M\n$0.20/M\n$10/M\n\nGPT-5.6 Terra\n$2/M\n$0.20/M\n$12/M\n\nClaude Opus 5.5\n$4/M\n$0.20/M\n$20/M\n\nGPT-5.6 Sol\n$4/M\n$0.40/M\n$20/M\n\nClaude Fable 5.1\n$10/M\n$0.25/M\n$50/M\n\nGPT-6 Astra\n$10/M\n$1/M\n$50/M\n\nNote that GPT-5.6 has a scheduled 25% price increase for November, so GPT-6 is half the price of the promotional pricing for those models.\n\n(With GPT-5.6 Terra priced the same as GPT-6 Sol, any remaining reasons to use Terra just evaporated.)\n\nIt's hard to overstate how competitive this pricing is. Grok 4.7 priced itself at $2/$6, less than half the price of GPT-5.6 Sol, but is now equally priced to GPT-6 Sol on input and closer on output.\nAt $0.10/$0.50 GPT-6 Luna is one of the cheapest models OpenAI have ever released, beaten only by the far weaker GPT-4.1 Nano ($0.10/$0.40, April 2025) and GPT-5 Nano ($0.05/$0.40, August 2025).\n\nI rendered pelicans for GPT-6 Luna and for GPT-6 Sol , then I combined them all together in this comparison grid along with the GPT-5.6 pelicans. I like how you can instantly see that the 5.6 family chose bolder, brighter colors, while the 6 family is a lot more muted. I still think GPT-6 Astra on max produced the best pelican.\n\nClaude Opus 5.5 got a price cut too\n\nOpus 5.5 looks like it addresses the biggest complaints people had about Opus in terms of its communication style. Thariq Shihipar :\n\nOpus 5.5 is the result of your feedback.\n\nIt communicates clearly, it's cheaper per token than Opus 5.0 with the intelligence of Fable 5.1 it's very token efficient and works across every effort level.\n\nIt's also meant to be better at Blender . I'm looking forward to putting it through its paces there.\n\nOpus 4.5, 4.6, 4.7, 4.8, and 5 all shared the same price: $5/million tokens for input and $25/million for output. 5.5 is a 20% reduction - $4/million and $20/million.\n\nThe price for cache reads fell 60%. That's significant for longer agentic conversations, where 90%+ of input tokens are processed at cached token prices.\n\nThe new price for Opus 5.5 is the same as the price for GPT-5.6 Sol, but that was before OpenAI dropped their Sol prices by half.\n\nGPT-6 Astra and Claude Fable 5.1 are both priced at $10/million input and $50/million output. The price war currently affects the next tier of models below that.\n\nAnthropic say that Sonnet 5.5 and Haiku 5.5 are coming soon. It's going to be interesting to see if Haiku can regain its price competitiveness at the lower end, given current Haiku 4.5 is $1/$5 while the latest GPT-6 Luna is one tenth of that price at $0.10/$0.50.\n\nClaude Opus 5.5 max over-thinks to the point of breaking\n\nIn a first for my \" Generate an SVG of a pelican riding a bicycle \" test, Claude Opus 5.5 at \"max\" thinking level failed to return a response!\n\nIt started by calling this \"a classic test request\", and then thought really, really hard about what it was doing:\n\nThis is a classic test request, so I want to plan out a well-composed pelican with its distinctive beak and pouch riding a bicycle with proper wheels, frame, and pedals, set against a simple sky and ground backdrop. [...]\n\nVerifying the shin length checks out at roughly 95.2, close enough. Now I'm working out the near leg path from hip to knee to ankle, then sketching the foot shape resting on the pedal — outlining the heel, toe tips, and sole contour with a path using lines and curves to sit naturally on the pedal surface around y=478-494. [...]\n\nI like the fish sticking prominently out of the basket with the pelican eyeing it as a fun detail worth keeping. I'm also confirming the eye placement near the bill base matches typical pelican anatomy, and considering giving it a slightly happier expression. [...]\n\nThe far leg reads correctly as passing behind the frame, so I'm moving on to check the chainring teeth and confirm layer ordering—the far crank arm should be mostly hidden by the seat tube and chainring. I'm settling on the final SVG's width and height attributes alongside the viewBox to ensure proper scaling, noting there's no text so no font-family is needed. [...]\n\nI was so excited to see this pelican... but then it stopped . Opus 5.5 has a 128,000 maximum output token limit (as do the other Claude models), and it hit that while it was still reasoning about the SVG!\n\nI tried a second time and got the same result. This makes me suspect that \"max\" is effectively useless - if it over-thinks to breaking point on a stupid SVG prompt I don't trust it not to do the same for more interesting work.\n\n(Those two failures each cost me $2.56 and took nearly 20 minutes.)\n\nFable 5.1 on \"max\" didn't over-think and did give me the best pelican I've seen from any Anthropic model.\n\nHere are the Opus 5.5 pelicans , excluding 5.5 max.\n\nI also built this comparison grid comparing them with pelicans by Opus 5, Fable 5.1, and Sonnet 5:\n\nComparing different model vendors by how well they draw a pelican riding a bicycle may not make much sense now (if it ever did), but I'm still finding value in using them for comparisons of the same model families at different reasoning levels.\n\nI'm now using GPT-6 Sol and Claude Opus 5.5 as my default models in Codex and Claude Code. I've upgraded the Datasette Agent demo a",
+   "facts": [
+    {
+     "kind": "price_change",
+     "subject": "GPT-6 Luna",
+     "claim": "GPT-6 Luna is priced $0.10 input / $0.50 output per million tokens",
+     "match": [
+      [
+       "luna"
+      ],
+      [
+       "0.10"
+      ]
+     ],
+     "amount": "$0.10/$0.50 per M tokens"
+    },
+    {
+     "kind": "price_change",
+     "subject": "Claude Opus 5.5",
+     "claim": "Opus 5.5 is 20% cheaper than Opus 5: $4 input / $20 output per million tokens",
+     "match": [
+      [
+       "opus 5.5"
+      ],
+      [
+       "20%",
+       "4/",
+       "4 per",
+       "4 in"
+      ]
+     ],
+     "amount": "$4/$20 per M tokens"
+    },
+    {
+     "kind": "price_change",
+     "subject": "GPT-5.6",
+     "claim": "GPT-5.6 gets a scheduled 25% price increase in November",
+     "match": [
+      [
+       "5.6"
+      ],
+      [
+       "25%"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-copilot-deprecation",
+   "category": "price_change",
+   "negative": false,
+   "origin": "feed-eater archive item 14651 (Archive: 2026 - GitHub Changelog)",
+   "source_url": "https://github.blog/changelog/2026-10-19-github-copilot-models-deprecated-on-october-19-2026",
+   "title": "GitHub Copilot models deprecated on October 19, 2026",
+   "source_date": "2026-10-19",
+   "truncated": false,
+   "text": "As of today, October 19, 2026, we have deprecated the following models across most GitHub Copilot experiences (including Copilot Chat, inline edits, ask and agent modes, and code completions).\n\nThese deprecations were announced on September 18, 2026 .\n\nModel\nDeprecation date\nSuggested alternative\n\nGemini 3.7 Flash\n2026-10-19\nGemini 3.8 Flash\n\nGPT-5.5\n2026-10-19\nGPT-6.1 Sol\n\nGPT-5.4\n2026-10-19\nGPT-6.1 Sol\n\nGPT-5.4 mini\n2026-10-19\nGPT-6 Luna\n\nGPT-5 mini\n2026-10-19\nGPT-6 Luna\n\nGrok 4.5\n2026-10-19\nGrok 4.7\n\nPlease update your workflows and integrations to use supported models. Copilot Enterprise administrators may need to enable access to alternative models through their model policies in Copilot settings. As an administrator, you can verify availability by checking your individual Copilot settings and confirming that the policy is enabled for the specific model. Once enabled, you’ll see the model in the Copilot Chat model selector in VS Code and on github.com. No action is required to remove the deprecated models.\n\nGitHub Enterprise customers with questions or concerns are encouraged to reach out to their account manager for further assistance.\n\nShare your feedback\n\nTo learn more about the models available in Copilot, see our documentation on models and get started with Copilot today.\n\nJoin the GitHub Community to share your feedback.\n\nThe post GitHub Copilot models deprecated on October 19, 2026 appeared first on The GitHub Blog .",
+   "facts": [
+    {
+     "kind": "price_change",
+     "subject": "GitHub Copilot",
+     "claim": "Six models deprecated on 2026-10-19: Gemini 3.7 Flash, GPT-5.5, GPT-5.4, GPT-5.4 mini, GPT-5 mini, Grok 4.5",
+     "match": [
+      [
+       "deprecat"
+      ],
+      [
+       "gpt-5.5",
+       "gpt 5.5",
+       "gpt-5.4",
+       "grok 4.5",
+       "gemini 3.7"
+      ]
+     ],
+     "date": "2026-10-19"
+    },
+    {
+     "kind": "price_change",
+     "subject": "Grok 4.5",
+     "claim": "Grok 4.5 deprecated in Copilot, suggested alternative Grok 4.7",
+     "match": [
+      [
+       "grok 4.5"
+      ],
+      [
+       "grok 4.7",
+       "deprecat"
+      ]
+     ],
+     "date": "2026-10-19"
+    }
+   ]
+  },
+  {
+   "id": "a-copilot-enterprise",
+   "category": "price_change",
+   "negative": false,
+   "origin": "feed-eater archive item 15884 (Archive: 2026 - GitHub Changelog)",
+   "source_url": "https://github.blog/changelog/2026-10-28-github-enterprise-now-includes-access-to-github-copilot",
+   "title": "GitHub Enterprise now includes access to GitHub Copilot",
+   "source_date": "2026-10-28",
+   "truncated": false,
+   "text": "Enterprises working with a GitHub or Microsoft account team can now get Copilot included with GitHub Enterprise for every licensed user. Previously, you had to manage two things: how many Copilot seats you were paying for and how much AI usage those users consumed. With Copilot included in the platform, usage against your enterprise budget is the primary thing to manage.\n\nSelf-serve availability is coming in stages, and current self-serve subscriptions are unaffected. Copilot Business and Copilot Enterprise remain available.\n\nUsers in your enterprise account who do not hold a GitHub Enterprise license get the same Copilot access through Copilot Standalone, at $10 per user per month.\n\nCopilot access through GitHub Enterprise and Copilot Standalone has the same features and models as Copilot Enterprise but does not include monthly AI credits per seat.\n\nWhat you manage\n\nAI usage is metered from the first request against your enterprise budget, using the policies, alerts, and attribution you already have. There is no included usage allowance to track or top up. To learn more, review our documentation on Copilot billing for enterprises .\n\nCode completion and next edit suggestions keep working even with no budget available.\n\nCopilot Chat, Copilot code review, and Copilot in the cloud require available budget to use.\n\nAn exhausted budget never removes access. The seat and the features that don’t need budget stay.\n\nAvailability\n\nIf you work with a GitHub or Microsoft account team: Available now for GitHub Enterprise Cloud. Talk to your sales team about setting up a new enterprise account on this model or transitioning an existing enterprise account.\n\nIf you manage your own subscription: Currently unavailable. We are opening this to self-serve customers in stages and will share dates in the coming weeks. Your current subscription is unaffected.\n\nCopilot Business and Copilot Enterprise: Both remain available to purchase for new and existing enterprises.\n\nTo learn more, check out our updated documentation on Copilot access .\n\nJoin the discussion within GitHub Community .\n\nThe post GitHub Enterprise now includes access to GitHub Copilot appeared first on The GitHub Blog .",
+   "facts": [
+    {
+     "kind": "price_change",
+     "subject": "GitHub Copilot Standalone",
+     "claim": "Users without a GitHub Enterprise license get Copilot Standalone at $10 per user per month",
+     "match": [
+      [
+       "standalone"
+      ],
+      [
+       "10"
+      ]
+     ],
+     "amount": "$10/user/month"
+    },
+    {
+     "kind": "price_change",
+     "subject": "GitHub Enterprise",
+     "claim": "GitHub Enterprise now includes Copilot for every licensed user, with no monthly AI credits per seat",
+     "match": [
+      [
+       "enterprise"
+      ],
+      [
+       "included",
+       "includes",
+       "include"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-do-credits",
+   "category": "price_change",
+   "negative": false,
+   "origin": "feed-eater archive item 10481 (Self-Hosted Alternatives to Popular Services)",
+   "source_url": "https://www.reddit.com/r/selfhosted/comments/1wusqii/digitalocean_open_source_credits_program/",
+   "title": "DigitalOcean Open Source Credits Program sunsetting. Alternatives?",
+   "source_date": "2026-10-01",
+   "truncated": false,
+   "text": "Hey all,\nI’ve received notice that the DigitalOcean Open Source Credits Program is sunsetting and will no longer be accepting new applications or renewals.\nI’ve been fortunate enough to get credits for portchecker.io for many years now, and typically I’m a month away from requiring more credits.\nI’m currently using their App Platform with a static front end and their $5 container for the backend. I do get alerts for CPU so was looking at bumping to the next one (it gets a lot more traffic than I ever imagined).\nI’d host it at home, but I’m not sure my ISP would like a public port scanner 😃\nAnyway, can anyone offer any alternatives where I could get credits, or ‘free’?\nsubmitted by /u/_dsgnr\n[link] [comments]",
+   "facts": [
+    {
+     "kind": "price_change",
+     "subject": "DigitalOcean Open Source Credits Program",
+     "claim": "Program is sunsetting: no new applications or renewals",
+     "match": [
+      [
+       "digitalocean"
+      ],
+      [
+       "sunset",
+       "no longer"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-chatgpt-credits",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "feed-eater archive item 16046 (Simon Willison's Weblog)",
+   "source_url": "https://simonwillison.net/2026/Oct/29/api-credits/",
+   "title": "API credits benefit for eligible ChatGPT subscriptions",
+   "source_date": "2026-10-29",
+   "truncated": false,
+   "text": "API credits benefit for eligible ChatGPT subscriptions\n\nEarlier this month Anthropic announced a generous new benefit for their Max and Team subscriptions: $100, $200, and $500 per month subscribers would get the equivalent quantity of (expiring) credits to use with the Anthropic API.\n\nOpenAI have now launched pretty much exactly the same deal: if you have a $100, $200, or $500 subscription plan with them you now get that same quantity of credits to apply to one of your API organizations.\n\nI maintain subscriptions with both companies, so this is great news for me! I may even ship some public-facing demos now that the credits are already covered by my existing subscriptions.\n\nTags: ai , openai , generative-ai , llms , anthropic , llm-pricing",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "OpenAI ChatGPT $100/$200/$500 plans",
+     "claim": "Subscribers get API credits equal to the plan price each month, to apply to an API organization",
+     "match": [
+      [
+       "openai",
+       "chatgpt"
+      ],
+      [
+       "credit"
+      ]
+     ],
+     "kind_alt": [
+      "price_change"
+     ],
+     "amount": "$100/$200/$500 per month"
+    },
+    {
+     "kind": "opportunity",
+     "subject": "Anthropic Max and Team plans",
+     "claim": "Anthropic earlier gave $100/$200/$500 monthly subscribers equal expiring API credits",
+     "match": [
+      [
+       "anthropic"
+      ],
+      [
+       "credit"
+      ]
+     ],
+     "kind_alt": [
+      "price_change"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-sonnet55",
+   "category": "new_model",
+   "negative": false,
+   "origin": "feed-eater archive item 10142 (Simon Willison's Weblog)",
+   "source_url": "https://simonwillison.net/2026/Sep/28/claude-sonnet-5-5/",
+   "title": "Claude Sonnet 5.5",
+   "source_date": "2026-09-28",
+   "truncated": false,
+   "text": "Claude Sonnet 5.5\n\nNew Sonnet model from Anthropic today. They say it \"runs 30%+ faster, and costs up to 30% less for most work\" - it's priced the same as Sonnet 5 but appears to beat it on every benchmark, and should be cheaper to run as well.\n\nHere are some pelicans riding bicycles . Sonnet 5.5 suffered from the same bug as Opus 5.5 : the \"max\" thinking effort pelican thought for 128,000 tokens (at a cost of $1.28) before running out of tokens and failing to produce an SVG.\n\nHere's the pelican it gave me for thinking effort \"xhigh\", at a cost of 5.74 cents and taking 41 seconds:\n\nSonnet 5.5 appears to be almost as good as Opus 5.5 on some coding tasks, including various viral 3D animation tricks .\n\nThe most interesting thing about Sonnet 5.5 is that it's now the model used for the free tier on claude.ai . OpenAI's ChatGPT free tier uses Luna 5.6, which means Anthropic currently have a much more capable free offering.\n\nI ran this prompt against that free tier:\n\nbuild me an HTML page that renders a three-dimensional pelican riding a bicycle using WebGL\n\nAnd got back this page , which is a solid effort.\n\nAnthropic's announcement reiterates that Haiku 5.5 will be available \"in the coming weeks\". I really hope that one is price-competitive with GPT-6 Luna!\n\nTags: ai , generative-ai , llms , anthropic , claude , pelican-riding-a-bicycle , llm-release",
+   "facts": [
+    {
+     "kind": "new_model",
+     "subject": "Claude Sonnet 5.5",
+     "claim": "Sonnet 5.5 runs 30%+ faster and costs up to 30% less than Sonnet 5 at the same price",
+     "match": [
+      [
+       "sonnet 5.5"
+      ],
+      [
+       "30%"
+      ]
+     ]
+    },
+    {
+     "kind": "new_model",
+     "subject": "Claude Sonnet 5.5",
+     "claim": "Sonnet 5.5 is now the model used for the claude.ai free tier",
+     "match": [
+      [
+       "sonnet 5.5"
+      ],
+      [
+       "free tier",
+       "free-tier",
+       "free"
+      ]
+     ],
+     "kind_alt": [
+      "price_change"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-gemini4-carbon",
+   "category": "new_model",
+   "negative": false,
+   "origin": "feed-eater archive item 15996 (Hacker News)",
+   "source_url": "https://artificialanalysis.ai/articles/gemini-4-carbon-new-number-1",
+   "title": "Gemini 4 Carbon is the new #1 on the Artificial Analysis Intelligence Index v5",
+   "source_date": "2026-10-29",
+   "truncated": false,
+   "text": "Gemini 4 Carbon is the new #1 on the Artificial Analysis Intelligence Index v5\nSee model page Google’s Gemini 4 Carbon is the new #1 on the Artificial Analysis Intelligence Index v5, and second only to Claude Opus 5.5 on the Artificial Analysis Coding Agent Index\nGemini 4 Carbon scores 59 on Intelligence Index v5, driven by leading performance in complex reasoning, knowledge, and scientific tasks. It also has large gains in coding and knowledge work, particularly when compared to other Gemini models, but it is not leading in all these areas.\nAs with launch of Gemini 4 Argon, Gemini 4 Carbon is being rolled out to selected users and is not yet publicly available. Google is offering a 50% launch discount, with no confirmed end date. All our charts and figures use standard pricing for both Gemini 4 Carbon and Argon.\n\nKey results for Gemini 4 Carbon with high reasoning:\n➤ Gemini 4 Carbon leads the Intelligence Index v5, with the #1 score in 4 of the 9 Index evaluations: HLE-Diamond, Terminal-Bench-Science, AA-Omniscience, AutomationBench-AA. Carbon makes substantial gains elsewhere but is not leading in coding and knowledge work\n➤ Behind only Claude Opus 5.5 on coding agents: With Antigravity CLI, Gemini 4 Carbon (high) scores 59 only 3 points behind Claude Code with Claude Opus 5.5 (max, 62) on the Artificial Analysis Coding Agent Index. Carbon ranks second on both Terminal-Bench 4.0 (64%) and FrontierCode v1.1 (51%), behind Claude Opus 5.5 (max) at 56%. Google has historically underperformed in this area and so this improvement stands out.\n\n➤ Improved agentic knowledge work, but not yet leading: On AA-Briefcase, Gemini 4 Carbon (high) scores 1609 Elo, a 126-point improvement over Gemini 4 Argon (high, 1483), but still behind models including Grok 4.7 (xhigh, 1638), Muse Wonder (max, 1659) and Kimi K3.1 Pro (1678). The largest gain comes from Presentation, up 293 Elo to 1598, alongside a 120-point improvement in Analytical Quality to 1671\n\n➤ Lower Cost per Task than Claude Opus 5.5 for comparable overall intelligence: With standard pricing, Gemini 4 Carbon costs $7.76 per Intelligence Index task, ~23% less than Claude Opus 5.5 (max, $10.04) but ~1.2x GPT-6 Astra (max, $6.25). It uses 123k output tokens per task, 29% fewer than Claude Opus 5.5 (max, 173k). At the same $4/$20 standard pricing, its Cost per Task is in line with Gemini 4 Argon ($7.68), while scoring 9 points higher on the Intelligence Index\n\n➤ Leading AA-Omniscience v1.1 score, with low hallucination: Gemini 4 Carbon scores 54 on our recently updated AA-Omniscience v1.1, 6 points ahead of Claude Opus 5.5 (max, 48) and 8 points ahead of Gemini 4 Argon (46). Accuracy (% correct) rises 10 points over Argon to 58%, while its hallucination rate rises from 4% to 11%. This is still the second lowest of any model, behind only Argon, compared with 50% for both Claude Opus 5.5 (max) and GPT-6 Astra (max)\n\nKey model details:\n➤ Context Window: 1M tokens\n➤ Multimodality: Text, image, video, and speech input, with text output\n➤ Pricing: $4/$20 per 1M input/output tokens, the same as Gemini 4 Argon’s standard pricing, with a 50% discount. Cached input tokens receive a 95% discount ($0.20 per 1M at standard pricing)",
+   "facts": [
+    {
+     "kind": "new_model",
+     "subject": "Gemini 4 Carbon",
+     "claim": "Scores 59 on Artificial Analysis Intelligence Index v5, new #1",
+     "match": [
+      [
+       "carbon"
+      ],
+      [
+       "59"
+      ]
+     ]
+    },
+    {
+     "kind": "new_model",
+     "subject": "Gemini 4 Carbon",
+     "claim": "Priced $4/$20 per 1M input/output tokens with a 50% discount",
+     "match": [
+      [
+       "carbon"
+      ],
+      [
+       "4/20",
+       "50%",
+       "4 per",
+       "4 in"
+      ]
+     ],
+     "kind_alt": [
+      "price_change"
+     ]
+    },
+    {
+     "kind": "new_model",
+     "subject": "Gemini 4 Carbon",
+     "claim": "64% on Terminal-Bench 4.0, second behind Claude Opus 5.5",
+     "match": [
+      [
+       "carbon"
+      ],
+      [
+       "64%"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-gpt6-astra",
+   "category": "new_model",
+   "negative": false,
+   "origin": "feed-eater archive item 6814 (Latent.Space)",
+   "source_url": "https://www.latent.space/p/astra",
+   "title": "GPT-6 Astra: an automated AI Engineer you can hire for <$6 an hour",
+   "source_date": "2026-09-03",
+   "truncated": false,
+   "text": "GPT-6 Astra , the first Stargate and lightly looped supermodel from OpenAI, launched today , cleanly beating Fable 5.1 on many metrics including completely saturating the hardest versions of FrontierMath (97.6%) and ARC-AGI-3 (99.9%). Lots of demos will focus on typical talk tracks like the computer use to the Pokemon playing to Blender to the scientific and cybersafety benchmarks ( system card ). Greg says AGI is here , and Jakub says it is finally the Automated AI Research Intern he wanted.\nWe aren’t qualified to talk about those, but we got early access and threw it at every practical, real-life task we could think of. After burning over 20B tokens of Astra , we can confirm the most surprising finding: GPT-6 Astra is one of a new class of models 1 that are fully capable AI Engineers in their own right . They now help you choose and train models , label data (both helping you label and then using your labels for active learning, like SAM ), keep pipelines saturated , instrument and read logs , deploy and debug entire systems in one shot, fan out and command and eval subagents (including agents running other models), and keep coherence over billions of tokens of a single agent thread.\n\nRaising Your Ambitions\nWe’ve written before about the high-return activity of raising your aspirations for LLMs . Our experience has made us exponentially more ambitious than we have ever been . Over the past month, we went from prompting humans for a fun “ Kill My SaaS ” competition 2 , to building a dozen internal/personal tools , including 4 previously paid SaaS tools , fully redesigned my personal site , made an incomplete but functional replacement of GitHub + Vercel , trained game AI for a strategy board game with 10,000x more legal moves than Go , saved tens of thousands of dollars in personal finance cleanups, republished my old book with synced audiobook audio and printed physical editions, and even more ambitious projects we will launch soon.\nThe $6 an hour number might sound surprising, but that’s exactly what we saw in our testing - 33 tokens per second at a max $50 per million token rate. Given that Astra is more token efficient than Sol and Fable ( independently confirmed by Artificial Analysis ), it often means that Astra is simultaneously also the best fast-and-smart model you can buy (assuming our preview latency holds for GA), outside of Spark 1.3 .\nsee logs\nManaging fleets of subagents (individually tweaked, bounded concurrency)\nNow of course, if you just throw on Astra at Ultra you’re gonna burn through a lot more than $6 per hour…. because it is so dang good at parallelizing. Depending on the task in practice we were often ramping up between 20-50 agents in parallel , of course all managed by one main Astra agent.\n\nMonitoring its own runs, starting and stopping waves\nThis is basically what you would pay a junior AI Engineer to do — babysitting runs, staring at data, finding issues, fixing, rerunning, ad infinitum. You could hire someone at $200-$1000 a day, or you can hire GPT-6 for $100 over 2 days to do this.\nMaking model benchmarks, handling budgets, making estimates, scaling up runs, getting human ratings\nBecause of course you need all these capabilities to run your own AI engineering program, because of course OpenAI already uses GPT-6 to do this internally…\nexample here\nOr you can get Astra to trivially whip up your own personal Arena.ai clone for tuning your prompts, picking models for your task, or aligning yrou own preference model!\n\nThe overall conclusion you should have is that OpenAI have clearly trained a model that is capable of automating much of their own AI Engineering , and it is finally time that you learn to exploit Astra- and Fable-class models and be far, far more unreasonable with your own expectations of what you can do with agents now.\n\n1 We are running similar work on Grok, Fable and other similar frontier models but OpenAI was most generous with trial limits so this gets the writeup - but the agentic coding patterns discussed here will likely apply to all such late 2026 frontier models.\n2 Many of you are waiting to hear results… sorry for the radio silence! we got… busy! We will announce winners and reimbursements and best attempts.",
+   "facts": [
+    {
+     "kind": "new_model",
+     "subject": "GPT-6 Astra",
+     "claim": "Saturates FrontierMath at 97.6% and ARC-AGI-3 at 99.9%",
+     "match": [
+      [
+       "astra"
+      ],
+      [
+       "97.6",
+       "99.9"
+      ]
+     ]
+    },
+    {
+     "kind": "new_model",
+     "subject": "GPT-6 Astra",
+     "claim": "Works as an automated AI engineer for about $6 an hour",
+     "match": [
+      [
+       "astra"
+      ],
+      [
+       "6 an hour",
+       "6 per hour",
+       "6/hour",
+       "6 hour",
+       "6/hr"
+      ]
+     ],
+     "kind_alt": [
+      "idea"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-open-artifacts",
+   "category": "new_model",
+   "negative": false,
+   "origin": "feed-eater archive item 14763 (Interconnects AI)",
+   "source_url": "https://www.interconnects.ai/p/latest-open-artifacts-25-deepseek",
+   "title": "Latest open artifacts (#25): DeepSeek V4.1 Flash 1017, American-made models, and new regulatory controls in the US & China",
+   "source_date": "2026-10-20",
+   "truncated": false,
+   "text": "The geopolitics of open-weight AI are accelerating again this fall, as we would expect with the risks of all AI systems (open and closed) rising rapidly. We’ve seen many news items in the last week showing both the U.S. and Chinese governments positioning themselves for some controls on open models.\nMOFCOM, the Ministry of Commerce of the People’s Republic of China, released a policy proposal (it’s not yet a law) that would require frontier AI models and some other technologies to get pre-approval from the government before they can be shared internationally. We found the reaction to this to be overblown – as the document states that open-source technologies will be set up for automatic approvals – but many in geopolitical circles say this is a big deal because it proposes a regulatory framework that could be used in the future to regulate China’s AI industry.\n\nOthers we trust on this issue say this proposal could be more about preventing issues like the sale of Chinese startup Manus to Western companies, rather than being about frontier AI models. Either way, the wheels of control are moving around AI, and open-weight models are not free from any influence.\n\nThe Department of Homeland Security (DHS) released an order on DeepSeek , which restricts DeepSeek itself, as a company, and DeepSeek’s models, as a technology platform, from being a vendor in federal civilian procurement. It is not clear how this will relate to finetuned models or models trained on the outputs of DeepSeek (e.g., Nvidia’s Nemotron models have long relied heavily on DeepSeek models in their training recipes – will they be banned?), but this is an expected action and reinforces the need for a domestic open model ecosystem.\n\nOther model makers in China, such as Zhipu AI, makers of GLM, are already on the Entity List under Commerce/BIS, which restricts their access to American technology.\n\nDeepSeek followed the above news up by releasing their internal inference stack publicly, DeepInfer , which is likely far more efficient than existing open-source tools like vLLM/SGLang for their models. Estimates point to DeepSeek making up to 90% gross margin when selling tokens on this inference stack. It is well-known that the top AI labs have much more inference-efficient tools internally, and this is the first time we’ve seen a leading lab share them. Inference companies will be quick to adopt these tools, which will drive prices for DeepSeek’s models down across the ecosystem (or margins up). While not an open model or dataset, we consider this release to be one of the bigger open-source AI artifacts in the last few months.\nShare\nAs of writing this, Kimi K3.1 is rumored to be released very soon, with metadata associated with it starting to appear in public libraries . Exciting times!\nYou can view the models in this email, and all previous issues, on our Artifacts Hub. It includes commentary and other ecosystem metadata.\nBrowse the Artifacts Hub\nOur Picks\nMiMo-V2.6-Pro-RL by XiaomiMiMo : an update for Mimo, which reuses the same bases as MiMo V2.5, but used a lot more resources on RL training. They also release an in-depth tech report , as well as some of the used environments, which is rare at this scale. The final model from this recipe, V2.6-Pro, is the top open model on Artificial Analysis’s ranking today, and the scaled RL runs came with a fun live dashboard of training. We’ve been fans of Xiaomi for months now, and their efforts are bearing fruit.\n\nDeepSeek-V4.1-Flash-1017 by deepseek-ai : Since the latest Artifacts, the whale has not released one, but two new model iterations with a new size (552B-A16B) which also support image inputs. The model has gained a lot of (well-deserved) attention for its performance at a small price. It also carries the MIT license, continuing the trend established by DeepSeek themselves. This is notable in times where licenses seem to become more bespoke and exclusionary. Below is the Pareto of performance vs price on DeepSWE, a favorite agentic software engineering benchmark today, which DeepSeek dominates.\n\nclef by Cloudflare : Decision models are all the rage after being introduced by the startup Typesafe . In short, they are general classification models that output few tokens with their probabilities. Its usefulness has led to quick adoption and also a lot of open model finetunes such as Clef.\n\nNVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4 by nvidia : The mid-sized model of the Nemotron family got its long awaited update. It is strong for its size and can be run at home (given you own a beefy laptop or RTX Spark). As usual, NVIDIA releases the vast majority of the data and an in-depth tech report .\n\nBeam-1.0-501B-A23B by reflection : The long awaited open model by Reflection, making it the strongest open American model released under a permissive license (Apache 2.0). While not the smartest open model available, Beam is very impressively token efficient (second to only GPT-6-Astra below). This is a sign of a well-developed post-training stack.\n\nModels\nGeneral Purpose\nTernary-Bonsai-2-27B-gguf by prism-ml : A ternary version of Qwen3.8-27B for on-device deployments.\n\nOrnith-1.5-397B by ornith-ai : A series of Qwen3.5 and Gemma 4 finetunes that gained attention in the local AI community for its strong performance over the respective (strong) baselines.\n\nLing-3.0-flash-VL-fp4 by inclusionAI : A 124B-A5.5B model by Ant Ling (within Ant Group), which continues to churn out models consistently.\n\nMuse-Spark-Open-816B-A42B by meta-models : META has released their open version of Muse, which we have written about in more detail !\n\nRead more",
+   "facts": [
+    {
+     "kind": "new_model",
+     "subject": "DeepSeek-V4.1-Flash-1017",
+     "claim": "New 552B-A16B MIT-licensed model with image input",
+     "match": [
+      [
+       "deepseek"
+      ],
+      [
+       "flash"
+      ]
+     ]
+    },
+    {
+     "kind": "new_model",
+     "subject": "Beam-1.0-501B-A23B",
+     "claim": "Reflection's open American model under Apache 2.0, token efficient",
+     "match": [
+      [
+       "beam"
+      ],
+      [
+       "apache",
+       "501b",
+       "reflection"
+      ]
+     ]
+    },
+    {
+     "kind": "new_model",
+     "subject": "MiMo-V2.6-Pro-RL",
+     "claim": "Xiaomi's V2.6-Pro is the top open model on Artificial Analysis",
+     "match": [
+      [
+       "mimo"
+      ],
+      [
+       "v2.6",
+       "top open"
+      ]
+     ]
+    },
+    {
+     "kind": "new_model",
+     "subject": "DeepInfer",
+     "claim": "DeepSeek released its internal inference stack DeepInfer",
+     "match": [
+      [
+       "deepinfer"
+      ],
+      [
+       "inference"
+      ]
+     ],
+     "kind_alt": [
+      "code_idea"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-copilot-fusion",
+   "category": "new_model",
+   "negative": false,
+   "origin": "feed-eater archive item 15886 (Archive: 2026 - GitHub Changelog)",
+   "source_url": "https://github.blog/changelog/2026-10-28-route-and-orchestrate-models-with-github-copilot-fusion",
+   "title": "Route and orchestrate models with GitHub Copilot Fusion",
+   "source_date": "2026-10-28",
+   "truncated": false,
+   "text": "GitHub Copilot Fusion is generally available. Instead of picking a model for each task, choose Copilot Fusion and let Copilot intelligently route and orchestrate which models it uses for you.\n\nCopilot Fusion brings together Project HydraFusion’s multi-model orchestration and Copilot auto model selection’s fine-tuned model selection, leveraging the benefits of both to balance performance and cost efficiency.\n\nSince Project HydraFusion launched, we’ve improved its performance. In the Artificial Analysis Coding Agent Index, Copilot Fusion Max scored 60, within two points of Claude Code with Opus 5.5 Max. It delivered that result at about half the average API cost per task, using about half as many tokens and taking about 40% less time per task.\n\nSmarter choices for developers\n\nWhen you select Copilot Fusion in the model picker, you aren’t selecting a specific model. You’re choosing a system that routes and orchestrates models for each task. There’s no need to switch models during a task or decide which model suits each step. For each prompt, Copilot Fusion determines which models to use and how they work together, while you choose the right level of effort.\n\nTo use it, select Copilot Fusion in the model picker, then choose the effort level.\n\nFusion Standard: Prioritizes versatile models for everyday coding.\n\nFusion High: Prioritizes capable models for challenging tasks and deeper reasoning.\n\nFusion Max: Prioritizes the most capable models for the most demanding tasks and complex reasoning.\n\nWatch as Copilot Fusion analyzes each task and selects a model to complete it, orchestrating multiple models through the following workflows when needed.\n\nSingle: One model solves the task directly.\n\nCascade: An efficient model drafts a response. A quality check determines whether to accept it or escalate to a stronger model.\n\nCritique: One model drafts an initial response, another model reviews it, and the original model revises.\n\nMore control for administrators\n\nAdministrators control which models Copilot Fusion can use and whether Copilot Fusion is the default.\n\nCopilot Fusion only uses the models that are enabled in your enterprise and organization model policies . Enterprise administrators can view what models Copilot Fusion picks from, independently set each model’s effective policy state, and disable models for Copilot Fusion without disabling the model for everyone. See Manage availability of default models .\n\nAdministrators can set Copilot Fusion, at any effort level, as the default model for Copilot users with Enterprise managed settings. To configure settings, see Enterprise managed settings .\n\n“GitHub Copilot Fusion Standard has improved token efficiency across AT&T by automatically selecting the right model for the task, reducing unnecessary spend and preserving capacity for higher-value work. Previously, developers would often choose a more powerful model for a complex task and forget to switch back for everyday activities. Copilot Fusion eliminates that friction, optimizing model selection without requiring developers to manage it themselves. We’ve also seen its decision-making improve over time, giving developers greater confidence to focus on their work while Copilot handles model selection.”\n\nHari Pokhrel, Principal Software Engineer, AT&T\n\nBilling\n\nWhen you use Copilot Fusion you’re billed for each model it uses, at each model’s standard rate. For a limited time, users on paid Copilot plans will receive a 30% discount on model costs when using Copilot Fusion.\n\nGet started\n\nCopilot Fusion is available on all Copilot plans in Visual Studio Code, the GitHub Copilot app, GitHub Copilot CLI, and JetBrains IDEs. Support for additional clients is coming soon.\n\nUpdate your client to try it out. Open the model picker, select Copilot Fusion , and choose an effort level.\n\nNote for research preview participants: if you previously enabled auto, HydraFusion, or HydraFusion Max, your selections will automatically transition to the corresponding Copilot Fusion effort levels.\n\nTo learn more, see our documentation on GitHub Copilot Fusion and share your feedback in the GitHub Community .\n\nThe post Route and orchestrate models with GitHub Copilot Fusion appeared first on The GitHub Blog .",
+   "facts": [
+    {
+     "kind": "new_model",
+     "subject": "GitHub Copilot Fusion",
+     "claim": "Routes each task across multiple models (single, cascade, critique) by effort level",
+     "match": [
+      [
+       "fusion"
+      ],
+      [
+       "cascade",
+       "critique",
+       "route",
+       "orchestrat"
+      ]
+     ],
+     "kind_alt": [
+      "code_idea"
+     ]
+    },
+    {
+     "kind": "price_change",
+     "subject": "GitHub Copilot Fusion",
+     "claim": "Limited-time 30% discount on model costs for paid Copilot plans using Fusion",
+     "match": [
+      [
+       "fusion"
+      ],
+      [
+       "30%"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-agent37",
+   "category": "code_idea",
+   "negative": false,
+   "origin": "feed-eater archive item 13745 (Hacker News)",
+   "source_url": "https://news.ycombinator.com/item?id=50059096",
+   "title": "Launch HN: Agent37 (YC F26) – Low-cost agent sandboxes for running agents",
+   "source_date": "2026-10-12",
+   "truncated": false,
+   "text": "Hey HN, I’m Vishnu from Agent37 ( https://agent37.com ). We build sandboxes for running AI agents at under 10% of the cost of most sandbox providers. Our customers spend an average of $0.37/month per sandbox.\nYou can view a video walkthrough of the product here: https://youtu.be/DK5ISR2tbNo\nWe started as one of those OpenClaw wrapper companies back in February (yup.. judge me). In time we added more and more harnesses.\nOne of the goals I had at the time was to offer a free plan to users, so as to gain more market share. But it was too cost prohibitive to do it right away. Especially since we were bootstrapped and servers were running on my savings.\nToday we’re actually able to offer the free plan thanks to the optimizations we’ve made since. Over 90% of the new signups we have are just free plan users and they host their personal Hermes/Openclaw/Claude Code etc on our cloud. Our infrastructure cost for the free sandboxes averages around $0.05 to $0.10 per user per month.\nHere are some techniques that have worked for lowering cost:\n* When you look at agent harnesses, they have certain patterns in the way they consume CPU and RAM. They need CPU in bursts when they’re initializing or performing certain tasks, but beyond that, they’re often not peaking. They need more RAM for things like browser and computer-use tasks. Once the task is done, usage often comes back down. This is a key insight in lowering cost, so by efficiently managing the CPU/RAM utilization we could lower the cost.\n* Secondly, you have to skip the hyperscalers when renting the Hosts. I worked at Amazon before and they have 80-90% margins on VMs. So it was an obvious choice once I looked at the prices to go one layer down to vendors like Hetzner and OVH. This alone was probably one of the biggest cost levers in reducing the cost.\n* Thirdly, you also want to pick a technology stack that lets you efficiently cache and share resources across the host. We use gVisor for better utilization and fast boot times. It lets us use available host memory across sandboxes without reserving a full VM’s memory for each one. There are tradeoffs: our gVisor sandboxes don’t support workloads like Docker-in-Docker or Android emulators.\n* And finally the size and shape of the hosts you buy also makes a big difference. RAM is typically the bottleneck when it comes to cost and not the CPU. This is specifically true for agent harness workloads, so when buying servers, we optimize for packing more RAM into a given host.\nWe also host full VM sandboxes for workloads that need them, including running Docker at a slightly higher price, but they are still pretty low cost given the rest of the techniques.\nOverall, my learning has been that just by focusing on a niche of sandbox usecases, and optimizing for it you can give a much better cost/performance tradeoff.\nI was previously a Senior Software Engineer at Amazon and an Engineering Manager at Quantcast. I built Amazon's internal AI chatbot, Diya, and their internal coding harness, Ziya.\nIf you’re someone who’s looking to run agents on sandbox and are exploring a sandbox vendor, come check us out. We’re particularly looking for developers building messaging agents to try their workloads and challenge the limits and economics of our platform.\nThanks!\nhttps://agent37.com\n\nComments URL: https://news.ycombinator.com/item?id=50059096\n\nPoints: 105\n\n# Comments: 70",
+   "facts": [
+    {
+     "kind": "code_idea",
+     "subject": "Agent37",
+     "claim": "Cuts agent sandbox cost with Hetzner/OVH hosts instead of hyperscalers, gVisor sharing of host memory and RAM-heavy hosts",
+     "match": [
+      [
+       "gvisor",
+       "hetzner",
+       "ovh",
+       "ram"
+      ]
+     ]
+    },
+    {
+     "kind": "code_idea",
+     "subject": "Agent37",
+     "claim": "Free sandbox plan costs about $0.05 to $0.10 per user per month; customers average $0.37/month per sandbox",
+     "match": [
+      [
+       "agent37"
+      ],
+      [
+       "0.37",
+       "0.05"
+      ]
+     ],
+     "kind_alt": [
+      "idea",
+      "price_change"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-aspire136",
+   "category": "code_idea",
+   "negative": false,
+   "origin": "feed-eater archive item 12383 (Release notes from aspire)",
+   "source_url": "https://github.com/microsoft/aspire/releases/tag/v13.6.0",
+   "title": "Aspire 13.6.0",
+   "source_date": "2026-09-29",
+   "truncated": false,
+   "text": "Aspire 13.6.0\n\nAspire 13.6 brings persistent application history, a refreshed and more interactive dashboard, first-party Java and Rust hosting, and new Azure deployment options. Coordinated .NET builds, portable volume paths, sharper CLI workflows, and more capable editor tooling make it easier to build, debug, and deploy applications across languages.\n\nHighlights\n\n🗃️ Persistent, refreshed dashboard — SQLite-backed telemetry and resource snapshots let you revisit up to ten application runs, with read-only access to completed runs and default retention limits of 100,000 console log messages, structured logs, and traces each. The dashboard now ships as Native AOT and adopts Fluent UI v5 with a collapsible navigation rail.\n\n🖥️ AppHost-owned terminals and database REPLs — Experimental terminal APIs let AppHosts create interactive sessions in a dashboard dock, dialog, or separate window. Opt-in WithRepl() commands open bundled clients for PostgreSQL, MySQL, MongoDB, SQL Server, Redis, and Valkey, while aspire terminal ps and aspire terminal tape play support discovery and repeatable terminal interactions.\n\n🌐 First-party Java and Rust hosting — New Aspire.Hosting.Java and Aspire.Hosting.Rust packages bring Maven, Gradle, Spring Boot, Quarkus, and Cargo applications into the app model, with generated container builds and VS Code debugging. These integrations build on work that originated in the Aspire Community Toolkit.\n\n🛠️ More flexible AppHosts — The prerelease Aspire.Hosting.Dotnet integration coordinates compatible projects into shared restore and build groups and supports .NET SDK container publishing. Portable volume-path environment variables work across local execution and deployment, while TypeScript AppHosts gain standard appsettings.json configuration and Deno runtime support.\n\n⌨️ Sharper CLI workflows — Select launch profiles with aspire run and aspire start , update repository-local CLI manifests with aspire update , create file-based C# AppHosts with aspire init --language csharp --file-based , and export TypeScript API data with aspire sdk export . Terminal commands no longer need a feature flag, Linux certificate trust includes Firefox NSS databases, and aspire stop --force --volumes adds explicit cleanup of Aspire-owned volumes.\n\n💻 More capable VS Code tooling — Coding agents can start and stop AppHosts through the extension, and the Aspire pane exposes deploy, publish, and pipeline actions. Multi-root discovery, worktree-scoped lifecycle operations, preserved launch arguments, clearer debug logs, and missing-debugger guidance make complex workspaces more predictable.\n\n☁️ New Azure options in preview — Azure Connector Namespace models external-service connections and managed MCP server configurations. Azure Container Apps Sandboxes adds isolated sandbox deployments with configurable resource tiers and lifecycle policies, while Azure Container Apps Express offers a simplified environment option for rapid provisioning.\n\n☸️ More expressive, reliable deployments — Experimental Azure Provisioning SDK proxies let polyglot AppHosts customize infrastructure. Deployment state is isolated under ASPIRE_HOME , Kubernetes preserves inherited hostnames and embedded parameter values, and AKS gains persistent-volume provisioning and more reliable cleanup.\n\n🔌 Expanded integrations — Experimental Deno hosting and MongoDB replica sets join Foundry Toolboxes, remote Foundry Local endpoints, Blazor WebAssembly debugging, and configurable Dev Tunnel expiration. Azure Cosmos DB and AI Inference client integrations gain health checks, and the vNext Cosmos DB emulator sends its own telemetry to the dashboard.\n\n⚠️ Breaking changes\n\nNotable changes include automatic TLS for local MongoDB servers when a certificate is available, the Linux-based vNext Cosmos DB emulator becoming the default, new Azure Front Door origin names that can require cleanup of existing origins, portable connection-string environment-variable aliases on stricter deployment targets, and experimental terminal types moving from Aspire.Hosting.Terminals to Aspire.Hosting.ApplicationModel .\n\nSee the full list and migration guidance in the Aspire 13.6 breaking changes .\n\n📖 Learn more\n\nFor complete details, examples, migration guidance, and everything new in this release, read What's new in Aspire 13.6 .\n\nThank you to all the community contributors who helped make Aspire 13.6 possible! 💜\n\nFull Changelog: v13.5.4...v13.6.0\n\nFull commit: 56f3e9c0d216c0c7069dabb49dd0464e4827744f",
+   "facts": [
+    {
+     "kind": "code_idea",
+     "subject": "Aspire 13.6",
+     "claim": "Azure Container Apps Sandboxes preview: isolated sandbox deployments with resource tiers and lifecycle policies",
+     "match": [
+      [
+       "aspire",
+       "azure"
+      ],
+      [
+       "sandbox"
+      ]
+     ],
+     "date": "2026-09-29"
+    },
+    {
+     "kind": "code_idea",
+     "subject": "Aspire 13.6",
+     "claim": "Coding agents can start and stop AppHosts through the VS Code extension",
+     "match": [
+      [
+       "aspire",
+       "apphost"
+      ],
+      [
+       "coding agent",
+       "agents"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-csharp-sdk24",
+   "category": "code_idea",
+   "negative": false,
+   "origin": "feed-eater archive item 16817 (Release notes from csharp-sdk)",
+   "source_url": "https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v2.4.0",
+   "title": "v2.4.0",
+   "source_date": "2026-11-07",
+   "truncated": false,
+   "text": "Version 2.4.0 adds experimental MCP Skills support through the new ModelContextProtocol.Extensions.Skills package, alongside OAuth hardening and reliability improvements for transport, session, and discovery flows. MCP Apps also now match protocol property names case-sensitively.\n\nWhat's Changed\n\nAdd the experimental MCP Skills extension #1856 by @girishkvs (co-authored by @PederHP )\n\nAlign Skills with server primitives and typed request handlers #1993 by @halter73 (co-authored by @Copilot)\n\nRequire explicit opt-in for the legacy OAuth metadata fallback #1952 by @halter73 (co-authored by @Copilot)\n\nPreserve refresh tokens when OAuth refresh responses omit replacements #1968 by @halter73 (co-authored by @Copilot)\n\nPreserve canonical OAuth resource identifiers during refresh #1967 by @halter73 (co-authored by @Copilot)\n\nFix cancellation being reported as missing OAuth metadata #1891 by @Empiree\n\nCancel open subscriptions/listen requests when the transport stops delivering messages #1933 by @pournasserian (co-authored by @Copilot)\n\nFix dropped notifications and cancellation when a request is canceled #1917 by @zerotohero3\n\nPrevent server/discover probes from committing the negotiated protocol version #1956 by @PrathmeshPawar2110 (co-authored by @claude )\n\nFall back to SSE when AutoDetect receives a 405 with a JSON-RPC error body #1849 by @ump45nose\n\nFix legacy output schemas for delegating server tools #1928 by @Oxygen56\n\nMatch protocol property names case-sensitively #1934 by @FenjuFu\n\nDocumentation Updates\n\nClarify Skills discovery and documentation #2000 by @halter73 (co-authored by @Copilot)\n\nFix Markdown link-check warnings and update the Skills specification link #1975 by @jeffhandley (co-authored by @Copilot)\n\nTest Improvements\n\nPrevent discovery probe timeouts in controlled test connections #1946 by @tarekgh\n\nApply test discovery timeouts to Sampling_Stdio #1950 by @girishkvs\n\nUse a task that runs until cancelled in the task store cancellation test #1955 by @girishkvs\n\nFix parallel integration test server startup #1982 by @jeffhandley (co-authored by @Copilot)\n\nRepository Infrastructure Updates\n\nBump fast-uri from 3.1.5 to 3.1.7 #1850\n\nBump actions/deploy-pages from 5.0.0 to 5.0.1 #1858\n\nSupport release-line docs publishing and release coordination #1972 by @jeffhandley (co-authored by @Copilot)\n\nBump docfx from 2.78.5 to 2.81.0 #1961\n\nBump actions/setup-node from 7.0.0 to 7.1.0 #1927\n\nBump becheran/mlc from 1.2.0 to 1.3.0 #1907\n\nBump the other-testing group with 2 updates #1960\n\nBump actions/download-artifact from 8.0.1 to 8.0.2 #1926\n\nBump Anthropic from 12.40.0 to 13.3.0 #1962\n\nBump the opentelemetry-testing group with 6 updates #1959\n\nBump actions/upload-artifact from 7.0.1 to 7.0.2 #1925\n\nFix CI selection of patched .NET SDKs #1995 by @tarekgh\n\nAcknowledgements\n\n@Empiree made their first contribution in #1891\n\n@zerotohero3 made their first contribution in #1917\n\n@girishkvs made their first contribution in #1856\n\n@FenjuFu made their first contribution in #1934\n\n@PrathmeshPawar2110 made their first contribution in #1956\n\n@Oxygen56 made their first contribution in #1928\n\n@pournasserian made their first contribution in #1933\n\n@nagavitalp submitted issue #1897 (resolved by #1934 )\n\n@oleksandrdubyna88 submitted issue #1914 (resolved by #1933 )\n\n@AdCodicem submitted issue #1916 (resolved by #1928 )\n\n@gavin-wolfe submitted issue #1954 (resolved by #1956 )\n\n@as992949791 submitted issue #1958 (resolved by #1968 )\n\n@jeffhandley @tarekgh @halter73 @girishkvs @FenjuFu @PederHP @zerotohero3 @chrikrah @ump45nose @pournasserian reviewed pull requests\n\nFull Changelog : v2.3.1...v2.4.0",
+   "facts": [
+    {
+     "kind": "code_idea",
+     "subject": "MCP C# SDK v2.4.0",
+     "claim": "Experimental Skills extension and skills discovery",
+     "match": [
+      [
+       "skills"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-hillock",
+   "category": "code_idea",
+   "negative": false,
+   "origin": "feed-eater archive item 13032 (Self-Hosted Alternatives to Popular Services)",
+   "source_url": "https://www.reddit.com/r/selfhosted/comments/1x00i8j/i_built_a_self_hosted_memory_engine_using_sqlite/",
+   "title": "I built a self hosted memory engine using SQLite instead of heavy vector databases",
+   "source_date": "2026-10-07",
+   "truncated": false,
+   "text": "Disclosure: I am the creator of this open source project.\nIf you run local AI on a home server, mini PC, or low power node, standard RAG setups are usually a complete non starter. Spinning up Milvus, Qdrant, or Chroma alongside an 8B model just to chunk and parse text eats up several gigabytes of memory before your actual inference model even loads. On top of that, cloud phone home APIs defeat the whole purpose of self hosting your data privately.\nI built Hillock to solve this for self hosters. It is an open source, 100 percent local memory engine under AGPL-3.0 that replaces vector databases with an SQLite Knowledge Graph and hyperdimensional vector math. Ingestion runs without an LLM in about five seconds using tiny specialized models under 300MB, storing facts as relational triples with write ahead logging.\nWhen you query it, a 10,000 dimensional hypervector gate runs on the CPU in under 0.01 milliseconds using bit packed SIMD math. If the stored data does not contain the answer, it blocks the prompt before the model can hallucinate. Total footprint stays under 1.2 GB of VRAM or runs on pure CPU. It includes an OpenAI compatible API server on port 8000, so you can point self hosted frontends like Open WebUI or AnythingLLM directly at it.\nCode is on GitHub at https://github.com/roandejager/Hillock\nInteractive docs are at https://hillock.mintlify.site/ and we have a Discord at https://discord.com/invite/BGUPNBcVdp\nsubmitted by /u/Equivalent-Flan-1590\n[link] [comments]",
+   "facts": [
+    {
+     "kind": "code_idea",
+     "subject": "Hillock",
+     "claim": "Local memory engine replacing vector DBs with an SQLite knowledge graph of relational triples",
+     "match": [
+      [
+       "hillock"
+      ],
+      [
+       "sqlite"
+      ]
+     ]
+    },
+    {
+     "kind": "code_idea",
+     "subject": "Hillock",
+     "claim": "10,000-dimensional hypervector gate on CPU blocks the prompt when the stored data has no answer",
+     "match": [
+      [
+       "hypervector"
+      ],
+      [
+       "block",
+       "gate"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-pg-qos",
+   "category": "code_idea",
+   "negative": false,
+   "origin": "feed-eater archive item 9690 (Self-Hosted Alternatives to Popular Services)",
+   "source_url": "https://www.reddit.com/r/selfhosted/comments/1wprb2u/running_multiple_apps_on_one_postgres_i_built_an/",
+   "title": "Running multiple apps on one Postgres? I built an extension so one of them can't hog the whole server",
+   "source_date": "2026-09-25",
+   "truncated": false,
+   "text": "Hey everyone,\nLike a lot of people here, I run a single PostgreSQL instance that several services share (Nextcloud, Gitea, Immich, whatever you have). It works great until one of them runs a heavy job and everything else crawls.\nSo I built pg_qos , a PostgreSQL extension that lets you set limits per database or per user. You stay on one Postgres instance, but each app gets its own guardrails:\nsql\nALTER DATABASE immich SET qos.cpu_core_limit = '2'; ALTER DATABASE nextcloud SET qos.max_concurrent_select = '20'; ALTER ROLE gitea SET qos.work_mem_limit = '64MB'; What you can limit:\nCPU cores a database or user can use (Linux)\nNumber of queries/transactions running at the same time\nQueries per second (e.g. '100/1s' )\nMemory per session ( work_mem )\nChanges apply to already-connected sessions, so no app restarts are needed. It supports PostgreSQL 15–18, has .deb/.rpm packages for Debian 13, Ubuntu 24.04 and RHEL 10, and is GPL-3.0.\nRepo: https://github.com/appstonia/pg_qos\nWould love to hear if this is useful for your setup or if something's missing.\nsubmitted by /u/mahoniqo\n[link] [comments]",
+   "facts": [
+    {
+     "kind": "code_idea",
+     "subject": "pg_qos",
+     "claim": "PostgreSQL extension that limits CPU cores, concurrent queries, queries per second and work_mem per database or role",
+     "match": [
+      [
+       "pg_qos"
+      ],
+      [
+       "per database",
+       "per user",
+       "database",
+       "role"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-spawn",
+   "category": "code_idea",
+   "negative": false,
+   "origin": "feed-eater archive item 16020 (Simon Willison's Weblog)",
+   "source_url": "https://simonwillison.net/2026/Oct/29/how-i-built-the-most-ai-pilled-company-in-the-world/",
+   "title": "Building a multiplayer game world with autonomous Fable-class models",
+   "source_date": "2026-10-29",
+   "truncated": false,
+   "text": "How I Built the Most AI-Pilled Company in the World\n\nDon't be put off by the clickbait headline, this piece by Jacob Sansbury describing how they are building Spawn is a fascinating exploration of the bleeding edge of what's possible with agentic engineering against frontier models.\n\nSpawn is a massively multiplayer gaming environment where players can use prompts (to the in-game agent, Savi) to modify the game world.\n\nI fired it up on my phone for a few minutes and was able to prompt a castle into existence, then a dragon, then ride the dragon to fly around that castle.\n\nBy Jacob's telling, Spawn is now being developed autonomously by a swarm of Fable-powered agents costing over $3 million in tokens per month (\"we spend 30x payroll on AI tokens\").\n\nOur agents change the live code directly and ship to production hourly, so they read every error, bug report and metric themselves. About 60% of our work starts from a production error, a Savi bug report (Savi is the AI you build games with in Spawn), something odd in our logs, or a feature request.\n\nSavi files bugs herself. When a user hits one, or Savi hits one in the product, she files it. It goes straight to an agent that decides whether it's a real bug to fix, something we won't fix, or intentional design that needs a decision. Usually it becomes a change, delivered to that user within an hour, with a message in the same chat.\n\nThis is continuous deployment turned up to 11:\n\nA loop this tight only works if it never stops, so we treat an hour without a ship as a SEV-0, our most severe kind of incident. Unshipped changes pile up, and every problem already in production lasts longer. The feedback slows down too. An agent can only keep a few hours of work in its head, so shipping faster than that actually helps it stay coherent. [...]\n\nWe can roll back a broken change in 30 seconds, exactly where it's broken and nowhere else. When a monitor or a log alert fires, it starts or wakes an agent that owns the incident, and we break things on purpose to test that those recovery paths work.\n\nMy eyebrows raised at least a dozen times reading this. I have trouble imagining this style of development working on software with higher stakes for when something goes wrong, but for a game this appears to be working surprisingly well.\n\nJacob says that Fable 5 (and then 5.1) was the model that made this level of autonomy possible. Opus 5.5 doesn't quite hack it for them, and when they tried GPT-6 Astra to apply fixes from a security review everything stopped working:\n\nEvery feature had been disabled and marked to be turned on again once the security fixes were done. Astra had gone through our whole product and made the insecure things secure by turning them off.\n\nThese kinds of extreme experiments are why I'm excited about game development as a substrate for exploring the edges of what today's coding agents can do.\n\nTags: game-design , ai , generative-ai , llms , claude , coding-agents , agentic-engineering , claude-mythos-fable",
+   "facts": [
+    {
+     "kind": "code_idea",
+     "subject": "Spawn multiplayer game",
+     "claim": "An hour without a ship counts as a SEV-0; changes reach a user within an hour; rollback in 30 seconds",
+     "match": [
+      [
+       "sev-0",
+       "sev 0",
+       "30 seconds"
+      ]
+     ]
+    },
+    {
+     "kind": "code_idea",
+     "subject": "GPT-6 Astra",
+     "claim": "Astra made insecure features secure by switching them off after a security review",
+     "match": [
+      [
+       "astra"
+      ],
+      [
+       "disabled",
+       "turning them off",
+       "turned off",
+       "turning off",
+       "switching them off",
+       "switched off"
+      ]
+     ],
+     "kind_alt": [
+      "idea"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-trypost",
+   "category": "code_idea",
+   "negative": false,
+   "origin": "feed-eater archive item 16037 (Self-Hosted Alternatives to Popular Services)",
+   "source_url": "https://www.reddit.com/r/selfhosted/comments/1xiv2el/aip_i_built_an_opensource_social_media_scheduler/",
+   "title": "[AIP] I built an open-source social media scheduler you run on your own server (TryPost, AGPL)",
+   "source_date": "2026-10-29",
+   "truncated": false,
+   "text": "I'm Paulo, the founder of TryPost. It's an open-source social media scheduler, and the self-hosted version is the whole product under AGPL-3.0, with nothing held back for the cloud plan.\nI built it because the schedulers I used kept my drafts and my social tokens on someone else's server and charged more for every account I added.\nYou get a composer and a calendar with a queue per channel, approvals, and a separate workspace for each brand. There's also an ideas board, insights and webhooks. It publishes through each network's own API: Instagram, TikTok, LinkedIn, X, YouTube, Facebook, Threads, Bluesky, Pinterest, Mastodon, Google Business, Telegram and Discord.\nIt ships with an MCP server (80+ tools) and a REST API, so an agent can draft posts straight into the queue. I still approve every post by hand before it goes out. I don't trust an agent publishing alone to a real brand account yet.\nSelf-hosting: the image is ghcr.io/trypostit/trypost (Alpine, PHP 8.4, amd64 and arm64). compose.prod.yaml brings up the app with PostgreSQL 16, Redis, Horizon, Reverb and the scheduler, and an optional Caddy profile handles TLS if you want it to. Bare metal is documented in the README too.\n``` git clone https://github.com/trypostit/trypost.git cd trypost\nset APP_URL, DB passwords, APP_KEY, REVERB_APP_SECRET and Passport keys in compose.prod.yaml\ndocker compose -f compose.prod.yaml up -d ```\nRepo: https://github.com/trypostit/trypost\nAI disclosure [AIP]: Design Assisted, Implementation Pair, Testing Assisted, Docs Assisted, Review Assisted, Deployment Assisted.\nIf you already self-host something that holds OAuth tokens for social accounts, how do you store and rotate them?\nsubmitted by /u/Beneficial-Serve-513\n[link] [comments]",
+   "facts": [
+    {
+     "kind": "code_idea",
+     "subject": "TryPost",
+     "claim": "Open-source self-hosted social media scheduler under AGPL-3.0 with an MCP server (80+ tools) and REST API",
+     "match": [
+      [
+       "trypost"
+      ],
+      [
+       "mcp"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-wikihack",
+   "category": "idea",
+   "negative": false,
+   "origin": "feed-eater archive item 16312 (Hacker News)",
+   "source_url": "https://wikihack.netlify.app",
+   "title": "Show HN: Wikihack – HackerTube, but for Wikipedia articles mentioned on HN",
+   "source_date": "2026-11-02",
+   "truncated": false,
+   "text": "After seeing Karpathy's Hackertube and Hackerbooks, I just had to make Wikihack.\nI scraped all mentions of wikipedia on hackernews and ranked them, and turn them into a scrollable feed to make it a bit more easy to digest / interact with. You can see where people submitted the articles and where people mentioned it in comments.\nThe top shows the most frequently linked articles.\nRandom is random but slightly weighted towards the more frequently linked articles (a little bit like Wikipedia actually).\nRising is ranked towards the past 12 months.\nThe entire site is served only through the frontend -- I'll add more features if people enjoy this!\n\nComments URL: https://news.ycombinator.com/item?id=50333339\n\nPoints: 138\n\n# Comments: 37",
+   "facts": [
+    {
+     "kind": "idea",
+     "subject": "Wikihack",
+     "claim": "Feed of Wikipedia articles mentioned on Hacker News, ranked by mentions, served only from the frontend",
+     "match": [
+      [
+       "wikihack"
+      ],
+      [
+       "wikipedia"
+      ]
+     ],
+     "kind_alt": [
+      "code_idea"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "a-cold-start",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "feed-eater archive item 10067 (The Cloudflare Blog)",
+   "source_url": "https://blog.cloudflare.com/introducing-the-cold-start/",
+   "title": "Introducing The Cold Start: pitch your startup live at Cloudflare Connect",
+   "source_date": "2026-09-28",
+   "truncated": true,
+   "text": "Sixteen years ago, Cloudflare was one of more than 1,000 startups hoping for a spot on stage at TechCrunch Disrupt.\nWe were not, on the face of it, an obvious choice. Cloudflare was infrastructure: we made websites faster and protected them from attack, which was not well understood by the general market at the time. Infrastructure is often invisible right up until the moment it becomes important.\nBut on September 27, 2010, Matthew Prince and Michelle Zatlyn got on the Startup Battlefield stage and launched Cloudflare to the public. During the presentation, people started signing up. Then more people started signing up. By the time the judges had finished asking questions, hundreds of websites had joined Cloudflare, putting our initial five data centers to the test in real time. In the seven days following, traffic through our network increased almost 10x and Cloudflare jumped from the 1,000th largest site online to one of the top 50.\nCloudflare didn’t win the main trophy that day. At the awards ceremony, TechCrunch founder Mike Arrington described what we did as something akin to \"muffler repair for the Internet\" and honestly, he had a point. But then he named us the Most Innovative Company. As Matthew wrote later: \"You may not win the trophy, but you'll receive something else far more important.\"\nThere are moments in the life of a company when somebody gives you a room, a microphone, and a small amount of time to explain the thing you have spent months or years obsessing over. Most of the time nothing magical happens. Sometimes, though, the right people hear it at the right moment and suddenly an idea that has mostly existed between a handful of people starts moving through the world.\nThis October, as Cloudflare turns 16, we want to give five early-stage startups a stage of their own.\nIntroducing The Cold Start\nThe Cold Start is a live startup competition taking place next month at Cloudflare Connect in San Francisco. We’ll select five early-stage companies and give each of them five minutes on stage to explain what they’re building, why it needs to exist, and why they are the people who should build it.\nWe are less interested in perfect pitch decks than in interesting ideas clearly explained. You do not need thirty slides, a suspiciously precise TAM calculation, or a rehearsed story about how your childhood prepared you to disrupt accounts receivable. What we want is to understand the vision: what changed in the world that makes it possible, what you see that other people have missed, and why you cannot stop thinking about it.\nThe five finalists will make their case in front of the Cloudflare Connect audience and three people who've spent a fair amount of their lives thinking about companies, infrastructure, and the Internet:\nMatthew Prince, co-founder and CEO of Cloudflare\nMichelle Zatlyn, co-founder and President of Cloudflare\nDane Knecht, CTO of Cloudflare\nThe judges will select one startup to win $500,000 in Cloudflare credits, take over a billboard in San Francisco, and receive an invitation to our VIP speakers dinner that evening.\nFive companies, five minutes each, and a room full of people paying attention.\nWhat are we looking for?\nThe Cold Start is open to ambitious early-stage startups, based in the US and Canada, that have raised less than $10 million. Beyond that, we are deliberately keeping the definition broad because the most interesting companies rarely arrive neatly categorized.\nWe want to see ideas that seem obvious once somebody finally builds them, and ideas that initially sound slightly unreasonable. We want infrastructure that appears boring until you realize everyone is going to need it; products that could not have existed a few years ago; strange new interfaces; new ways of building software; things aimed at enormous existing markets and things aimed at markets nobody has bothered to name yet.\nMost of all, we want to meet people who have noticed something about the world and decided to do something about it.\nAs part of the application, we’ll ask you to tell us who you are, give us your one-line pitch, explain what you’re building and why, tell us about your funding and revenue stage, show us how Cloudflare fits into your stack, and point us toward anything else that helps us understand you and your work.\nThe goal is simple: make us understand why the thing you’re building should exist.\nApply for The Cold Start .\nApplications are open now and close Friday, October 2, 2026.\nFive minutes in San Francisco\nThe Cold Start will take place Monday, October 19, from 4:00-5:00 p.m. PDT at Moscone West in San Francisco, as part of Cloudflare Connect . Cloudflare will pay for the five finalists to fly to San Francisco for the competition.\nConnect brings together people building and thinking about what comes next for the Internet. This year’s lineup includes AI pioneer Dr. Fei-Fei Li; Idealab founder Bill Gross; organizational psychologist and author Adam Grant; AMD CTO Mark Papermaster; Vue.js and Vite creator Evan You; Lovable co-founder and CTO Fabian Hedin; and OpenAI member of technical staff and creator of OpenClaw, Peter Steinberger.\nFor five young companies, we are reserving part of that stage. Each startup will have 5 minutes to pitch, followed by 3–5 minutes of questions by the judges.\nThere is something we like about that symmetry. Sixteen years ago, Cloudflare needed someone to take a chance on an infrastructure company with a difficult story to tell and give us a few minutes in front of the right room. Today, we are fortunate enough to have a stage of our own, and we want to pass that same opportunity on to companies that are just getting started.\nStart small. Build something enormous.\nThere is a practical reason Cloudflare spends so much time working with startups: very small groups of people have an uncanny ability to attempt very large things.\nThe problem is that ambitious software increasingly depends on infrastructure that, not very long ago, only the large",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "Cloudflare The Cold Start",
+     "claim": "Live startup pitch at Cloudflare Connect; winner gets $500,000 in Cloudflare credits; for US/Canada startups that raised under $10M",
+     "match": [
+      [
+       "cold start"
+      ],
+      [
+       "500000",
+       "500k"
+      ]
+     ],
+     "date": "2026-10-19",
+     "amount": "$500,000 Cloudflare credits"
+    }
+   ]
+  },
+  {
+   "id": "w-anthropic-credits",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "public docs page, fetched 2026-11-08",
+   "source_url": "https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers",
+   "title": "API credits for Max, Ultra, and Team plans",
+   "source_date": "2026-11-08",
+   "truncated": true,
+   "text": "---\ntitle: API credits for Max, Ultra, and Team plans\nurl: https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers\ndescription: Claim the monthly Claude Platform credits included with Claude Max, Ultra, and Team plans, and learn what they cover.\n---\n\nClaude Max, Ultra, and Team plans include monthly credits for the Claude API. To claim them, you link a [Claude Console](https://platform.claude.com/) organization to your plan. Credits then arrive in that organization each billing cycle (or monthly for annual plans), and you can use them to build and run your own applications and agents. You don’t need to add a payment method to Claude Platform.\n\n<Note>\n  Claude Platform on AWS, Amazon Bedrock, Google Cloud, and Microsoft Foundry: These credits apply only to the Claude API in the Claude Console. They can’t be used on other platforms.\n</Note>\n\n## Summary\n\n| Topic                                  | Details                                                                   |\n| -------------------------------------- | ------------------------------------------------------------------------- |\n| **Eligible plans**                     | Max, Ultra, and Team, including discounted Team plans                     |\n| **Monthly amount**                     | $100 USD (Max), $200 USD (Ultra), up to $500 USD (Team, pooled\\*)         |\n| **Covers**                             | Claude API, Claude Managed Agents, the Claude Agent SDK, and playground   |\n| **Doesn’t cover**                      | Claude Code, extra usage in the Claude apps                               |\n| **Refresh**                            | Each billing cycle (or monthly for annual plans)                          |\n| **Expiry**                             | End of each billing cycle (or monthly for annual plans), with no rollover |\n| **Payment method for Claude Platform** | Not required                                                              |\n\n## API credit amounts\n\n| Plan                                          | Monthly credit                                                       |\n| --------------------------------------------- | -------------------------------------------------------------------- |\n| Max                                           | $100 USD                                                             |\n| Ultra                                         | $200 USD                                                             |\n| Team, Standard seat                           | $20 USD per seat\\*                                                   |\n| Team, Premium seat                            | $100 USD per seat\\*                                                  |\n| Discounted Team plans (Nonprofit, Scientists) | Same as Team: $20 USD per Standard seat, $100 USD per Premium seat\\* |\n\n\\*On Team plans, credits for all seats are pooled into one monthly balance, capped at $500 USD. Each monthly credit, including the first, is based on the seats on your plan at the start of that billing month. For example, a team with three Standard seats and two Premium seats receives $260 USD a month. Adding another Premium seat raises the next month’s credit to $360 USD.\n\n## Eligibility\n\n* Your eligible plan must be active and in good standing.\n* New subscribers can claim credits after 7 days on an eligible plan.\n* Plans purchased through Claude for iOS or Claude for Android are eligible. Claim your credits on [claude.ai](https://claude.ai) in a web browser.\n* Free, Pro, and Enterprise plans aren’t eligible.\n\n## Claim your credits\n\n### Before you start\n\nYou need both of the following roles:\n\n| Where                           | Required role                                                |\n| ------------------------------- | ------------------------------------------------------------ |\n| **Claude plan**                 | Max or Ultra: the subscriber<br />Team: Primary Owner, Owner |\n| **Claude Console organization** | Owner, Admin, or Billing                                     |\n\nIf you don’t have a Claude Console organization, create one in the Console at [platform.claude.com](https://platform.claude.com/) first, or create one during the claim flow.\n\n### Steps\n\n<Steps>\n  <Step title=\"Open billing settings\">\n    On claude.ai, go to **Settings > Billing** on a Max or Ultra plan, or **Organization settings > Billing** on a Team plan.\n  </Step>\n\n  <Step title=\"Link a Console organization\">\n    In the **API credits** section, select the Console organization that should receive the credits, then accept the [program terms](https://www.anthropic.com/legal/credit-terms) by linking.\n  </Step>\n\n  <Step title=\"Start building\">\n    Your credits appear in the **Promotional credits** section of the [Billing](https://platform.claude.com/settings/billing) page (`platform.claude.com/settings/billing`) in the Console. Create an API key and make your first request. See [Get started](https://platform.claude.com/docs/en/get-started).\n  </Step>\n</Steps>\n\n<Warning>\n  Each plan links to one Console organization, and each Console organization can receive credits from one plan. You can’t change the linked organization yourself, so link the organization you plan to build in. To change it later, [contact support](https://support.claude.com/en/articles/9015913-how-to-get-support).\n</Warning>\n\nSubscribers who aren’t eligible don’t see API credits in their settings page. If you think you should be eligible but don’t see the API credits, [contact support](https://support.claude.com/en/articles/9015913-how-to-get-support).\n\n## What the credits cover\n\nThese API credits can only be used on the Claude Platform. The following table shows which products are covered:\n\n| Product                                                                              | Covered |\n| ------------------------------------------------------------------------------------ | ------- |\n| [Claude API](https://platform.claude.com/docs/en/api/overview)                       | ",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "Claude Max and Ultra plans",
+     "claim": "Monthly Claude Platform API credits: Max $100, Ultra $200",
+     "match": [
+      [
+       "max"
+      ],
+      [
+       "100"
+      ]
+     ],
+     "kind_alt": [
+      "price_change"
+     ],
+     "amount": "$100-$200/month"
+    },
+    {
+     "kind": "opportunity",
+     "subject": "Claude Team plan",
+     "claim": "Team plans get up to $500 in pooled monthly API credits",
+     "match": [
+      [
+       "team"
+      ],
+      [
+       "500"
+      ]
+     ],
+     "kind_alt": [
+      "price_change"
+     ],
+     "amount": "$500/month"
+    }
+   ]
+  },
+  {
+   "id": "w-lightning-gpu",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "public pricing page, fetched 2026-11-08",
+   "source_url": "https://lightning.ai/pricing",
+   "title": "Pricing: free GPU hours, then pay-as-you-go | Lightning AI",
+   "source_date": "2026-11-08",
+   "truncated": true,
+   "text": "Pricing: free GPU hours, then pay-as-you-go | Lightning AI\nH100·2,048AVAILABLE\nA100·3,072AVAILABLE\nL40S·1,536AVAILABLE\nH200·1,024AVAILABLE\nL4·4,096AVAILABLE\nH100·896AVAILABLE\nT4·6,144AVAILABLE\nA100·1,280AVAILABLE\nH200·512AVAILABLE\nL40S·768AVAILABLE\nL4·2,304AVAILABLE\nH100·640AVAILABLE\nFrom the PyTorch Lightning creators\nGet up to 50 free GPU hours.\nThen pay-as-you-go.\nStart on the free tier with 50* free GPU hours. Pay as you go for more hours. Upgrade for enterprise features like bring your own cloud, use your AWS/GCP credits, SOC2, HIPAA, and 24/7 support.\nRun 1 Studio free 24/7**. No credit card. No commitments.\n Get started free\n*Prices vary **Free Studios run 24/7 but require restart every 4 hours.\nNo restrictions in Pro or higher.\nCPUGPUTPUClusters\n1248\nDefault (CPU)16 GBFree\nLarge (CPU)32 GB$0.51/hr\nX-Large (CPU)64 GB$0.99/hr\nData prep128 GB$2.22/hr\nData prep max256 GB$3.60/hr\nData prep ultra384 GB$4.79/hr\nT416 GB$0.55/hr\nL424 GB$0.79/hr\nL40S48 GB$3.54/hr\nRTXP 600096 GB$4.64/hr\nA10040 GB$2.19/hr\nH10080 GB$5.45/hr\nH200141 GB$4.50/hr\nL424 GB$1.19/hr\nRTXP 600096 GB$4.71/hr\nA10040 GB$2.19/hr\nH10080 GB$5.45/hr\nH200141 GB$4.50/hr\nT416 GB$0.88/hr\nL424 GB$1.20/hr\nL40S48 GB$2.97/hr\nRTXP 600096 GB$4.66/hr\nA10040 GB$2.19/hr\nH10080 GB$5.45/hr\nH200141 GB$4.50/hr\nL424 GB$1.25/hr\nL40S48 GB$4.21/hr\nRTXP 600096 GB$4.63/hr\nA10040 GB$2.19/hr\nH10080 GB$5.82/hr\nH200141 GB$4.50/hr\nB200180 GB$9.86/hr\n1 TPU32 GB$3.05/hr\n4 TPU32 GB$3.03/hr\n8 TPU32 GB$3.03/hr\n8 TPU95 GB$4.72/hr\nReserve A100, H100, H200, B200 clusters on baremetal, SLURM or Kubernetes.\n Inquire\nBilled by the second. Free hours plus up to 30 credits to start.\nStart small, Scale big\nFrom solo projects to Enterprise AI,\nchoose a plan that grows with you.\nMonthlyAnnual\nAcademic pricing\nFree\n$0\nBuilt for students and hobbyistsChoose Free\nUp to 30 credits to start\nUp to 2 seats\nUp to 2 concurrent GPUs\n50GB of persistent storage\nPay as you go\n32 core CPUs\nSingle GPUs\n1 free Studio with 4 hour restarts\nUp to 80% off on interruptible\nProSave 60%Academic pricing\n$50/mo$50$2010/mo\nBuilt for developers and researchersChoose Pro\n240 annual credits100 annual credits\nUp to 5 seats\nUp to 6 concurrent GPUs\n200GB of persistent storage\nAll Free features\n64 core CPUs\nMulti GPUs\n1 free 24/7 Studio\nConnect your S3 buckets\nDistributed data prep\nReserve machines for jobs\nTeamsMost popularSave 15%\n$140/mo$140$119/mo\nBuilt for research labs and teamsChoose Teams\n600 annual credits\nUp to 10 seats\nUp to 12 concurrent GPUs\n2TB of persistent storage\nAll Pro features\n96 core CPUs\nFull-node GPUs\nMulti-node training\nUse via AWS marketplace\nReal-time cost controls\nSpending limits\nEnterprise\nCustom\nBuilt for security-first organizationsRequest a quote\nCustom credits\nUnlimited seats\nUnlimited concurrent GPUs\nUnlimited persistent storage\nAll Teams features\nPriority GPU access\nInstant access to H200s\nUse your AWS or GCP credits\nUse your own VPC and images\nRole-based access controls\nSAML/SSO and SOC 2 Type 2\n99.95% uptime SLA\nDedicated Slack and ML Engineer\nCompare plans\nAll 94 features, side by side.\nFree$0Choose Free\nPro$50/mo$20/moChoose Pro\nTeams$140/mo per user$119/mo per userChoose Teams\nEnterpriseCustomRequest a quote\nCompute\nGPU & CPU ceilings, credits, cost controls\nFree credits\nUp to 30\n40 monthly / 240 annually\n50 monthly / 600 annually\nCustom\nMax GPUs per Studio\n1\n4\n8\n8\nMax concurrent GPUs\n2\n6\n12\nUnlimited\nA100, H100, H200 session limit\n4 hours\nUnlimited\nUnlimited\nUnlimited\nMax CPUs per Studio\n32\n64\n192\n192\nReserve machines for jobs\nOrganization level cloud cost management\nUse your own AWS or GCP account\nFree active CPU Studios\n1\n1\n1\n1\nFree active CPU Studio session limit\n4 hours\nUnlimited\nUnlimited\nUnlimited\nMax inactive Studios\nUnlimited\nUnlimited\nUnlimited\nUnlimited\nAdditional CPU/GPU credits\nPay-as-you-go\nPay-as-you-go\nPay-as-you-go\nBulk pricing\nT4, L4, L40S session limit\nUnlimited\nUnlimited\nUnlimited\nUnlimited\nCloud providers\nAll\nAll\nAll\nAll\nInterruptible instances\nChange Studio between CPU and GPUs\nUse without an AWS or GCP account\nBasic cloud cost management\nSet up a custom machine\nStudio runtime\nIDEs, notebooks, SSH, auto-sleep\nReady-to-code (no CUDA setup, etc...)\nBuild templates with Base Studios\n1\n1\n1\nUnlimited\nCustomize auto sleep behavior\nAuto switch to CPU when inactive\nAdvanced configuration for Base Studios\nBring your own images\nConnect internal pip/conda mirrors\nCustom resource tagging\nSetup once, reuse any time\nCode from the browser\nConnect local IDE (VSCode, PyCharm, ...)\nNotebooks on the browser\nSudo access\nTerminal access\nConnect via SSH\nBackground execution limit\nUnlimited\nUnlimited\nUnlimited\nUnlimited\nMonitor system metrics real-time\nStudio auto sleep\nData\nBuckets, storage limits, dataset tooling\nPersistent storage limit\n50 GB\n200 GB\n2 TB\nUnlimited\nFree storage\n10 GB\n10 GB\n10 GB\n10 GB\nAdditional storage\nPay-as-you-go\nPay-as-you-go\nPay-as-you-go\nUnlimited\nConnect S3, GCS and R2 buckets\nHigh-performance storage (EFS/Filestore)\nVisualize/explore datasets\nUpload data\nCreate cloud-agnostic folders\nCollaboration\nTeamspaces, org management, seats\nSeat price\n$0\n$0\n$140 per user/month\nCustom\nAuto join\nMultiplayer live collaboration\nTeamspaces\nUnlimited\nUnlimited\nUnlimited\nUnlimited\nPrivate shared file system\nControl data access\nCreate organizations\nPublish private Studios\nPublish public Studios\nCredits Auto-Reload\nAI workflows\nTraining, data prep, endpoints, model APIs\nMulti-node training (max GPUs)\n6\n12\nUnlimited\nDistributed data prep (max CPU machines)\n4\n32\nUnlimited\nModel APIs req/min\n15\n20\n30\nCustom\nModel APIs tok/min\n120,000\n120,000\n150,000\nCustom\nBuild your own Quests\nAdd your own plugins\nDesign your own ML platform\nEnterprise AI Hub add-on\nPublic models\nPrivate models\nCommunity templates\nPretrain, finetune models\nFoundation model auto-babysitting\nDistributed data prep\nHost and share AI apps\nShare public app links\nDeploy no-code model endpoints\nDeploy full control model endpoints\nAccess Studio plugins\nSecurity\nSSO, RBAC, VPC, encryption, compliance",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "Lightning AI",
+     "claim": "Free tier with up to 50 free GPU hours, then pay-as-you-go",
+     "match": [
+      [
+       "lightning"
+      ],
+      [
+       "50"
+      ]
+     ],
+     "amount": "50 GPU hours"
+    }
+   ]
+  },
+  {
+   "id": "w-hack-paypal",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "Devpost page, fetched 2026-11-08",
+   "source_url": "https://paypalaihackathon.devpost.com/",
+   "title": "PayPal AI Hackathon",
+   "source_date": "2026-11-08",
+   "truncated": true,
+   "text": "PayPal AI Hackathon: Build what’s next with PayPal and AI - Devpost\n Descend\nOverview\n My projects\nParticipants (31289)\nResources\nRules\n Project gallery\n Updates\n Discussions\nFAQs\nPayPal AI Hackathon\nBuild what’s next with PayPal and AI\n Join hackathon\n Who can participate\nAbove legal age of majority in country of residence\n All countries/territories, excluding\n standard exceptions\n View full rules\n November 12 at 3:00pm EST to deadline\n View schedule\n Deadline: Nov 12, 2026 @ 12:00pm PST\n Apple\n Google\n Outlook\n Online\n Public\n $67,500 in cash\n 31289\n participants\n PayPal\n Managed by Devpost\n Low/No Code\n Machine Learning/AI\n Web\nAbout the challenge\nPayPal already moves money for millions of people and businesses, every day, all over the world. This hackathon is us opening that platform up and asking what happens when you put AI behind the wheel. New agents, new ways to pay and get paid, tools nobody's built yet. We want to see what you make of it.\nAI is changing how people build, buy, sell, work, connect, and move money. Now it's your turn to imagine what comes next.\nBuild What's Next with PayPal and AI is a global online hackathon inviting developers, designers, founders, students, and builders to create something new using PayPal and AI.\nThere are no prescribed problem statements and no set of tracks. Build an agent, an app, an automation, a new payment experience, a business tool, a social product, or something we haven't thought of yet.\nThe only fundamental requirement: your project must meaningfully use both PayPal and AI.\nWhy Join?\nBuild something ambitious — Turn an idea into a working project using PayPal and AI.\nExplore what’s next — Experiment with new ways people, businesses, and AI agents can interact with money and payments.\nWin part of $69,750 in total prizes — Compete for overall prizes and special awards across creativity, impact, execution, and more.\nShow what you can build — Put your project in front of PayPal judges, developers, and the wider hackathon community.\nLearn by building — Explore PayPal APIs, AI tools, agents, automations, and emerging development workflows.\nBuild your way — Join individually or as a team, and start something new or meaningfully advance an existing project.\nGet started\nGet a PayPal Developer account (5 minutes)\nReview example projects and brainstorm your own (30 minutes)\nWebinars\nOct 6th 9am PT - 9:45am PT ~ Start building with PayPal Recording\nOct 7th 9am PT - 9:30am PT ~ Power Your PayPal Hackathon Project with APIMatic Context Plugins\nOct 12th 7am PT - 7:45am PT ~ Build a payments dashboard without building a dashboard\nOct 13th 1am PT - 2am PT ~ Start building with PayPal\n Requirements\nWhat to Build\nBuild or update an application that integrates the PayPal developer platform (using the free sandbox environment) along with an AI tool, model, or platform of your choice.\nYou may also use one of our sponsors' tools: \nAG Grid\nAPIMatic\nAstropods\nBryntum\nChannel3\nElastic\nKERNEL\nPostman\nRender\nZapier\nNote: PayPal will provide access to select AI sponsor tools that you are welcome to use, though using one of these partner tools is not required. Any AI tool works, as long as PayPal integration is central to the project.\nYour project should:\nMeaningfully integrate at least one PayPal technology, API, SDK, product, or developer capability\nMeaningfully incorporate AI into the experience or functionality\nDemonstrate a working prototype or proof of concept\nBe sufficiently documented for the judges to understand and evaluate it\nComply with the Official Rules\nProjects can be built individually or as a team. They can be new or existing projects, as long as you make meaningful progress on the project during the course of the hackathon.\nWhat to Submit\nProject - built with the required developer tools and meeting the Project Requirements above.\nText description - explain your project's features and functionality.\nFunctional demo - judges must be able to actually run or interact with a working build. Satisfy this with either:\nClear, complete setup and run instructions in your code repository, so judges can build and run it themselves, or\nA hosted demo URL.\nA design mockup, static prototype, or non-functional demo does not meet this requirement.\nTools - identify which tools (model or AI service) were used and explain how the tools were used in your project.\nPublic code repository on GitHub, Gitlab or Bitbucket.\nMust contain all source code, assets, and instructions needed to run the project.\nMust be public and open source, with a license file visible at the top of the repo (in the About section).\nDemo video\nUnder 3 minutes (judges aren't required to watch past that).\nMust show the project functioning on the device it was built for.\nMust be uploaded to YouTube, publicly visible, with the link on the submission form.\nMust not include third-party trademarks or copyrighted music/material without permission.\n Hackathon Sponsors\n Prizes\n$67,500+ in prizes\n+ other prizes\n 1st Place\n $12,000 in cash\n 1 winner\n 2nd Place\n $8,000 in cash\n 1 winner\n 3rd Place\n $5,000 in cash\n 1 winner\n Most Creative\n $5,000 in cash\n 1 winner\n Most Impactful\n $5,000 in cash\n 1 winner\n Best Demo Delivery\n $5,000 in cash\n 1 winner\n Best Use of PayPal + AI\n $5,000 in cash\n 1 winner\n Best Use of Agentic Commerce\n $5,000 in cash\n 1 winner\n Best Use of AG Grid - 1st Place\n $5,000 in cash\n 1 winner\n Best Use of AG Grid - 2nd Place\n $2,000 in cash\n 1 winner\n Best Use of AG Grid - 3rd Place\n $1,000 in cash\n 3 winners\n Best Use of APIMatic\n $1,000 in cash\n 3 winners\n6 months of APIMatic business subscription\n Best Use of Bryntum\n $1,000 in cash\n 3 winners\n Best Use of Channel3\n $1,500 in cash\n 1 winner\n Best Use of Render - 1st Place\n 1 winner\n$1,000 Render Credits\n Best Use of Render - 2nd Place\n 1 winner\n$750 Render Credits\n Best Use of Render - 3rd Place\n 1 winner\n$500 Render Credits\n Judges\n Jo Franchetti\n Developer Advocate - PayPal\n Eddie Jaoude\n Developer Advocate - PayPal\n Marco Podien\n De",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "PayPal AI Hackathon",
+     "claim": "Online Devpost hackathon with $67,500 in cash prizes",
+     "match": [
+      [
+       "paypal"
+      ],
+      [
+       "67500"
+      ]
+     ],
+     "amount": "$67,500",
+     "deadline": "2026-11-12"
+    }
+   ]
+  },
+  {
+   "id": "w-hack-meta",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "Devpost page, fetched 2026-11-08",
+   "source_url": "https://start-developer-competition-26.devpost.com/",
+   "title": "Meta VR Start Developer Competition 2026",
+   "source_date": "2026-11-08",
+   "truncated": true,
+   "text": "Meta VR Start Developer Competition 2026: Accelerate your VR development journey with Meta VR Start and compete for $1M in cash prizes - Devpost\n Descend\nOverview\n My projects\nParticipants (5476)\nResources\nRules\n Project gallery\n Updates\n Discussions\nJudging\nFAQs\nWebinars & Office Hours\nSpecial Awards\nMeta VR Start Developer Competition 2026\nAccelerate your VR development journey with Meta VR Start and compete for $1M in cash prizes\n Join hackathon\n Who can participate\nAbove legal age of majority in country of residence\n Specific\n countries/territories excluded\n View full rules\n November 18 at 3:00pm EST to deadline\n View schedule\n Deadline: Nov 18, 2026 @ 12:00pm PST\n Apple\n Google\n Outlook\n Online\n Public\n $1,000,000 in cash\n 5476\n participants\n Meta\n Managed by Devpost\n AR/VR\n Machine Learning/AI\n Web\nTHE META VR START DEVELOPER COMPETITION IS BACK!\nThis year’s eight-week challenge calls on Start program members to build the next generation of Entertainment, Gaming, and Productivity experiences for Meta VR devices – including Meta VR Glasses and Meta Quest. We’re looking for hands-first apps that make interaction more natural and gameplay more intuitive than ever before.\nLast year, over 2,900 developers joined the competition and delivered more than 650 submissions that pushed the boundaries of immersive technology. This year, we’re raising the bar again.\nWhether you’re a first-time Start developer with a breakthrough idea or a seasoned creator ready to showcase what’s possible with the latest platform capabilities, this is your moment to help redefine the future of VR.\nHere’s what’s waiting for you:\n🤝 Build hands-first. Design experiences powered by hand interactions that feel natural, responsive, and deeply immersive—no controllers required.\n🛠️ Explore new tech. Take advantage of the latest OS capabilities and device features across Meta VR Glasses and Meta Quest, accelerate your development with AI tooling, including Meta VR CLI.\n🌍 Join a global community. Boost your skills through mentor programming, collaborate with fellow developers, share insights, and learn from a thriving network of experienced VR developers.\n🏆 Compete for $1M in cash prizes with top prizes of $100,000.\nThe future of VR is in your hands literally.\nWe can’t wait to see what you build.\nGETTING STARTED\nIf you’re not already a member of the Start program, apply now to join the competition.\nEstimated time: 5 minutes\nExplore last year’s winning submissions and Sample Use Cases for Inspiration\nEstimated time: 30 minutes\nEntertainment\nGaming I ​​Quest Gamer Segments\nProductivity: AnExplorer\nHands: Hands Physics Lab I ​​Table Troopers \nFollow a Quickstart Tutorial (below)\nEstimated time: 30 minutes\nUnity: VR 101 I VR 102\nUnreal: How to Make VR Games in UE5\nAndroid: From Mobile to VR Overview\nImmersive Web SDK: Your First Steps into Immersive Web Development\nGetting Started with Hands & Eyes\nCheck out the Resources tab for more technical documentation and visit the Meta Developer Forum for ongoing support and access to upcoming competition events and workshops.\n Requirements\n WHAT TO BUILD\nAn experience built for Meta VR devices, aligned to at least one of three tracks. Top awards go to the strongest entries in each track, with special awards recognizing standout craft across all of them.\nPick Your Track\nEntertainment: Lean-back media and content experiences—spatial cinema, interactive video, music visualization, immersive storytelling, spatial audio, media companion apps (e.g., commentary tracks, popup production notes, social comments. Content designed to be consumed in any environment. \nGaming: Games designed for hands-first or eyes and hands. Puzzle, strategy, casual, social, narrative—genres that thrive seated, without controllers.\nProductivity: Apps that make you more effective anywhere or are designed around specific daily moments—multi-panel workspaces, task management, creative tools, or habits tied to a recurring context (morning routine, commute, wind-down).\nPick Your Division\nNew Experience: Start from a blank slate. The Project is conceived of and built within the competition window, beginning September 24, 2026. No pre-existing codebases, no shipped titles, no early access builds repurposed.\nAdapted/Significantly Updated Experience: Already have something out there? Take it further. This is a pre-existing project—any build, prototype, or published app that existed prior to September 24, 2026—with a meaningful new feature, mode, or platform integration shipped during the competition window. Sponsor will determine in its own discretion if an update qualifies as significant.\nExamples of significant updates include, but are not limited to: implementing hand interactions as a new feature; adding multiplayer support; introducing a mixed reality (MR) interaction mode as a new feature; releasing a new user generated content creation tool.\nNot significant updates, including but not limited to: bug fixes or minor UI tweaks; cosmetic changes such as a new color scheme; performance optimization without new user-facing features.\nHard Requirements\nHands-first: Your experience must be fully usable with hands, end-to-end. Controller support is welcome, but not required. The test is simple: can someone complete the entire experience without ever pairing a controller?\nPolicy Compliance: Your experience must adhere to all relevant Meta VR/Start policies and terms (i.e., Meta VR Start Program Terms, Community Standards, Code of Conduct in VR Policy, Developer App Policies, Developer Content Guidelines, and all other Developer Policies).\nDesign Guidelines\nSeated-optimized: Design for seated, stationary use. Limit roomscale, no large physical movement. Apply the airplane seat test: does every interaction work in a two-foot radius?\nEasy to get into and out of: Fast cold start, clean pause/resume, and something satisfying in 10 minutes or less. Apply the one bus stop test: can someone have a complete moment in a short ride?\nOrig",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "Meta VR Start Developer Competition 2026",
+     "claim": "Devpost competition with $1,000,000 in cash prizes",
+     "match": [
+      [
+       "meta"
+      ],
+      [
+       "1000000",
+       "1m"
+      ]
+     ],
+     "amount": "$1,000,000",
+     "deadline": "2026-11-18"
+    }
+   ]
+  },
+  {
+   "id": "w-vps-racknerd",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "LowEndBox RSS item, fetched 2026-11-08",
+   "source_url": "https://lowendbox.com/blog/racknerds-fall-giveaway-has-started-win-a-meta-quest-3-a-synology-nas-a-gaming-monitor-and-more-plus-cheap-vps-deals-from-21-99-year/",
+   "title": "RackNerd’s Fall Giveaway Has Started! Win a Meta Quest 3, a Synology NAS, a Gaming Monitor and More! Plus Cheap VPS Deals from $21.99/YEAR!",
+   "source_date": "01 Nov 2026",
+   "truncated": false,
+   "text": "Share\nPost\nShare\nReddit\n\nWelcome to fall!  It’s a time of crunchy autumn leaves, crisp air, tasty turkey…and wonderful deals on VPSes from community provider RackNerd!\n\nAnd not just deals…they’re also giving away some great prizes!  You can win one of:\n\n1 x Meta Quest 3 512GB VR Headset\n\n1 x Synology DS225+ 2-Bay NAS\n\n2 x Acer Nitro MG275U X2biippx 27″ Gaming Monitor \n\n5x RackNerd KVM VPS! 4 GB RAM, 3 vCPU, 60 GB SSD, 7 TB Monthly Transfer – First Year FREE (renews @ $59.99/Year, no obligation)\n\n10x $50 RackNerd Account Credit\n\nWow, that’s some good stuff!\n\nRackNerd has been a very popular host in our community for many years, and they always bring great value to our community.  And they’re never resting on their laurels.\n\nRecently they released ctrl , their own in-house control panel that makes managing your VPS a snap.\n\nAnd they’re now at #3693 on the Inc 500 !  And #90 on the 2026 Inc. Regionals Pacific List – for the third year in a row!\n\nSo you’re not only getting a great deal on a VPS but you’re partnering with a growing company that is always improving itself.  How great a deal you might ask?  Let’s take a look:\n\nSpecial VPS Offers\n\n1 GB KVM VPS\n$21.99/year\n2 GB KVM VPS\n$35.99/year\n4 GB KVM VPS\n$59.99/year\n6 GB KVM VPS\n$89.99/year\n\n1 vCPU Core\n\n20 GB SSD Storage\n\n1 GB RAM\n\n3 TB Monthly Transfer\n\n1Gbps Network Port\n\nFull Root Access\n\n1 IPv4 Address\n\nKVM/ctrl Panel\n\nDeploy in Multiple Locations\n\n2 vCPU Cores\n\n35 GB SSD Storage\n\n2 GB RAM\n\n5 TB Monthly Transfer\n\n1Gbps Network Port\n\nFull Root Access\n\n1 IPv4 Address\n\nKVM/ctrl Panel\n\nDeploy in Multiple Locations\n\n3 vCPU Cores\n\n60 GB SSD Storage\n\n4 GB RAM\n\n7 TB Monthly Transfer\n\n1Gbps Network Port\n\nFull Root Access\n\n1 IPv4 Address\n\nKVM/ctrl Panel\n\nDeploy in Multiple Locations\n\n6 vCPU Cores\n\n100 GB SSD Storage\n\n6 GB RAM\n\n12 TB Monthly Transfer\n\n1Gbps Network Port\n\nFull Root Access\n\n1 IPv4 Address\n\nKVM/ctrl Panel\n\nDeploy in Multiple Locations\n\n[ORDER]\n[ORDER]\n[ORDER]\n[ORDER]\n\nNow Back to Those Prizes\n\nReady to win?  It’s easy!\n\nNo purchase necessary.  Enter now through November 30, 2026.\n\nJust use the form below.  If you don’t see it, you may need to enable Javascript and/or cookies.\n\nAnd be on the lookout for ways to increase your chances through this month as we unveil bonus codes for more entries.\n\nRackNerd-LowEndBox Fall 2026 Giveaway!\n\nThe post RackNerd’s Fall Giveaway Has Started! Win a Meta Quest 3, a Synology NAS, a Gaming Monitor and More! Plus Cheap VPS Deals from $21.99/YEAR! appeared first on LowEndBox .",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "RackNerd",
+     "claim": "KVM VPS deals from $21.99/year (1 GB)",
+     "match": [
+      [
+       "racknerd"
+      ],
+      [
+       "21.99"
+      ]
+     ],
+     "amount": "$21.99/year"
+    },
+    {
+     "kind": "opportunity",
+     "subject": "RackNerd LowEndBox Fall 2026 giveaway",
+     "claim": "Giveaway of a Meta Quest 3, NAS, monitors, 5 KVM VPS and 10 x $50 credit; entries through November 30, 2026",
+     "match": [
+      [
+       "racknerd"
+      ],
+      [
+       "giveaway"
+      ]
+     ],
+     "deadline": "2026-11-30"
+    }
+   ]
+  },
+  {
+   "id": "w-vps-serverhost",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "LowEndBox RSS item, fetched 2026-11-08",
+   "source_url": "https://lowendbox.com/blog/%f0%9f%8e%83-did-you-get-your-10-bonus-entries-in-serverhosts-500-giveaway-yet-or-a-cheap-vps-starting-at-16-99-year-dont-sleep-on-this-%f0%9f%91%bb/",
+   "title": "🎃 Did You Get Your 10 Bonus Entries in ServerHost’s $500 Giveaway Yet?  Or a Cheap VPS Starting at $16.99/Year? Don’t Sleep on This! 👻",
+   "source_date": "29 Oct 2026",
+   "truncated": false,
+   "text": "Share\nPost\nShare\nReddit\n\nServerHost’s giveaway has been hugely popular – and that’s no surprise since they’re giving away $500 CASH this Halloween season!\n\nAnd not only are they giving away cold, hard, wonderful cash, but they’re also giving us some cool deals.  Check these out:\n\nWow!\n\n🎃 2 GB KVM VPS\n$16.99/YEAR\n\nThe little server that refuses to die. Perfect for bots, scripts, uptime monitors, VPNs, DNS, lightweight websites, dev projects, and those tiny services you deployed three years ago and are now too emotionally attached to shut down. At $16.99/year, it’s cheaper than most Halloween costumes.\n\n[ ORDER IT! ]\n\n👻 4 GB KVM VPS\n$27.99/YEAR\n\nEnough RAM to keep the monsters away. Great for self-hosted apps, Docker containers, small websites, dashboards, staging environments, and installing seventeen services because a guy on GitHub said they were “lightweight.” Plenty of power without turning htop into a horror movie.\n\n[ GET YOURS! ]\n\n💀 8 GB KVM VPS\n$59.99/YEAR\n\nFor when your homelab has officially become a lifestyle. Run multiple apps, bigger Docker stacks, game servers, control panels, development environments, or whatever terrifying self-hosted project you decide to deploy at 2:13 AM. 4GB is responsible. 8GB means you’ve accepted who you are.\n\n[ LIVE DANGEROUSLY! ]\n\n🎃 And They’re Not Giving Away Just Cash 🎃\n\nAll of this is up for grabs:\n\n🥇 1st Place — $500 CASH\n\n🥈 2nd Place — $25 ServerHost Store Credit\n\n🥉 3rd Place — $25 ServerHost Store Credit\n\n🎃 Improve Your Chances! 🎃\n\nThis month, we’re helping our LowEndTalk readers get a leg up on everyone else in the hunt for this money.  If you don’t know, LowEndTalk is our sister site where we have a wide-open forum full of spirited discussion on everything to do with hosting.  Tons of great offers from our Patron Providers, as well as help on DIY projects, jokes, memes, and lots of commentary on industry developments.\n\nLET is the discussion heart of our community and so this giveaway, we’re giving away  10 bonus entries in this giveaway…but only for LowEndTalk members!\n\nHere’s How It Works\n\nOnly LowEndTalk accounts that are older than 30 days are eligible.\n\nSend a PM (instructions in the widget below) on LowEndTalk and we’ll reply with a secret code\n\nEnter it and get 10 free entries!\n\n👻 I Want to Win!\n\nNo purchase necessary.  Buying a VPS does not increase your chances of winning.  But it does increase your chances of having a lot of fun with a cheap VPS.\n\nGiveaway closes October 31, 2026.\n\n🎃 Winners Will Be Announced After Halloween.  Happy Halloween from ServerHost . 🎃👻💀\n\nHere’s the entry form.  If you don’t see it, make sure cookies and JavaScript are enabled.\n\nServerHost-LowEndBox Halloween 2026 Giveaway!\n\nThe post 🎃 Did You Get Your 10 Bonus Entries in ServerHost’s $500 Giveaway Yet? Or a Cheap VPS Starting at $16.99/Year? Don’t Sleep on This! 👻 appeared first on LowEndBox .",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "ServerHost",
+     "claim": "2 GB KVM VPS at $16.99/year",
+     "match": [
+      [
+       "serverhost"
+      ],
+      [
+       "16.99"
+      ]
+     ],
+     "amount": "$16.99/year"
+    },
+    {
+     "kind": "opportunity",
+     "subject": "ServerHost LowEndBox Halloween giveaway",
+     "claim": "$500 cash first prize; giveaway closes October 31, 2026",
+     "match": [
+      [
+       "serverhost"
+      ],
+      [
+       "500"
+      ]
+     ],
+     "amount": "$500",
+     "deadline": "2026-10-31"
+    }
+   ]
+  },
+  {
+   "id": "w-vps-zap",
+   "category": "price_change",
+   "negative": false,
+   "origin": "LowEndBox RSS item, fetched 2026-11-08",
+   "source_url": "https://lowendbox.com/blog/zap-hosting-another-lifetime-offer-that-turns-out-not-to-be-lifetime/",
+   "title": "Zap Hosting: Another Lifetime Offer That Turns Out Not to Be Lifetime",
+   "source_date": "04 Nov 2026",
+   "truncated": false,
+   "text": "Share\nPost\nShare\nReddit\n\n“ Lifetime Behind a Paywall? ” is a question that Zap Hosting recently asked its customers.  Only it wasn’t asking.  It was telling.\n\nZap Hosting sold lifetime hosting offers, but now if you want to keep using them, you need a “Zap-X Pass”.  What is a “Zap-X Pass”?  A monthly fee.\n\nThey explain it all in a super-cringey AI-voiced video , but I’ll save you four minutes: if you want to use your lifetime server, you need to pay for it every month.\n\nThey go through quite some mental gymnastics to explain it all.  Your lifetime server is “locked” until you decide to pay for the pass, and then it’s “unlocked” while you pay.\n\nOf course, when your server is unlocked, the IP address can change and it’s not clear if all the disk is truly persistent, so…what’s the difference between them holding a “locked” server for you and just spinning up a fresh VM when you request one?  Hmmm.  Sounds like normal monthly hosting to me.\n\nTheir reasoning for all this is the rising cost of electricity, components, etc.  And that is certainly a real thing.  But these are supposed to be  lifetime sales.  In theory, someone could buy and run for 50 years, right?  Regardless of the vicissitudes of life, disruptions in the global order, whatever may come – the service is prepaid.\n\nInstead, the first time there’s a hiccup in the cost model, Zap Hosting discontinues the service and introduces a monthly fee.  One might suspect they didn’t think their lifetime deal through.\n\nOf course, anyone who does think it through will never offer such deals – or sign up for them.\n\nMy advice on lifetime deals is to evaluate the cost over a very short time frame.  If someone offers you a lifetime deal for $X, and $X is roughly what you’d pay for a year’s worth of service,  and the company has a good track record in our community, then  maybe it’s a good deal.  You can’t get too badly burned, and if they go under after 12 months, you got your money’s worth.  But never plunk down a lot of money with the expectation that something is going to last for decades.\n\n \n\nThe post Zap Hosting: Another Lifetime Offer That Turns Out Not to Be Lifetime appeared first on LowEndBox .",
+   "facts": [
+    {
+     "kind": "price_change",
+     "subject": "Zap Hosting",
+     "claim": "Lifetime server offers now require a monthly Zap-X Pass to stay usable",
+     "match": [
+      [
+       "zap"
+      ],
+      [
+       "pass",
+       "monthly"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "w-job-dotnet-angular",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "We Work Remotely RSS item, fetched 2026-11-08",
+   "source_url": "https://weworkremotely.com/remote-jobs/secure-privacy-senior-full-stack-web-developer-net-c-mongodb-angular-redux-ai-first-with-gdpr-experience",
+   "title": "Secure Privacy: Senior Full-Stack Web Developer (.NET/C#/MongoDB/Angular/Redux) – AI-First, with GDPR Experience",
+   "source_date": "05 Nov 2026",
+   "truncated": false,
+   "text": "Headquarters: Europe (DK)\nURL: https://secureprivacy.ai\n\nSecure Privacy is expanding, and we’re looking for an experienced Senior Full-Stack Developer with expertise in .NET, C#, and MongoDB, along with GDPR experience, to join our team! You’ll work remotely with a diverse group of developers, helping us build cutting-edge data privacy solutions for global clients. This role focuses on creating and optimizing APIs and backend services. If you’re passionate about clean, maintainable code, we’d love to hear from you!\n\nWhat You’ll Do:\n\nDevelop and maintain backend services with C# and .NET.\n\nDevelop and maintain frontend logic with Angular and Redux.\n\nUse AI coding tools (Cursor, Claude Code, or similar) as a core part of your daily workflow, and help the team get more out of them.\n\nWork closely with designers to bring high-quality, scalable, and maintainable solutions to life.\n\nEngage in all stages of the development process: planning, coding, testing, and deployment.\n\nAdvocate for best practices and contribute to improving our development standards.\n\nCollaborate in a remote environment, primarily during European business hours.\n\nWhat We’re Looking For:\n\n5+ years of backend development experience, particularly with C# and .NET Framework.\n\nHands-on, daily experience with AI coding tools such as Cursor or Claude Code on real projects, including giving agents good context and critically reviewing AI-generated code.\n\nExpertise in MongoDB, including complex operations (aggregations, compound indexes, transactions).\n\nExperience with GDPR, CCPA, or other data privacy compliance standards.\n\nExperience in Angular development, including NgRx or other Redux frameworks, is desirable.\n\nExperience with payment platforms such as Stripe.\n\nStrong Git skills, including modern branching strategies and ways of working.\n\nFamiliarity with profiling web apps for high availability and scalability.\n\nAbility to make informed decisions between server-side and client-side code.\n\nExcellent communication skills and the ability to collaborate with non-engineers.\n\nA proactive approach to problem-solving, with a high level of discipline and independence.\n\nStartup experience.\n\nBonus Points If You Have:\n\nExperience building MCP servers.\n\nOpen source contributions.\n\nStackOverflow or other community contributions.\n\nMobile app or SDK experience.\n\nTo apply, submit your CV and a short Loom video (max 2 minutes) introducing yourself and how you use AI to develop faster without compromising quality.\n\nTo apply: https://weworkremotely.com/remote-jobs/secure-privacy-senior-full-stack-web-developer-net-c-mongodb-angular-redux-ai-first-with-gdpr-experience",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "Secure Privacy",
+     "claim": "Remote senior full-stack role: C#/.NET backend, Angular/Redux frontend, AI coding tools daily, European hours",
+     "match": [
+      [
+       "secure privacy"
+      ],
+      [
+       "senior",
+       "full-stack",
+       "full stack",
+       ".net"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "w-job-ai-coding",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "We Work Remotely RSS item, fetched 2026-11-08",
+   "source_url": "https://weworkremotely.com/remote-jobs/askable-software-engineer-ai-coding-tasks-contract",
+   "title": "Askable: Software Engineer, AI Coding Tasks (Contract) ",
+   "source_date": "16 Oct 2026",
+   "truncated": false,
+   "text": "Headquarters: Australia\nURL: https://www.askablelabs.com/\n\nWe're looking for experienced software engineers to build AI coding tasks from a codebase they know well. US$1,000 per task, and you can do as many tasks as you want.\n\nYou turn a real change from a repository you know into a task that today's best AI coding models struggle with: hard for the models, but fair for a skilled engineer. Your tasks are used to measure and train AI coding models.\n\nRemote, any location. US$1,000 per task that passes review. Minimum of one task a week, about 10 hours a week.\n\nHow it works\n\nApply. Complete a short screener interview and upload your resume.\n\nPropose. Once you're selected, pick a change from a repository you know and submit a short proposal. We approve it or suggest a better candidate.\n\nBuild. In our platform, set up the repository as it was before the change, then write the brief, the correct solution and the grading checks.\n\nStress-test. Try lazy, incorrect and shortcut solutions and make sure your checks catch them.\n\nModel testing. Run your task against leading AI models until strong models often fail but a skilled engineer can clearly solve it.\n\nReview. A reviewer checks your task and you revise it. Most tasks take more than one round.\n\nNext task. Once your task is accepted, start another.\n\nRequirements\n\n2+ years of professional software engineering\n\nCode merged into a public open-source repository, ideally one you know well. A private codebase you own may also qualify (not employer or client code)\n\nStrong in at least one of Python, TypeScript, Go, Rust, Java or C++\n\nSolid with Docker, Linux, Git and automated testing\n\nRegular use of an AI coding tool\n\nExperience writing tests, rubrics or evaluation criteria, ideally for AI models\n\nYou can explain a change clearly and concisely, in your own words\n\nAt least 10 hours a week, starting now\n\nA secure personal or work computer (no public or shared machines)\n\nNice to have\n\nDeep expertise in one area, such as databases, compilers, distributed systems, security or infrastructure\n\nExperience building agent tasks or RL environments\n\nTerms\n\nUS$1,000 for each task that passes our quality review, paid directly to you\n\nOnce your proposal is qualified, you sign Askable's contract and accept its terms\n\nThe work is used for AI training. The change and your solution must be your own, and you must be free to license them to us\n\nDon't publish the work anywhere: no public pull request or public fork\n\nApply at https://www.askable.com/experts/roles/senior-software-engineer\n\nTo apply: https://weworkremotely.com/remote-jobs/askable-software-engineer-ai-coding-tasks-contract",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "Askable",
+     "claim": "Remote contract: US$1,000 per accepted AI coding task, about 10 hours a week",
+     "match": [
+      [
+       "askable"
+      ],
+      [
+       "1000"
+      ]
+     ],
+     "amount": "US$1,000 per task"
+    }
+   ]
+  },
+  {
+   "id": "w-bounty-plaza",
+   "category": "opportunity",
+   "negative": false,
+   "origin": "GitHub issue, fetched 2026-11-08",
+   "source_url": "https://github.com/zhangjiayang6835-cyber/bounty-plaza/issues/710",
+   "title": "[Bounty] [BOUNTY] [MONEY] [$50] Implement Dodge Rolling",
+   "source_date": "2026-07-27",
+   "truncated": false,
+   "text": "### 赏金平台 / Platform\nGitHub\n\n### 原始链接 / Source URL\nhttps://github.com/Iamgoofball/-tg-station/issues/338\n\n### 漏洞描述 / Description\n[BOUNTY] [MONEY] [$50] Implement Dodge Rolling\n\nAdd dodge rolling to the game; you can't take damage while doing so. 50 dollars.\n\nbounty, reward, label:bounty, label:reward, label:\"help wanted\" \"$\", label:\"good first issue\" bounty, label:\"good first issue\" reward\n\nalgora bounty, \"@algora\", \"algora bot\", \"pay on merge\" algora\n\nAI bounty, AI reward, LLM bounty, LLM reward, \"AI agent\" bounty, \"AI agent\" reward, prompt bounty, prompt reward, RAG bounty, chatbot bounty, n8n bounty, automation bounty, \"data annotation\" reward, \"model evaluation\" reward, OpenAI bounty, Claude bounty, LangChain bounty\n\n\"$5\", \"$10\", \"$15\", \"$20\", \"$25\", \"$30\", \"$40\", \"$50\", \"$75\", \"$100\"\n\nPayPal bounty, PayPal reward, \"paid via PayPal\", \"payment by PayPal\", \"instant payment\" bounty, \"same day payment\" bounty, \"upon acceptance\" PayPal, \"first accepted\" bounty\n\n\"first come first served\" bounty, \"claim this\" reward, \"micro bounty\", beginner bounty, easy bounty, documentation bounty, tests bounty, \"bug fix\" reward, \"OpenAI API\" reward, \"prompt engineering\" reward, \"AI evaluation\" reward, \"data cleanup\" reward\n\n\"paid on merge\", \"payment upon merge\", \"payment within hours\", \"AI tools permitted\" reward\n\n\"instant payout\" \"$\", \"paid immediately\" \"$\", \"payment upon merge\" \"$\", \"payment upon acceptance\" \"$\", \"same day payment\" \"$\"\n\n\"$0.10\", \"$0.25\", \"$0.50\", \"$0.75\", \"$1\", \"$2\", \"$3\", \"$4\", \"$5\"\n\n\"$1\" \"good first issue\", \"$2\" \"good first issue\", \"$3\" \"good first issue\", \"$4\" \"good first issue\", \"$5\" \"good first issue\", \"$10\" \"good first issue\", \"$15\" \"good first issue\", \"$20\" \"good first issue\", \"$25\" \"good first issue\", \"$30\" \"good first issue\", \"$40\" \"good first issue\", \"$50\" \"good first issue\", \"$75\" \"good first issue\", \"$100\" \"good first issue\"\n\n\"micro bounty\", \"quick bounty\", \"small bounty\", \"easy bounty\", beginner reward, documentation reward, docs reward, typo reward, tests reward, \"unit test\" reward, \"bug fix\" \"$\", \"small fix\" \"$\", \"quick fix\" \"$\", \"first come first served\" reward, \"claim this issue\" reward, \"paid on merge\" \"$\", PayPal \"$10\"\n\n### 积分币奖励 / Coin Reward\n125 coins\n\n### 真实赏金（USD）/ Real Reward\n$100\n\n### 难度 / Difficulty\nMedium\n\n### 认领方式\n评论 `/claim` 锁定任务 24h\n\n### 兑换说明\n> 查看 [REWARD_POLICY.md](REWARD_POLICY.md) 了解兑换规则",
+   "facts": [
+    {
+     "kind": "opportunity",
+     "subject": "tg-station dodge rolling bounty",
+     "claim": "Bounty to implement dodge rolling: $50 (listing also shows $100 real reward, 125 coins)",
+     "match": [
+      [
+       "dodge roll"
+      ],
+      [
+       "50",
+       "100"
+      ]
+     ],
+     "amount": "$50"
+    }
+   ]
+  },
+  {
+   "id": "w-idea-gohybrid",
+   "category": "idea",
+   "negative": false,
+   "origin": "GitHub issue, fetched 2026-11-08",
+   "source_url": "https://github.com/limitlessprojects/Go-Hybrid/issues/4176",
+   "title": "[wildcard] Replace the static sendability proof with exhaustive schedule enumeration + a replayable certificate (bounded subset)",
+   "source_date": "2026-11-08",
+   "truncated": false,
+   "text": "### The idea, in a paragraph\n\nReplace Tier-0's static sendability proof, for admitted bounded regions, with exhaustive schedule enumeration plus a replayable certificate. For a region whose task count, channel depths and data domains are finite (the admission shape already used by #378), the compiler enumerates the complete interleaving graph of the emitted Go — every spawn order, every channel send/recv pairing, every managed-hatch entry — and ships a machine-checkable certificate: no reachable state has two tasks holding an unsynchronized mutable alias. The checker stops being the authority and becomes a fast pre-filter; the authority is a bounded model-check a third party can replay in seconds. The product becomes a certificate, not a proof obligation on the reader. For regions too large to enumerate, the compiler must emit the witness schedule a human can step through, instead of an unreadable dataflow trace.\n\n### Which assumption it breaks\n\nTwo sacred cows: (1) that Tier-0's guarantee must be a static dataflow theorem, and (2) that fail-closed is the only honest answer for an unproven value. Enumeration gives a third answer for the bounded subset: decided, with evidence. It also changes what GUARANTEES rows 1-6 mean — those rows are currently claimed on the strength of the checker's rules; here the same rows are claimed on the strength of an exhaustive reachable-state search, a strictly stronger and independently checkable claim for the admitted subset. Adjacent to W-018 (SDF certificates) and W-023 (Go toolchain as oracle), but neither enumerates interleavings: #378 certifies a schedule, #023 certifies buildability, this certifies absence of a racy reachable state.\n\n### Why this is a breakthrough, not an increment\n\nA normal feature bounty would reject this because it does not make the checker smarter — it makes the checker demotable. That is the point: Hybrid's value proposition is races become compile errors, and the honest way to earn that sentence is to show the state space, not to trust a rule set. It also changes what the corpus is for: today the corpus pins expected verdicts; here the corpus becomes the training set for admission bounds — every corpus program gets a certificate, and certificate size becomes the metric that separates Tier-0-certifiable programs from checker-only ones. The compiler's output contract gains a new artifact type, which is a paradigm change, not a feature.\n\n### How we would know it works (or doesn't)\n\nFalsifiable three ways, all cheap: (a) Agreement — enumerate all 137 corpus programs; if enumeration disagrees with the checker on any case, that disagreement is a soundness signal and the idea is already paid for, publish it. (b) Bound — if the admitted subset covers under 60% of the corpus within a 10^7-state budget per program, the certification story is too narrow to ship and that bound is the learning. (c) Cost — certificate replay must stay under 2s per program in CI, or the third party can check it claim dies. Milestone plan: M1 = enumerator + certificate format over the existing corpus, with a disagreement report; M2 = admission-bound study + published falsifier results, success or failure.\n\n### Cost honesty (optional but powerful)\n\nThis does not delete the Rust checker — it demotes it to pre-filter, so two verdict sources can drift and that drift is a permanent maintenance tax. Enumerating managed blocks honestly is the hard part: a hatch is an unmodeled escape, so the certificate must either model the hatch's synchronization (mutex/atomic/actor) or exclude it and say so, which narrows the admitted subset. Expect the emit pipeline to gain a certificate sidecar and the corpus harness to gain a replay step; neither is a rewrite, but both are permanent surface area.\n\n### Track terms\n\n- [x] I understand no prototype is required and failure-with-knowledge is a valid, paid outcome\n- [x] I understand all outcomes (including declines and failures) are published in MOONSHOT.md",
+   "facts": [
+    {
+     "kind": "idea",
+     "subject": "Go-Hybrid Tier-0",
+     "claim": "Replace the static sendability proof with exhaustive schedule enumeration plus a replayable certificate",
+     "match": [
+      [
+       "enumerat",
+       "schedule"
+      ],
+      [
+       "certificate"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "n-llm-gap",
+   "category": "negative",
+   "negative": true,
+   "origin": "feed-eater archive item 13584 (Hacker News)",
+   "source_url": "https://twitter.com/karpathy/status/2109361546505966046",
+   "title": "The gap in shared understanding of LLM capability is widening",
+   "source_date": "2026-10-11",
+   "truncated": true,
+   "text": "Post\n\nLog in Sign up\n\nPost\n\nLog in Sign up Andrej Karpathy on X: \"Dusting off this tweet from April because this gap in shared understanding of LLM capability is *widening*. It's now less \"two groups of people speaking past each other\" and more a sharp funnel.\n- Napkin math somewhere around 6B people (~75% of the population) have barely come in contact with LLMs at all.\n- Around 1-2B (~20%) are casual and infrequent users of free-tier ChatGPT-like products. This group sees derpy chatbots and treats them a bit like a better Google search, a writing aid, or etc. Maybe an agent tries to book you a flight. I have non-tech friends who (reasonably, imo) say they have not much use for it at all. Even many professionals outside of math&code are in this tier. For example, execs and many other functions spend a lot of their time talking to other people, so while they understand what is happening intellectually, it is still second-hand and a bit abstract.\n- Now we get to professional use of frontier-grade LLMs in math&code. Somewhere around 20M people (0.2%) see first-hand that large, complex projects that used to take them weeks/months can now be completed by agents with a prompt. Building apps, copying apps, translating apps, decompiling apps from binaries... This has all happened very quickly and recently - less than 1 year ago, I was writing code manually by hand, typing memorized computer code commands into a code editor character by character, occasionally pressing Tab to autocomplete a little chunk of code.\n- And finally we get to the ~5,000 people (~0.00006%) with access to frontier-grade systems internally. The external world has seen the preview. It looks like swarms of thousands of agents collaborating over weeks on software mega projects: minting zero days, running cyber attacks and defenses at machine speeds, discovering new science, advancing the frontier of mathematics. Things that would have taken top professionals in the industry years of work. Meanwhile, human review and comprehension are starting to fall behind. For example, people are still involved in the \"archeology\" of the OpenAI-HF incident from many months ago. Mathematicians may be poring over the 722 manuscripts on frontier mathematics for a while.\nThe funnel is driven by a combination of factors:\n1. The impact scales with ambition, problem size, and horizon. A question with a paragraph answer barely stresses the system. You need a reservoir of big, difficult problems that you really care about. This aspect drives the consumer / professional dimension of the funnel.\n2. The jaggedness of the system (which I have written about a lot separately). Capability peaks in domains that are digital, verifiable and economically valuable. This is because LLM capability emerges from reinforcement learning on verifiable rewards on a curated environment mixture driven by revenue potential. This aspect primarily drives the area (e.g. math&code) dimension of the funnel.\n3. Access. Free-tier, paid-tier, internal.\nSo this is the weirdness of the moment. The general public has mostly not interacted with these systems. When they have, it looks like a derpy chatbot. The majority of professionals still see only a modest uplift. And a small sliver of professionals are experiencing the vertigo of the curve going vertical. And it is all happening at the same time.\"\n\nAndrej Karpathy\n\n@karpathy\n\nDusting off this tweet from April because this gap in shared understanding of LLM capability is *widening*. It's now less \"two groups of people speaking past each other\" and more a sharp funnel.\n- Napkin math somewhere around 6B people (~75% of the population) have barely come in contact with LLMs at all.\n- Around 1-2B (~20%) are casual and infrequent users of free-tier ChatGPT-like products. This group sees derpy chatbots and treats them a bit like a better Google search, a writing aid, or etc. Maybe an agent tries to book you a flight. I have non-tech friends who (reasonably, imo) say they have not much use for it at all. Even many professionals outside of math&code are in this tier. For example, execs and many other functions spend a lot of their time talking to other people, so while they understand what is happening intellectually, it is still second-hand and a bit abstract.\n- Now we get to professional use of frontier-grade LLMs in math&code. Somewhere around 20M people (0.2%) see first-hand that large, complex projects that used to take them weeks/months can now be completed by agents with a prompt. Building apps, copying apps, translating apps, decompiling apps from binaries... This has all happened very quickly and recently - less than 1 year ago, I was writing code manually by hand, typing memorized computer code commands into a code editor character by character, occasionally pressing Tab to autocomplete a little chunk of code.\n- And finally we get to the ~5,000 people (~0.00006%) with access to frontier-grade systems internally. The external world has seen the preview. It looks like swarms of thousands of agents collaborating over weeks on software mega projects: minting zero days, running cyber attacks and defenses at machine speeds, discovering new science, advancing the frontier of mathematics. Things that would have taken top professionals in the industry years of work. Meanwhile, human review and comprehension are starting to fall behind. For example, people are still involved in the \"archeology\" of the OpenAI-HF incident from many months ago. Mathematicians may be poring over the 722 manuscripts on frontier mathematics for a while.\nThe funnel is driven by a combination of factors:\n1. The impact scales with ambition, problem size, and horizon. A question with a paragraph answer barely stresses the system. You need a reservoir of big, difficult problems that you really care about. This aspect drives the consumer / professional dimension of the funnel.\n2. The jaggedness of the system (which I have written about a lot separately). Capability pea",
+   "facts": []
+  },
+  {
+   "id": "n-cf-impact",
+   "category": "negative",
+   "negative": true,
+   "origin": "feed-eater archive item 10380 (The Cloudflare Blog)",
+   "source_url": "https://blog.cloudflare.com/100-million-donations/",
+   "title": "Cloudflare Impact reaches $100 million in donations",
+   "source_date": "2026-09-30",
+   "truncated": true,
+   "text": "This week, Cloudflare's Impact programs will reach $100 million in donated services. It's a significant milestone, and one that we are proud of because it means that thousands of organizations, like journalism outlets, civil society, state and local governments, election management bodies, and public schools are being protected from cyberattacks.\nBut Cloudflare's Impact programs have never been about philanthropy. They are a fundamental part of our business and our mission, and they continue to help guide almost everything we do.\nAs we celebrate this milestone and our 16th Birthday Week, we wanted to revisit not only how we got here, but also how our Impact programs continue to grow and evolve to help those working for the public interest.\nFree → Impact\nCloudflare started as a free service. The original idea was to provide a basic version of our services to developers and small businesses for free, and then use the data about cyberattacks on their websites to build more sophisticated products that we could sell.\nHowever, we quickly discovered that some of our free customers were not only doing essential work, like reporting on corruption in Africa or on the Russian invasion of Crimea, but also experiencing some of the largest attacks on our network. That realization changed how we thought about our free services. We committed not only to making them available for free for everyone, but also to doing more for organizations being targeted by powerful adversaries simply for serving the public.\nCloudflare launched Project Galileo in 2014 to provide more advanced security services for important but vulnerable people and organizations online, including journalists, human rights defenders, and civil society groups. Today, the program includes more than 3,500 domains in over 120 countries. In 2025, Cloudflare blocked more than 38.5 billion DDoS, website vulnerability, email phishing, and other cyberattacks against Project Galileo participants, almost 105.4 million per day.\nOver the last 12 years, Cloudflare has continued to expand what we now call our Impact programs. Although each program is unique, our goal is the same: to support organizations and institutions serving the public, particularly those that would not otherwise have access to the necessary cybersecurity services. For example:\nThe Athenian Project (2017): Supporting state and local governments operating democratic elections, which includes more than 440 websites in 33 U.S. states. We later expanded that program outside the United States and now protect election management bodies in eight countries, including Canada, North Macedonia, Georgia, and Moldova.\nCloudflare for Campaigns (2020): Partnering with Defending Digital Campaigns to provide free cybersecurity services for candidates for public office, which now includes more than 530 websites across the United States.\nCritical Infrastructure: Extending additional programs to help protect public schools , COVID-19 response efforts, the government of Ukraine , public health clinics , community networks , and other essential services .\nHelping keep these organizations online by protecting their websites and internal data remains essential. In 2026, Cloudflare released its first annual report on cyberattacks against civil society , which found that civil society organizations are targeted more frequently and more intensely than other Cloudflare customers. For example, Project Galileo participants faced attempts to exploit security vulnerabilities in websites at a rate more than seven times higher than an average user. Cloudflare is also on pace to more than double the number of applications to Project Galileo from last year.\nBut Cloudflare's Impact programs have never been static; they evolve alongside our company and technology, and the organizations they serve. Increasingly that means not just defending public interest organizations, but empowering them to adapt and thrive in the era of AI.\nLooking to the future\nIn early September 2026, on a rainy day in Barcelona, Cloudflare co-hosted a hackathon. Because our developer platform is such an important part of our business, we hold these events all the time. But this one was different: instead of a room full of software engineers or startup founders, it was the first time we held an event specifically for journalists.\nMedia Party hackathon co-hosted by Cloudflare at the BIT Habitat in Barcelona (September 9, 2026).\nThe event was part of a three-day conference organized by Media Party , a nonprofit dedicated to media innovation through digital tools. The event was designed to bring together journalists, developers, and strategists to solve a single problem: how to help newsrooms adapt to an AI-driven, post-search information landscape. The sprint focused on four themes: workflow automation, agentic journalism, synthetic-content verifications, and information integrity.\nEach team received free access to Cloudflare's developer platform and the assistance of volunteer Cloudflare engineers to see what they could build in a day.\nFour teams made it to the final round. The winning team, AIdas , built a tool that helps researchers and journalists study AI bias across politically contested topics by comparing how different LLMs answer the same question, and recording their responses as open data.\nThe hackathon was just one part of a broader effort across Cloudflare Impact to expand beyond cybersecurity services to help public interest groups adapt to a changing world:\nProtecting Local News from AI Crawlers : Last year, Cloudflare provided free access to our Bot Management and AI Crawl control for Project Galileo participants, including more than 750 journalists, independent news organizations and non-profits supporting news-gathering around the world. These tools will help these organizations understand and control how their content is accessed by AI crawlers, and safeguard their reporting from unauthorized scraping.\nNon-profit startups: Last yea",
+   "facts": []
+  },
+  {
+   "id": "n-bitwarden",
+   "category": "negative",
+   "negative": true,
+   "origin": "feed-eater archive item 13793 (Self-Hosted Alternatives to Popular Services)",
+   "source_url": "https://www.reddit.com/r/selfhosted/comments/1x4uoyo/im_thinking_about_switching_to_bitwarden_cloud/",
+   "title": "I'm thinking about switching to bitwarden cloud solution but how does it have a free plan?",
+   "source_date": "2026-10-13",
+   "truncated": false,
+   "text": "So I was selfhosting vaultwarden for a while but I kept it on the local network, didn't want to open no ports on my network for security reasons and I tried vpn and IDK why but I found it unreliable maybe I did something wrong with my setup. BUT lately I found myself needing access to it from outside my local network, so I was looking for alternatives and only recently have I learned that bitwarden has a free plan, and a pretty generous one, you get all the features you really need.\nMy question here is, how can something like this be for free, like as far as I know if something is free you are the product. Am I right to be suspicious of this plan or Am I just paranoid hahahaha\nsubmitted by /u/yoho7202\n[link] [comments]",
+   "facts": []
+  },
+  {
+   "id": "n-homelab-vps",
+   "category": "negative",
+   "negative": true,
+   "origin": "feed-eater archive item 15429 (Homelab)",
+   "source_url": "https://www.reddit.com/r/homelab/comments/1xexb2l/moved_my_homelab_to_vps_after_years_of_tinkering/",
+   "title": "Moved my homelab to VPS after years of tinkering",
+   "source_date": "2026-10-25",
+   "truncated": false,
+   "text": "For years I kept rebuilding my homelab. Proxmox, then UNRAID, then TrueNAS, back to Proxmox, then LXCs, then containers, then Kubernetes, then LXCs again for the non-Docker stuff etc..I was a chronic over-thinker, and honestly I was more into the building than into what it was for.\nThen I got tired. Tired of spending nights and weekends keeping things alive, worrying every time the power blinked, and hearing my wife say nothing ever worked when she needed it. I spent more time redoing backups that didn't work the way I wanted than actually using anything. Slowly I stopped doing the part I loved: testing and deploying.\nA few months ago I finally moved everything to VPS at a hosting provider. I run 5 of them: one for edge, one for observability and Vuls, one Docker worker, one control plane, and one for Hermes, my agent. At home I only have Home Assistant, a NAS, and a firewall. There's no dependency between the two. If I break something on a VPS, I have provider snapshots, an offsite backup, and a lot less anxiety.\nIt costs me about 65€/month. In exchange I have a less powerful internet plan, no electricity bill for the servers, better redundancy, and no risk of losing data to a hardware failure. Everything works. I can deploy services quickly, I have no more outages, and if I do something stupid, Home Assistant keeps running.\nMy wife has always supported my hobby. When she saw me at the computer all evening, she'd joke, \"Great, tomorrow we have no lights.\" It was teasing, and I can't blame her for expecting things to work when she presses the light switch. I'm back to doing what I enjoy, not 11pm maintenance sessions in the garage in my pajamas, standing on a ladder with a keyboard in one hand because an upgrade went wrong or the server won't boot after a power cut.\nI'll probably have more problems, different ones.\nBut a homelab can become a cloudlab without shame.\nIt costs more, and I've bought back time and peace of mind.\nHappy Self Hosting !\nsubmitted by /u/Business-Village-112\n[link] [comments]",
+   "facts": []
+  }
+ ]
+}
