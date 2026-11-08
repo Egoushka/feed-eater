@@ -1,0 +1,1939 @@
+{
+ "model": "openrouter/deepseek/deepseek-v4.1-flash",
+ "prompt": "prompt-v2.md",
+ "items": {
+  "a-price-war": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": "$0.10/$0.50 per M tokens",
+     "object": null,
+     "text": "OpenAI released GPT-6 Luna at $0.10/M input and $0.50/M output, half the price of GPT-5.6 Luna ($0.20/$1.20), making it one of the cheapest models OpenAI has released.",
+     "validFrom": "2026-09-22",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "At $0.10/$0.50 GPT-6 Luna is one of the cheapest models OpenAI have ever released",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "claude-opus-5-5",
+      "name": "Claude Opus 5.5",
+      "kind": "model"
+     },
+     "predicate": "price_change",
+     "value": "$4/$20 per M tokens",
+     "object": null,
+     "text": "Anthropic released Claude Opus 5.5 with a 20% price cut to $4/million input and $20/million output, and cache read prices fell 60%.",
+     "validFrom": "2026-09-22",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "5.5 is a 20% reduction - $4/million and $20/million.",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "gpt-5-6",
+      "name": "GPT-5.6",
+      "kind": "model"
+     },
+     "predicate": "price_change",
+     "value": "25% price increase",
+     "object": null,
+     "text": "GPT-5.6 has a scheduled 25% price increase for November, so GPT-6 is half the price of the promotional pricing for those models.",
+     "validFrom": null,
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "GPT-5.6 has a scheduled 25% price increase for November",
+     "salience": 0.7
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 2434,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 256,
+     "cached_tokens": 256,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1529,
+    "completion_tokens_details": {
+     "reasoning_tokens": 832,
+     "image_tokens": 0
+    },
+    "total_tokens": 3963,
+    "cost": {
+     "total_cost": 0.000982629
+    }
+   },
+   "error": null
+  },
+  "a-copilot-deprecation": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "github-copilot",
+      "name": "GitHub Copilot",
+      "kind": "product"
+     },
+     "predicate": "price_change",
+     "value": "6 models deprecated",
+     "object": null,
+     "text": "GitHub deprecated Gemini 3.7 Flash, GPT-5.5, GPT-5.4, GPT-5.4 mini, GPT-5 mini and Grok 4.5 across most Copilot experiences (Chat, inline edits, ask and agent modes, code completions) on 2026-10-19, after announcing it on 2026-09-18.",
+     "validFrom": "2026-10-19",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "we have deprecated the following models across most GitHub Copilot experiences (including Copilot Chat, inline edits, ask and agent modes, and code completions)",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "github-copilot",
+      "name": "GitHub Copilot",
+      "kind": "product"
+     },
+     "predicate": "price_change",
+     "value": null,
+     "object": null,
+     "text": "GitHub's suggested replacements for the deprecated Copilot models are Gemini 3.8 Flash for Gemini 3.7 Flash, GPT-6.1 Sol for GPT-5.5 and GPT-5.4, GPT-6 Luna for GPT-5.4 mini and GPT-5 mini, and Grok 4.7 for Grok 4.5.",
+     "validFrom": "2026-10-19",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Gemini 3.7 Flash 2026-10-19 Gemini 3.8 Flash",
+     "salience": 0.8
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1158,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 809,
+    "completion_tokens_details": {
+     "reasoning_tokens": 334,
+     "image_tokens": 0
+    },
+    "total_tokens": 1967,
+    "cost": {
+     "total_cost": 0.000496641
+    }
+   },
+   "error": null
+  },
+  "a-copilot-enterprise": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "github-enterprise",
+      "name": "GitHub Enterprise",
+      "kind": "product"
+     },
+     "predicate": "price_change",
+     "value": null,
+     "object": null,
+     "text": "GitHub Enterprise now includes GitHub Copilot for every licensed user for enterprises working with a GitHub or Microsoft account team, replacing per-seat Copilot management with metered AI usage against the enterprise budget.",
+     "validFrom": "2026-10-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Enterprises working with a GitHub or Microsoft account team can now get Copilot included with GitHub Enterprise for every licensed user.",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "copilot-standalone",
+      "name": "Copilot Standalone",
+      "kind": "product"
+     },
+     "predicate": "price_change",
+     "value": "$10 per user per month",
+     "object": null,
+     "text": "Users in an enterprise account who do not hold a GitHub Enterprise license get the same Copilot access through Copilot Standalone at $10 per user per month.",
+     "validFrom": "2026-10-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Users in your enterprise account who do not hold a GitHub Enterprise license get the same Copilot access through Copilot Standalone, at $10 per user per month.",
+     "salience": 0.85
+    },
+    {
+     "subject": {
+      "ref": "github-copilot",
+      "name": "GitHub Copilot",
+      "kind": "product"
+     },
+     "predicate": "price_change",
+     "value": null,
+     "object": null,
+     "text": "Copilot access through GitHub Enterprise and Copilot Standalone has the same features and models as Copilot Enterprise but no monthly AI credits per seat; code completion and next edit suggestions work with no budget, while Chat, code review and cloud require budget.",
+     "validFrom": "2026-10-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Copilot access through GitHub Enterprise and Copilot Standalone has the same features and models as Copilot Enterprise but does not include monthly AI credits per seat.",
+     "salience": 0.8
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1201,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 916,
+    "completion_tokens_details": {
+     "reasoning_tokens": 424,
+     "image_tokens": 0
+    },
+    "total_tokens": 2117,
+    "cost": {
+     "total_cost": 0.0011847
+    }
+   },
+   "error": null
+  },
+  "a-do-credits": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "digitalocean-open-source-credits-program",
+      "name": "DigitalOcean Open Source Credits Program",
+      "kind": "other"
+     },
+     "predicate": "price_change",
+     "value": "no new applications or renewals",
+     "object": null,
+     "text": "DigitalOcean's Open Source Credits Program is sunsetting and will no longer accept new applications or renewals.",
+     "validFrom": "2026-10-01",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "the DigitalOcean Open Source Credits Program is sunsetting and will no longer be accepting new applications or renewals",
+     "salience": 0.6
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 987,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 381,
+    "completion_tokens_details": {
+     "reasoning_tokens": 231,
+     "image_tokens": 0
+    },
+    "total_tokens": 1368,
+    "cost": {
+     "total_cost": 0.00037596
+    }
+   },
+   "error": null
+  },
+  "a-chatgpt-credits": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "openai",
+      "name": "OpenAI",
+      "kind": "provider"
+     },
+     "predicate": "price_change",
+     "value": "$100, $200, $500 per month in API credits",
+     "object": null,
+     "text": "OpenAI now gives ChatGPT subscribers on $100, $200 or $500 monthly plans the same amount in credits to apply to one of their API organizations.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "if you have a $100, $200, or $500 subscription plan with them you now get that same quantity of credits to apply to one of your API organizations",
+     "salience": 0.85
+    },
+    {
+     "subject": {
+      "ref": "anthropic",
+      "name": "Anthropic",
+      "kind": "provider"
+     },
+     "predicate": "price_change",
+     "value": "$100, $200, $500 per month in expiring API credits",
+     "object": null,
+     "text": "Anthropic's Max and Team subscribers on $100, $200 and $500 monthly plans receive the equivalent quantity of expiring credits to use with the Anthropic API.",
+     "validFrom": null,
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "$100, $200, and $500 per month subscribers would get the equivalent quantity of (expiring) credits to use with the Anthropic API",
+     "salience": 0.7
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 937,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 619,
+    "completion_tokens_details": {
+     "reasoning_tokens": 289,
+     "image_tokens": 0
+    },
+    "total_tokens": 1556,
+    "cost": {
+     "total_cost": 0.00101453
+    }
+   },
+   "error": null
+  },
+  "a-sonnet55": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "claude-sonnet-5-5",
+      "name": "Claude Sonnet 5.5",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": "same price as Sonnet 5, 30%+ faster, up to 30% less",
+     "object": null,
+     "text": "Anthropic released Claude Sonnet 5.5, which runs 30%+ faster and costs up to 30% less for most work while being priced the same as Sonnet 5 and beating it on every benchmark.",
+     "validFrom": "2026-09-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "They say it \"runs 30%+ faster, and costs up to 30% less for most work\" - it's priced the same as Sonnet 5 but appears to beat it on every benchmark",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "anthropic",
+      "name": "Anthropic",
+      "kind": "provider"
+     },
+     "predicate": "price_change",
+     "value": null,
+     "object": null,
+     "text": "Claude Sonnet 5.5 is now the model used for the free tier on claude.ai, making Anthropic's free offering more capable than OpenAI's ChatGPT free tier, which uses Luna 5.6.",
+     "validFrom": "2026-09-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "it's now the model used for the free tier on claude.ai . OpenAI's ChatGPT free tier uses Luna 5.6",
+     "salience": 0.8
+    },
+    {
+     "subject": {
+      "ref": "claude-haiku-5-5",
+      "name": "Claude Haiku 5.5",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": null,
+     "object": null,
+     "text": "Anthropic's announcement reiterates that Haiku 5.5 will be available \"in the coming weeks\".",
+     "validFrom": "2026-09-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Anthropic's announcement reiterates that Haiku 5.5 will be available \"in the coming weeks\".",
+     "salience": 0.4
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1140,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 918,
+    "completion_tokens_details": {
+     "reasoning_tokens": 337,
+     "image_tokens": 0
+    },
+    "total_tokens": 2058,
+    "cost": {
+     "total_cost": 0.00069938
+    }
+   },
+   "error": null
+  },
+  "a-gemini4-carbon": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "gemini-4-carbon",
+      "name": "Gemini 4 Carbon",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": "59",
+     "object": null,
+     "text": "Google's Gemini 4 Carbon is the new #1 on the Artificial Analysis Intelligence Index v5 with a score of 59, with a 1M token context window and $4/$20 per 1M input/output tokens standard pricing.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Gemini 4 Carbon scores 59 on Intelligence Index v5, driven by leading performance in complex reasoning, knowledge, and scientific tasks.",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "gemini-4-carbon",
+      "name": "Gemini 4 Carbon",
+      "kind": "model"
+     },
+     "predicate": "price_change",
+     "value": "50%",
+     "object": null,
+     "text": "Google is offering a 50% launch discount on Gemini 4 Carbon, with no confirmed end date, and cached input tokens receive a 95% discount ($0.20 per 1M at standard pricing).",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Google is offering a 50% launch discount, with no confirmed end date.",
+     "salience": 0.85
+    },
+    {
+     "subject": {
+      "ref": "gemini-4-carbon",
+      "name": "Gemini 4 Carbon",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": "$7.76",
+     "object": null,
+     "text": "With standard pricing, Gemini 4 Carbon costs $7.76 per Intelligence Index task, ~23% less than Claude Opus 5.5 (max, $10.04) but ~1.2x GPT-6 Astra (max, $6.25), using 123k output tokens per task.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "With standard pricing, Gemini 4 Carbon costs $7.76 per Intelligence Index task, ~23% less than Claude Opus 5.5 (max, $10.04)",
+     "salience": 0.8
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1658,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 256,
+     "cached_tokens": 256,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1012,
+    "completion_tokens_details": {
+     "reasoning_tokens": 483,
+     "image_tokens": 0
+    },
+    "total_tokens": 2670,
+    "cost": {
+     "total_cost": 0.001636536
+    }
+   },
+   "error": null
+  },
+  "a-gpt6-astra": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": "97.6% FrontierMath, 99.9% ARC-AGI-3",
+     "object": null,
+     "text": "OpenAI launched GPT-6 Astra, which saturates the hardest versions of FrontierMath at 97.6% and ARC-AGI-3 at 99.9%, beating Fable 5.1 on many metrics.",
+     "validFrom": "2026-09-03",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "GPT-6 Astra , the first Stargate and lightly looped supermodel from OpenAI, launched today , cleanly beating Fable 5.1 on many metrics including completely saturating the hardest versions of FrontierMath (97.6%) and ARC-AGI-3 (99.9%).",
+     "salience": 0.7
+    },
+    {
+     "subject": {
+      "ref": "gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": "$50 per million tokens",
+     "object": null,
+     "text": "GPT-6 Astra runs at 33 tokens per second at a max $50 per million token rate, working out to under $6 an hour of continuous agent work.",
+     "validFrom": "2026-09-03",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "33 tokens per second at a max $50 per million token rate",
+     "salience": 0.65
+    },
+    {
+     "subject": {
+      "ref": "gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "kind": "model"
+     },
+     "predicate": "code_idea",
+     "value": "20-50 agents in parallel",
+     "object": null,
+     "text": "Run fleets of 20-50 individually tweaked subagents with bounded concurrency, all managed by one main agent, to parallelize AI engineering tasks like training, labeling, deployment and debugging.",
+     "validFrom": "2026-09-03",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "we were often ramping up between 20-50 agents in parallel , of course all managed by one main Astra agent.",
+     "salience": 0.6
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1691,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1457,
+    "completion_tokens_details": {
+     "reasoning_tokens": 832,
+     "image_tokens": 0
+    },
+    "total_tokens": 3148,
+    "cost": {
+     "total_cost": 0.0022557
+    }
+   },
+   "error": null
+  },
+  "a-open-artifacts": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "deepseek-v4.1-flash-1017",
+      "name": "DeepSeek-V4.1-Flash-1017",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": "552B-A16B",
+     "object": null,
+     "text": "DeepSeek released DeepSeek-V4.1-Flash-1017, a 552B-A16B model that also supports image inputs and carries the MIT license, noted for strong performance at a small price.",
+     "validFrom": "2026-10-20",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "DeepSeek-V4.1-Flash-1017 by deepseek-ai : Since the latest Artifacts, the whale has not released one, but two new model iterations with a new size (552B-A16B) which also support image inputs.",
+     "salience": 0.85
+    },
+    {
+     "subject": {
+      "ref": "deepinfer",
+      "name": "DeepInfer",
+      "kind": "product"
+     },
+     "predicate": "code_idea",
+     "value": "up to 90% gross margin",
+     "object": null,
+     "text": "DeepSeek publicly released DeepInfer, its internal inference stack, which is likely far more efficient than vLLM/SGLang for its models and estimated to yield up to 90% gross margin when selling tokens.",
+     "validFrom": "2026-10-20",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "DeepSeek followed the above news up by releasing their internal inference stack publicly, DeepInfer , which is likely far more efficient than existing open-source tools like vLLM/SGLang for their models.",
+     "salience": 0.8
+    },
+    {
+     "subject": {
+      "ref": "deepseek",
+      "name": "DeepSeek",
+      "kind": "provider"
+     },
+     "predicate": "price_change",
+     "value": null,
+     "object": null,
+     "text": "The Department of Homeland Security issued an order restricting DeepSeek as a company and its models as a technology platform from being a vendor in federal civilian procurement.",
+     "validFrom": "2026-10-20",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "The Department of Homeland Security (DHS) released an order on DeepSeek , which restricts DeepSeek itself, as a company, and DeepSeek’s models, as a technology platform, from being a vendor in federal civilian procurement.",
+     "salience": 0.7
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 2117,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 256,
+     "cached_tokens": 256,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 2463,
+    "completion_tokens_details": {
+     "reasoning_tokens": 1898,
+     "image_tokens": 0
+    },
+    "total_tokens": 4580,
+    "cost": {
+     "total_cost": 0.001843392
+    }
+   },
+   "error": null
+  },
+  "a-copilot-fusion": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "github-copilot-fusion",
+      "name": "GitHub Copilot Fusion",
+      "kind": "product"
+     },
+     "predicate": "new_model",
+     "value": "60",
+     "object": null,
+     "text": "GitHub Copilot Fusion is generally available, routing and orchestrating models across Fusion Standard, High and Max; Fusion Max scored 60 on the Artificial Analysis Coding Agent Index at about half the average API cost per task.",
+     "validFrom": "2026-10-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Copilot Fusion Max scored 60, within two points of Claude Code with Opus 5.5 Max.",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "github-copilot-fusion",
+      "name": "GitHub Copilot Fusion",
+      "kind": "product"
+     },
+     "predicate": "price_change",
+     "value": "30%",
+     "object": null,
+     "text": "For a limited time, users on paid Copilot plans receive a 30% discount on model costs when using Copilot Fusion; otherwise each model used is billed at its standard rate.",
+     "validFrom": "2026-10-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "users on paid Copilot plans will receive a 30% discount on model costs when using Copilot Fusion",
+     "salience": 0.85
+    },
+    {
+     "subject": {
+      "ref": "github-copilot-fusion",
+      "name": "GitHub Copilot Fusion",
+      "kind": "product"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "Copilot Fusion orchestrates models with Single, Cascade and Critique workflows: Cascade drafts with an efficient model and escalates after a quality check, while Critique has another model review and the original model revise.",
+     "validFrom": "2026-10-28",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Cascade: An efficient model drafts a response. A quality check determines whether to accept it or escalate to a stronger model.",
+     "salience": 0.8
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1626,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 256,
+     "cached_tokens": 256,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1611,
+    "completion_tokens_details": {
+     "reasoning_tokens": 1130,
+     "image_tokens": 0
+    },
+    "total_tokens": 3237,
+    "cost": {
+     "total_cost": 0.00058797
+    }
+   },
+   "error": null
+  },
+  "a-agent37": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "agent37",
+      "name": "Agent37",
+      "kind": "provider"
+     },
+     "predicate": "opportunity",
+     "value": "free plan",
+     "object": null,
+     "text": "Agent37 offers a free plan for running AI agent sandboxes in its cloud, with infrastructure cost averaging around $0.05 to $0.10 per free user per month.",
+     "validFrom": "2026-10-12",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Today we’re actually able to offer the free plan thanks to the optimizations we’ve made since.",
+     "salience": 0.85
+    },
+    {
+     "subject": {
+      "ref": "agent37",
+      "name": "Agent37",
+      "kind": "provider"
+     },
+     "predicate": "price_change",
+     "value": "$0.37/month per sandbox",
+     "object": null,
+     "text": "Agent37 says its agent sandboxes cost under 10% of most sandbox providers, with customers spending an average of $0.37/month per sandbox.",
+     "validFrom": "2026-10-12",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "We build sandboxes for running AI agents at under 10% of the cost of most sandbox providers. Our customers spend an average of $0.37/month per sandbox.",
+     "salience": 0.8
+    },
+    {
+     "subject": {
+      "ref": "agent37",
+      "name": "Agent37",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "Lower sandbox cost by using gVisor to share host memory across sandboxes, renting RAM-heavy hosts from Hetzner/OVH instead of hyperscalers, and managing bursty CPU/RAM use; gVisor workloads can't run Docker-in-Docker or Android emulators.",
+     "validFrom": "2026-10-12",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "We use gVisor for better utilization and fast boot times. It lets us use available host memory across sandboxes without reserving a full VM’s memory for each one.",
+     "salience": 0.75
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1586,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 761,
+    "completion_tokens_details": {
+     "reasoning_tokens": 264,
+     "image_tokens": 0
+    },
+    "total_tokens": 2347,
+    "cost": {
+     "total_cost": 0.00062505
+    }
+   },
+   "error": null
+  },
+  "a-aspire136": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "aspire",
+      "name": "Aspire",
+      "kind": "product"
+     },
+     "predicate": "code_idea",
+     "value": "10 application runs",
+     "object": null,
+     "text": "Aspire 13.6 ships a SQLite-backed persistent dashboard that lets you revisit up to ten application runs, with read-only access to completed runs and default retention limits of 100,000 console log messages, structured logs, and traces each.",
+     "validFrom": "2026-09-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "SQLite-backed telemetry and resource snapshots let you revisit up to ten application runs, with read-only access to completed runs and default retention limits of 100,000 console log messages, structured logs, and traces each.",
+     "salience": 0.85
+    },
+    {
+     "subject": {
+      "ref": "aspire",
+      "name": "Aspire",
+      "kind": "product"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "New Aspire.Hosting.Java and Aspire.Hosting.Rust packages bring Maven, Gradle, Spring Boot, Quarkus, and Cargo applications into the app model, with generated container builds and VS Code debugging.",
+     "validFrom": "2026-09-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "New Aspire.Hosting.Java and Aspire.Hosting.Rust packages bring Maven, Gradle, Spring Boot, Quarkus, and Cargo applications into the app model, with generated container builds and VS Code debugging.",
+     "salience": 0.8
+    },
+    {
+     "subject": {
+      "ref": "aspire",
+      "name": "Aspire",
+      "kind": "product"
+     },
+     "predicate": "price_change",
+     "value": null,
+     "object": null,
+     "text": "Aspire 13.6 breaking changes include automatic TLS for local MongoDB servers when a certificate is available, the Linux-based vNext Cosmos DB emulator becoming the default, and experimental terminal types moving from Aspire.Hosting.Terminals to Aspire.Hosting.ApplicationModel.",
+     "validFrom": "2026-09-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "automatic TLS for local MongoDB servers when a certificate is available, the Linux-based vNext Cosmos DB emulator becoming the default",
+     "salience": 0.7
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1696,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1035,
+    "completion_tokens_details": {
+     "reasoning_tokens": 524,
+     "image_tokens": 0
+    },
+    "total_tokens": 2731,
+    "cost": {
+     "total_cost": 0.000652221
+    }
+   },
+   "error": null
+  },
+  "a-csharp-sdk24": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "mcp-skills",
+      "name": "ModelContextProtocol.Extensions.Skills",
+      "kind": "product"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "MCP C# SDK v2.4.0 adds experimental MCP Skills support through the new ModelContextProtocol.Extensions.Skills package, with Skills aligned to server primitives and typed request handlers.",
+     "validFrom": "2026-11-07",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Version 2.4.0 adds experimental MCP Skills support through the new ModelContextProtocol.Extensions.Skills package",
+     "salience": 0.65
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1818,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 512,
+     "cached_tokens": 512,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 590,
+    "completion_tokens_details": {
+     "reasoning_tokens": 423,
+     "image_tokens": 0
+    },
+    "total_tokens": 2408,
+    "cost": {
+     "total_cost": 0.00027879
+    }
+   },
+   "error": null
+  },
+  "a-hillock": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "hillock",
+      "name": "Hillock",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": "1.2 GB",
+     "object": null,
+     "text": "Hillock is an open source AGPL-3.0 local memory engine that replaces vector databases with an SQLite Knowledge Graph and hyperdimensional vector math, with a total footprint under 1.2 GB of VRAM or pure CPU.",
+     "validFrom": "2026-10-07",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "It is an open source, 100 percent local memory engine under AGPL-3.0 that replaces vector databases with an SQLite Knowledge Graph and hyperdimensional vector math.",
+     "salience": 0.8
+    },
+    {
+     "subject": {
+      "ref": "hillock",
+      "name": "Hillock",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": "0.01 milliseconds",
+     "object": null,
+     "text": "Hillock queries run a 10,000 dimensional hypervector gate on the CPU in under 0.01 milliseconds using bit packed SIMD math, and block the prompt if the stored data lacks the answer.",
+     "validFrom": "2026-10-07",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "a 10,000 dimensional hypervector gate runs on the CPU in under 0.01 milliseconds using bit packed SIMD math",
+     "salience": 0.75
+    },
+    {
+     "subject": {
+      "ref": "hillock",
+      "name": "Hillock",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": "300MB",
+     "object": null,
+     "text": "Hillock ingests data without an LLM in about five seconds using tiny specialized models under 300MB, storing facts as relational triples with write ahead logging.",
+     "validFrom": "2026-10-07",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Ingestion runs without an LLM in about five seconds using tiny specialized models under 300MB, storing facts as relational triples with write ahead logging.",
+     "salience": 0.7
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1161,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 832,
+    "completion_tokens_details": {
+     "reasoning_tokens": 320,
+     "image_tokens": 0
+    },
+    "total_tokens": 1993,
+    "cost": {
+     "total_cost": 0.000422966
+    }
+   },
+   "error": null
+  },
+  "a-pg-qos": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "pg_qos",
+      "name": "pg_qos",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "pg_qos is a GPL-3.0 PostgreSQL extension that applies per-database or per-role QoS limits (CPU cores, concurrent queries, queries per second, work_mem) to already-connected sessions without restarts, supporting PostgreSQL 15–18.",
+     "validFrom": "2026-09-25",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "ALTER DATABASE immich SET qos.cpu_core_limit = '2'; ALTER DATABASE nextcloud SET qos.max_concurrent_select = '20'; ALTER ROLE gitea SET qos.work_mem_limit = '64MB';",
+     "salience": 0.7
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1134,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 381,
+    "completion_tokens_details": {
+     "reasoning_tokens": 178,
+     "image_tokens": 0
+    },
+    "total_tokens": 1515,
+    "cost": {
+     "total_cost": 0.00031315
+    }
+   },
+   "error": null
+  },
+  "a-spawn": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "spawn",
+      "name": "Spawn",
+      "kind": "product"
+     },
+     "predicate": "code_idea",
+     "value": "$3 million in tokens per month",
+     "object": null,
+     "text": "Spawn is developed autonomously by a swarm of Fable-powered agents that cost over $3 million in tokens per month, about 30x payroll, and change live code and ship to production hourly.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Spawn is now being developed autonomously by a swarm of Fable-powered agents costing over $3 million in tokens per month (\"we spend 30x payroll on AI tokens\").",
+     "salience": 0.6
+    },
+    {
+     "subject": {
+      "ref": "spawn",
+      "name": "Spawn",
+      "kind": "product"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "Spawn treats an hour without a ship as a SEV-0 incident: agents read every error, bug report and metric themselves, and a broken change can be rolled back in 30 seconds exactly where it is broken.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "we treat an hour without a ship as a SEV-0, our most severe kind of incident",
+     "salience": 0.55
+    },
+    {
+     "subject": {
+      "ref": "fable-5",
+      "name": "Fable 5",
+      "kind": "model"
+     },
+     "predicate": "new_model",
+     "value": null,
+     "object": null,
+     "text": "Fable 5 (then 5.1) was the model that made Spawn's level of autonomy possible; Opus 5.5 did not hack it, and GPT-6 Astra broke things by disabling insecure features instead of fixing them.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Jacob says that Fable 5 (and then 5.1) was the model that made this level of autonomy possible.",
+     "salience": 0.5
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1448,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1668,
+    "completion_tokens_details": {
+     "reasoning_tokens": 1168,
+     "image_tokens": 0
+    },
+    "total_tokens": 3116,
+    "cost": {
+     "total_cost": 0.001827
+    }
+   },
+   "error": null
+  },
+  "a-trypost": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "trypost",
+      "name": "TryPost",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "TryPost ships an MCP server with 80+ tools and a REST API so an agent can draft posts straight into a per-channel queue, while publishing still requires manual human approval.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "It ships with an MCP server (80+ tools) and a REST API, so an agent can draft posts straight into the queue.",
+     "salience": 0.65
+    },
+    {
+     "subject": {
+      "ref": "trypost",
+      "name": "TryPost",
+      "kind": "project"
+     },
+     "predicate": "idea",
+     "value": null,
+     "object": null,
+     "text": "TryPost is an AGPL-3.0 social media scheduler whose entire product is self-hostable, with composer, calendar, per-channel queue, approvals, brand workspaces, ideas board, insights and webhooks.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "It's an open-source social media scheduler, and the self-hosted version is the whole product under AGPL-3.0, with nothing held back for the cloud plan.",
+     "salience": 0.6
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1235,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 512,
+     "cached_tokens": 512,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 728,
+    "completion_tokens_details": {
+     "reasoning_tokens": 404,
+     "image_tokens": 0
+    },
+    "total_tokens": 1963,
+    "cost": {
+     "total_cost": 0.000276465
+    }
+   },
+   "error": null
+  },
+  "a-wikihack": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "wikihack",
+      "name": "Wikihack",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "Wikihack scrapes all Wikipedia mentions on Hacker News, ranks them into a scrollable feed, and is served entirely from the frontend, with a \"Rising\" view ranked over the past 12 months.",
+     "validFrom": "2026-11-02",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "The entire site is served only through the frontend",
+     "salience": 0.5
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 943,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 402,
+    "completion_tokens_details": {
+     "reasoning_tokens": 247,
+     "image_tokens": 0
+    },
+    "total_tokens": 1345,
+    "cost": {
+     "total_cost": 0.00032655
+    }
+   },
+   "error": null
+  },
+  "a-cold-start": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "the-cold-start",
+      "name": "The Cold Start",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": "$500,000 in Cloudflare credits",
+     "object": null,
+     "text": "Cloudflare's The Cold Start live startup competition will pick five early-stage US/Canada startups that have raised less than $10 million, with one winner receiving $500,000 in Cloudflare credits, an SF billboard and a VIP dinner invite; applications close Friday, October 2, 2026.",
+     "validFrom": "2026-09-28",
+     "validTo": "2026-10-02",
+     "replaces": null,
+     "evidence": [],
+     "quote": "The judges will select one startup to win $500,000 in Cloudflare credits, take over a billboard in San Francisco",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "the-cold-start",
+      "name": "The Cold Start",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": null,
+     "object": null,
+     "text": "The five Cold Start finalists pitch for 5 minutes each plus 3-5 minutes of judge questions on Monday, October 19, 2026, 4:00-5:00 p.m. PDT at Moscone West in San Francisco during Cloudflare Connect, with Cloudflare paying for their flights.",
+     "validFrom": "2026-09-28",
+     "validTo": "2026-10-19",
+     "replaces": null,
+     "evidence": [],
+     "quote": "The Cold Start will take place Monday, October 19, from 4:00-5:00 p.m. PDT at Moscone West in San Francisco, as part of Cloudflare Connect . Cloudflare will pay for the five finalists to fly to San Francisco for the competition.",
+     "salience": 0.7
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 2030,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 512,
+     "cached_tokens": 512,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 736,
+    "completion_tokens_details": {
+     "reasoning_tokens": 322,
+     "image_tokens": 0
+    },
+    "total_tokens": 2766,
+    "cost": {
+     "total_cost": 0.00033849
+    }
+   },
+   "error": null
+  },
+  "w-anthropic-credits": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "claude-api-credits",
+      "name": "Claude API credits for Max, Ultra and Team plans",
+      "kind": "product"
+     },
+     "predicate": "opportunity",
+     "value": "$100 USD (Max), $200 USD (Ultra), up to $500 USD (Team, pooled)",
+     "object": null,
+     "text": "Claude Max, Ultra and Team plans include monthly Claude API credits: $100 USD for Max, $200 USD for Ultra, and Team credits pooled from $20 USD per Standard seat and $100 USD per Premium seat, capped at $500 USD.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "**Monthly amount** | $100 USD (Max), $200 USD (Ultra), up to $500 USD (Team, pooled\\*)",
+     "salience": 0.8
+    },
+    {
+     "subject": {
+      "ref": "claude-api-credits",
+      "name": "Claude API credits for Max, Ultra and Team plans",
+      "kind": "product"
+     },
+     "predicate": "opportunity",
+     "value": null,
+     "object": null,
+     "text": "New subscribers can claim the Claude API credits after 7 days on an eligible Max, Ultra or Team plan; Free, Pro and Enterprise plans are not eligible.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "New subscribers can claim credits after 7 days on an eligible plan.",
+     "salience": 0.7
+    },
+    {
+     "subject": {
+      "ref": "claude-api-credits",
+      "name": "Claude API credits for Max, Ultra and Team plans",
+      "kind": "product"
+     },
+     "predicate": "opportunity",
+     "value": null,
+     "object": null,
+     "text": "Claude API subscriber credits cover the Claude API, Managed Agents, the Agent SDK and playground, but not Claude Code, and expire at the end of each billing cycle with no rollover.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "End of each billing cycle (or monthly for annual plans), with no rollover",
+     "salience": 0.6
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1912,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 256,
+     "cached_tokens": 256,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1896,
+    "completion_tokens_details": {
+     "reasoning_tokens": 1389,
+     "image_tokens": 0
+    },
+    "total_tokens": 3808,
+    "cost": {
+     "total_cost": 0.0010292352
+    }
+   },
+   "error": null
+  },
+  "w-lightning-gpu": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "lightning-ai",
+      "name": "Lightning AI",
+      "kind": "provider"
+     },
+     "predicate": "opportunity",
+     "value": "50 free GPU hours",
+     "object": null,
+     "text": "Lightning AI's free tier gives up to 50 free GPU hours with no credit card or commitment, then pay-as-you-go for more hours.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Get up to 50 free GPU hours. Then pay-as-you-go.",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "lightning-ai-pro",
+      "name": "Lightning AI Pro",
+      "kind": "product"
+     },
+     "predicate": "price_change",
+     "value": "$50/mo or $20/mo annual",
+     "object": null,
+     "text": "Lightning AI's Pro plan costs $50/mo monthly or $20/mo billed annually (60% saving), with 240 annual credits, up to 5 seats and up to 6 concurrent GPUs.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "ProSave 60%Academic pricing\n$50/mo$50$2010/mo",
+     "salience": 0.7
+    },
+    {
+     "subject": {
+      "ref": "lightning-ai",
+      "name": "Lightning AI",
+      "kind": "provider"
+     },
+     "predicate": "price_change",
+     "value": "$5.45/hr H100, $4.50/hr H200, $9.86/hr B200",
+     "object": null,
+     "text": "Lightning AI lists pay-as-you-go GPU rates of $5.45/hr for H100 80 GB, $4.50/hr for H200 141 GB and $9.86/hr for B200 180 GB, billed by the second.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "H10080 GB$5.45/hr\nH200141 GB$4.50/hr",
+     "salience": 0.6
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 2634,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1070,
+    "completion_tokens_details": {
+     "reasoning_tokens": 449,
+     "image_tokens": 0
+    },
+    "total_tokens": 3704,
+    "cost": {
+     "total_cost": 0.00108204
+    }
+   },
+   "error": null
+  },
+  "w-hack-paypal": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "paypal-ai-hackathon",
+      "name": "PayPal AI Hackathon",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": "$67,500 in cash",
+     "object": null,
+     "text": "The PayPal AI Hackathon is a global online hackathon requiring projects to meaningfully use both PayPal and AI, with $67,500 in cash prizes and a deadline of Nov 12, 2026 @ 12:00pm PST.",
+     "validFrom": null,
+     "validTo": "2026-11-12",
+     "replaces": null,
+     "evidence": [],
+     "quote": "Deadline: Nov 12, 2026 @ 12:00pm PST",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "paypal-ai-hackathon",
+      "name": "PayPal AI Hackathon",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": "$12,000 in cash",
+     "object": null,
+     "text": "The PayPal AI Hackathon 1st Place prize is $12,000 in cash for one winner, with 2nd Place at $8,000 and 3rd Place at $5,000.",
+     "validFrom": null,
+     "validTo": "2026-11-12",
+     "replaces": null,
+     "evidence": [],
+     "quote": "1st Place\n $12,000 in cash\n 1 winner",
+     "salience": 0.8
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 2224,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 893,
+    "completion_tokens_details": {
+     "reasoning_tokens": 518,
+     "image_tokens": 0
+    },
+    "total_tokens": 3117,
+    "cost": {
+     "total_cost": 0.000598635
+    }
+   },
+   "error": null
+  },
+  "w-hack-meta": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "meta-vr-start-developer-competition-2026",
+      "name": "Meta VR Start Developer Competition 2026",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": "$1,000,000",
+     "object": null,
+     "text": "Meta VR Start Developer Competition 2026 offers $1,000,000 in cash prizes for hands-first VR experiences built for Meta VR Glasses and Meta Quest, with submissions due Nov 18, 2026 @ 12:00pm PST.",
+     "validFrom": null,
+     "validTo": "2026-11-18",
+     "replaces": null,
+     "evidence": [],
+     "quote": "Accelerate your VR development journey with Meta VR Start and compete for $1M in cash prizes",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "meta-vr-start-developer-competition-2026",
+      "name": "Meta VR Start Developer Competition 2026",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": "$100,000",
+     "object": null,
+     "text": "Top prizes in the Meta VR Start Developer Competition 2026 are $100,000, awarded to the strongest entries in each of the Entertainment, Gaming and Productivity tracks.",
+     "validFrom": null,
+     "validTo": "2026-11-18",
+     "replaces": null,
+     "evidence": [],
+     "quote": "Compete for $1M in cash prizes with top prizes of $100,000.",
+     "salience": 0.85
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 2049,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1037,
+    "completion_tokens_details": {
+     "reasoning_tokens": 610,
+     "image_tokens": 0
+    },
+    "total_tokens": 3086,
+    "cost": {
+     "total_cost": 0.000671358
+    }
+   },
+   "error": null
+  },
+  "w-vps-racknerd": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "racknerd-fall-2026-giveaway",
+      "name": "RackNerd Fall 2026 Giveaway",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": "1x Meta Quest 3 512GB, 1x Synology DS225+, 2x Acer Nitro MG275U monitors, 5x free KVM VPS, 10x $50 credit",
+     "object": null,
+     "text": "RackNerd's Fall 2026 giveaway offers a Meta Quest 3 512GB, a Synology DS225+ NAS, two Acer Nitro MG275U monitors, five first-year-free KVM VPS and ten $50 account credits; no purchase necessary.",
+     "validFrom": "2026-11-01",
+     "validTo": "2026-11-30",
+     "replaces": null,
+     "evidence": [],
+     "quote": "No purchase necessary.  Enter now through November 30, 2026.",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "racknerd",
+      "name": "RackNerd",
+      "kind": "provider"
+     },
+     "predicate": "opportunity",
+     "value": "$21.99/year",
+     "object": null,
+     "text": "RackNerd's special KVM VPS offers start at $21.99/year for 1 GB RAM, 1 vCPU, 20 GB SSD and 3 TB monthly transfer, up to $89.99/year for the 6 GB plan.",
+     "validFrom": "2026-11-01",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "1 GB KVM VPS\n$21.99/year",
+     "salience": 0.85
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1584,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 817,
+    "completion_tokens_details": {
+     "reasoning_tokens": 423,
+     "image_tokens": 0
+    },
+    "total_tokens": 2401,
+    "cost": {
+     "total_cost": 0.000477988
+    }
+   },
+   "error": null
+  },
+  "w-vps-serverhost": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "serverhost-halloween-2026-giveaway",
+      "name": "ServerHost Halloween 2026 Giveaway",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": "$500",
+     "object": null,
+     "text": "ServerHost's Halloween 2026 giveaway offers a $500 cash first prize plus two $25 ServerHost store credit runner-up prizes, and closes October 31, 2026.",
+     "validFrom": "2026-10-29",
+     "validTo": "2026-10-31",
+     "replaces": null,
+     "evidence": [],
+     "quote": "🥇 1st Place — $500 CASH ... Giveaway closes October 31, 2026.",
+     "salience": 0.85
+    },
+    {
+     "subject": {
+      "ref": "serverhost",
+      "name": "ServerHost",
+      "kind": "provider"
+     },
+     "predicate": "opportunity",
+     "value": "$16.99/year",
+     "object": null,
+     "text": "ServerHost is selling KVM VPS plans at $16.99/year for 2 GB, $27.99/year for 4 GB and $59.99/year for 8 GB.",
+     "validFrom": "2026-10-29",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "2 GB KVM VPS $16.99/YEAR ... 4 GB KVM VPS $27.99/YEAR ... 8 GB KVM VPS $59.99/YEAR",
+     "salience": 0.8
+    },
+    {
+     "subject": {
+      "ref": "serverhost-halloween-2026-giveaway",
+      "name": "ServerHost Halloween 2026 Giveaway",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": "10 bonus entries",
+     "object": null,
+     "text": "LowEndTalk members with accounts older than 30 days can send a PM to receive a secret code worth 10 bonus entries in the ServerHost giveaway.",
+     "validFrom": "2026-10-29",
+     "validTo": "2026-10-31",
+     "replaces": null,
+     "evidence": [],
+     "quote": "Only LowEndTalk accounts that are older than 30 days are eligible. ... Enter it and get 10 free entries!",
+     "salience": 0.6
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1625,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1353,
+    "completion_tokens_details": {
+     "reasoning_tokens": 840,
+     "image_tokens": 0
+    },
+    "total_tokens": 2978,
+    "cost": {
+     "total_cost": 0.000708848
+    }
+   },
+   "error": null
+  },
+  "w-vps-zap": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "zap-hosting",
+      "name": "Zap Hosting",
+      "kind": "provider"
+     },
+     "predicate": "price_change",
+     "value": null,
+     "object": null,
+     "text": "Zap Hosting's previously sold lifetime hosting plans are now locked unless customers pay a recurring monthly \"Zap-X Pass\" fee to keep using their server.",
+     "validFrom": "2026-11-04",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "if you want to use your lifetime server, you need to pay for it every month",
+     "salience": 0.9
+    },
+    {
+     "subject": {
+      "ref": "lifetime-deal-evaluation",
+      "name": "Lifetime deal evaluation heuristic",
+      "kind": "other"
+     },
+     "predicate": "idea",
+     "value": null,
+     "object": null,
+     "text": "Judge a lifetime hosting deal by whether the one-off price is roughly what you'd pay for a year of service and whether the provider has a good community track record, so a shutdown after 12 months still leaves you whole.",
+     "validFrom": "2026-11-04",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "If someone offers you a lifetime deal for $X, and $X is roughly what you’d pay for a year’s worth of service,  and the company has a good track record in our community, then  maybe it’s a good deal.",
+     "salience": 0.4
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1320,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 644,
+    "completion_tokens_details": {
+     "reasoning_tokens": 307,
+     "image_tokens": 0
+    },
+    "total_tokens": 1964,
+    "cost": {
+     "total_cost": 0.00073644
+    }
+   },
+   "error": null
+  },
+  "w-job-dotnet-angular": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "secure-privacy",
+      "name": "Secure Privacy",
+      "kind": "provider"
+     },
+     "predicate": "opportunity",
+     "value": null,
+     "object": null,
+     "text": "Secure Privacy is hiring a remote Senior Full-Stack Web Developer (.NET/C#, MongoDB, Angular/Redux, AI-first, GDPR experience) for European business hours; apply with CV and a max 2-minute Loom video.",
+     "validFrom": "2026-11-05",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "we’re looking for an experienced Senior Full-Stack Developer with expertise in .NET, C#, and MongoDB, along with GDPR experience, to join our team!",
+     "salience": 0.6
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1356,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 223,
+    "completion_tokens_details": {
+     "reasoning_tokens": 49,
+     "image_tokens": 0
+    },
+    "total_tokens": 1579,
+    "cost": {
+     "total_cost": 0.00048624
+    }
+   },
+   "error": null
+  },
+  "w-job-ai-coding": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "askable",
+      "name": "Askable",
+      "kind": "provider"
+     },
+     "predicate": "opportunity",
+     "value": "US$1,000 per task",
+     "object": null,
+     "text": "Askable pays US$1,000 per AI coding task that passes quality review, remote from any location, with a minimum of one task a week (about 10 hours a week).",
+     "validFrom": "2026-10-16",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "US$1,000 per task that passes review. Minimum of one task a week, about 10 hours a week.",
+     "salience": 0.9
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1375,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 264,
+    "completion_tokens_details": {
+     "reasoning_tokens": 93,
+     "image_tokens": 0
+    },
+    "total_tokens": 1639,
+    "cost": {
+     "total_cost": 0.00031893
+    }
+   },
+   "error": null
+  },
+  "w-bounty-plaza": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "bounty-plaza",
+      "name": "Bounty Plaza",
+      "kind": "project"
+     },
+     "predicate": "opportunity",
+     "value": "$50",
+     "object": null,
+     "text": "Bounty Plaza lists a $50 bounty to implement dodge rolling in the game, where the player takes no damage while rolling; the task is claimed by commenting /claim to lock it for 24h.",
+     "validFrom": "2026-07-27",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Add dodge rolling to the game; you can't take damage while doing so. 50 dollars.",
+     "salience": 0.6
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1504,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 847,
+    "completion_tokens_details": {
+     "reasoning_tokens": 687,
+     "image_tokens": 0
+    },
+    "total_tokens": 2351,
+    "cost": {
+     "total_cost": 0.00096054
+    }
+   },
+   "error": null
+  },
+  "w-idea-gohybrid": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "go-hybrid",
+      "name": "Go-Hybrid",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "Replace Tier-0's static sendability proof for admitted bounded regions with exhaustive enumeration of the emitted Go's interleaving graph plus a replayable certificate that no reachable state has two tasks holding an unsynchronized mutable alias.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Replace Tier-0's static sendability proof, for admitted bounded regions, with exhaustive schedule enumeration plus a replayable certificate.",
+     "salience": 0.7
+    },
+    {
+     "subject": {
+      "ref": "go-hybrid",
+      "name": "Go-Hybrid",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": "10^7-state budget per program",
+     "object": null,
+     "text": "The admitted subset must cover at least 60% of the 137 corpus programs within a 10^7-state budget per program, and certificate replay must stay under 2s per program in CI.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "if the admitted subset covers under 60% of the corpus within a 10^7-state budget per program, the certification story is too narrow to ship",
+     "salience": 0.6
+    },
+    {
+     "subject": {
+      "ref": "go-hybrid-wildcard-bounty",
+      "name": "Go-Hybrid wildcard bounty",
+      "kind": "event"
+     },
+     "predicate": "opportunity",
+     "value": null,
+     "object": null,
+     "text": "Go-Hybrid's wildcard track pays for this idea without requiring a prototype, and failure-with-knowledge is stated as a valid, paid outcome with all results published in MOONSHOT.md.",
+     "validFrom": "2026-11-08",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "I understand no prototype is required and failure-with-knowledge is a valid, paid outcome",
+     "salience": 0.4
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1647,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1251,
+    "completion_tokens_details": {
+     "reasoning_tokens": 766,
+     "image_tokens": 0
+    },
+    "total_tokens": 2898,
+    "cost": {
+     "total_cost": 0.00101216
+    }
+   },
+   "error": null
+  },
+  "n-llm-gap": {
+   "facts": [],
+   "usage": {
+    "prompt_tokens": 2084,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 190,
+     "cached_tokens": 190,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 75,
+    "completion_tokens_details": {
+     "reasoning_tokens": 68,
+     "image_tokens": 0
+    },
+    "total_tokens": 2159,
+    "cost": {
+     "total_cost": 0.000461538
+    }
+   },
+   "error": null
+  },
+  "n-cf-impact": {
+   "facts": [
+    {
+     "subject": {
+      "ref": "cloudflare",
+      "name": "Cloudflare",
+      "kind": "provider"
+     },
+     "predicate": "price_change",
+     "value": "free",
+     "object": null,
+     "text": "Cloudflare gave Project Galileo participants free access to its Bot Management and AI Crawl control tools, covering more than 750 journalists, independent news organizations and non-profits supporting news-gathering.",
+     "validFrom": null,
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "Cloudflare provided free access to our Bot Management and AI Crawl control for Project Galileo participants, including more than 750 journalists, independent news organizations and non-profits supporting news-gathering around the world.",
+     "salience": 0.5
+    },
+    {
+     "subject": {
+      "ref": "aidas",
+      "name": "AIdas",
+      "kind": "project"
+     },
+     "predicate": "code_idea",
+     "value": null,
+     "object": null,
+     "text": "AIdas, the winning project at Cloudflare's Media Party hackathon in Barcelona, studies AI bias on politically contested topics by comparing how different LLMs answer the same question and recording the responses as open data.",
+     "validFrom": "2026-09-09",
+     "validTo": null,
+     "replaces": null,
+     "evidence": [],
+     "quote": "The winning team, AIdas , built a tool that helps researchers and journalists study AI bias across politically contested topics by comparing how different LLMs answer the same question, and recording their responses as open data.",
+     "salience": 0.4
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 1890,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 1224,
+    "completion_tokens_details": {
+     "reasoning_tokens": 870,
+     "image_tokens": 0
+    },
+    "total_tokens": 3114,
+    "cost": {
+     "total_cost": 0.000769278
+    }
+   },
+   "error": null
+  },
+  "n-bitwarden": {
+   "facts": [],
+   "usage": {
+    "prompt_tokens": 976,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 640,
+     "cached_tokens": 640,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 124,
+    "completion_tokens_details": {
+     "reasoning_tokens": 120,
+     "image_tokens": 0
+    },
+    "total_tokens": 1100,
+    "cost": {
+     "total_cost": 9.8964e-05
+    }
+   },
+   "error": null
+  },
+  "n-homelab-vps": {
+   "facts": [],
+   "usage": {
+    "prompt_tokens": 1281,
+    "prompt_tokens_details": {
+     "cached_read_tokens": 512,
+     "cached_tokens": 512,
+     "cache_write_tokens": 0
+    },
+    "completion_tokens": 99,
+    "completion_tokens_details": {
+     "reasoning_tokens": 92,
+     "image_tokens": 0
+    },
+    "total_tokens": 1380,
+    "cost": {
+     "total_cost": 9.1215e-05
+    }
+   },
+   "error": null
+  }
+ },
+ "usage": {
+  "prompt_tokens": 53461,
+  "completion_tokens": 30665,
+  "est_usd": 0.0264
+ }
+}
