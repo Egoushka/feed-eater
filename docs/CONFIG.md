@@ -71,6 +71,14 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Cluster:Threshold` | `0.84` | Cosine similarity at or above which items from different feeds count as one story. Raise it if unrelated items merge, lower it (0.82) if one story shows up twice. |
 | `FeedEater:Cluster:WindowDays` | `3` | Items published within this many days of each other can join one story. |
 
+## DailyIdeas
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:DailyIdeas:At` | `20:00:00` | Local time of day the daily run happens. A run missed while the service was down happens at start. |
+| `FeedEater:DailyIdeas:Enabled` | `false` | Every day: the last 24 hours' improve items, likes, saves and bookmarks ranked into a few new ideas, staged and sent like the weekly ones. A source staged before is not offered again, and a day with nothing new sends nothing. With it on, the weekly run leaves out what a daily run staged. Needs what WeeklyIdeas needs. Off by default; true turns the job on. |
+| `FeedEater:DailyIdeas:MaxIdeas` | `5` | Most ideas staged per day. |
+
 ## Duel
 
 | Key | Default | Description |
