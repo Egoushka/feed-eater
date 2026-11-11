@@ -178,6 +178,9 @@ top `TopInMessage` (3) go to Telegram. The model sees the latest 100 issues of e
 `FeedEater:WeeklyIdeas:BacklogUrl` (a GitHub contents API URL, token in `BacklogToken`), a backlog file, and leaves out whatever repeats
 them; a source URL that was filed once is never offered again (`weekly_ideas`). A configured backlog that cannot be read fails the run,
 which is retried with backoff, so nothing is filed without the check. Quiet hours hold it; a run missed while down happens at start; `/ideas` on Telegram runs it now.
+With `FeedEater:DailyIdeas:Enabled` on, a daily run at `DailyIdeas:At` (20:00) does the same over the last 24 hours, at most
+`DailyIdeas:MaxIdeas` (5) ideas, without peer gaps. A source staged by any earlier run is not offered again, so a day with nothing new
+asks the model nothing and sends nothing; the weekly run then leaves out what the daily runs staged.
 There is no 💡 button on digest items: the machinery behind it (the `ideas` list, the web UI, the swipe page) is unchanged, and an old
 message's 💡 still works.
 

@@ -70,6 +70,15 @@ public sealed class WeeklyIdeaStore(FeedDb db)
         return urls.ToHashSet(StringComparer.Ordinal);
     }
 
+    /// <summary>Source URLs of every idea staged in the inbox, open or decided.</summary>
+    public async Task<IReadOnlySet<string>> StagedUrlsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        var urls = await c.QueryAsync<string>(new CommandDefinition(
+            "select payload->>'url' from inbox where kind = 'idea' and payload ? 'url'", cancellationToken: ct));
+        return urls.ToHashSet(StringComparer.Ordinal);
+    }
+
     private const string OfferedPrefix = "peer-gap-offered:";
 
     /// <summary>Gap source URLs that went to a ranking before; they are not offered again, kept or not.</summary>

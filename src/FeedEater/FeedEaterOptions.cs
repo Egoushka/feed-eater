@@ -37,6 +37,7 @@ public sealed class FeedEaterOptions
     public ApprovalsOptions Approvals { get; set; } = new();
     public IdeasOptions Ideas { get; set; } = new();
     public WeeklyIdeasOptions WeeklyIdeas { get; set; } = new();
+    public DailyIdeasOptions DailyIdeas { get; set; } = new();
     public KarakeepOptions Karakeep { get; set; } = new();
     public LibraryOptions Library { get; set; } = new();
     public GitHubOptions GitHub { get; set; } = new();
@@ -446,6 +447,18 @@ public sealed class WeeklyIdeasOptions
     [Secret]
     [Description("GitHub token that can read the backlog file; empty for a public repository.")]
     public string BacklogToken { get; set; } = "";
+}
+
+public sealed class DailyIdeasOptions
+{
+    [Description("Every day: the last 24 hours' improve items, likes, saves and bookmarks ranked into a few new ideas, staged and sent like the weekly ones. A source staged before is not offered again, and a day with nothing new sends nothing. With it on, the weekly run leaves out what a daily run staged. Needs what WeeklyIdeas needs. Off by default; true turns the job on.")]
+    public bool Enabled { get; set; }
+
+    [Description("Local time of day the daily run happens. A run missed while the service was down happens at start.")]
+    public TimeSpan At { get; set; } = new(20, 0, 0);
+
+    [Description("Most ideas staged per day.")]
+    public int MaxIdeas { get; set; } = 5;
 }
 
 public sealed class KarakeepOptions
