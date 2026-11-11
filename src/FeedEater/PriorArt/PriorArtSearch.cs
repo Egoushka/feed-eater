@@ -80,7 +80,7 @@ public sealed class PriorArtSearch(PriorArtStore store, IPriorArtEmbedder embedd
                 stale = new StaleFlag($"recorded_over_{o.StaleAfterDays}_days_ago");
             }
 
-            var relevant = hit.Similarity >= o.MinSimilarity || hit.TextRank is not null;
+            var relevant = hit.Similarity >= o.MinSimilarity;
             var approach = d.Predicate == "uses" ? d.ObjectName : d.Predicate == "approach_for" ? d.SubjectName : null;
             facts.Add(new PriorArtFact(
                 d.Id, d.Predicate, d.Text, d.SubjectKind == PriorArtSchema.EntityTool ? d.SubjectName : d.SubjectName, d.SubjectRef, approach, hit.Score, hit.Similarity,
@@ -93,7 +93,11 @@ public sealed class PriorArtSearch(PriorArtStore store, IPriorArtEmbedder embedd
             ? ("hit", $"{relevantFacts.Count} relevant facts from {tools} tools")
             : relevantFacts.Count > 0
                 ? ("thin", $"{relevantFacts.Count} relevant facts from {tools} tools; a hit needs {o.HitMinFacts} from {o.HitMinTools}")
-                : ("miss", facts.Count == 0 ? "the base holds nothing that matches" : "nothing reaches the similarity threshold");
+                : ("miss", facts.Count == 0
+                    ? "the base holds nothing that matches"
+                    : vector is null
+                        ? "the embedder did not answer; a word match alone does not make a fact relevant"
+                        : "nothing reaches the similarity threshold");
         return new PriorArtAnswer(
             question, knownAt, coverage, reason, vector is null ? "words only (the embedder did not answer)" : "words and meaning", facts,
             await PatternsAsync(details.Values, ct), coverage == "hit" ? null : ResearchRequest(question));

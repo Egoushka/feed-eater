@@ -16,11 +16,11 @@ internal static partial class Systems
     [GeneratedRegex(@"[a-z][a-z0-9+#.-]{2,}")]
     private static partial Regex Word();
 
-    /// <summary>D-warm: the base's own top results.</summary>
-    public static async Task<IReadOnlyList<Result>> WarmAsync(Mcp mcp, Decision d, int limit, CancellationToken ct)
+    /// <summary>D-warm: the base's own top results, with the <c>coverage</c> it answered the question with.</summary>
+    public static async Task<WarmOutcome> WarmAsync(Mcp mcp, Decision d, int limit, CancellationToken ct)
     {
         var answer = await mcp.CallAsync("prior_art_search", new { question = d.Question, limit }, ct);
-        return answer.GetProperty("facts").EnumerateArray().Select(f =>
+        var results = answer.GetProperty("facts").EnumerateArray().Select(f =>
         {
             var parts = new List<string> { f.GetProperty("text").GetString()!, f.GetProperty("tool").GetString()! };
             if (f.TryGetProperty("approach", out var approach) && approach.ValueKind == JsonValueKind.String)
@@ -30,6 +30,8 @@ internal static partial class Systems
 
             return new Result(string.Join(' ', parts), f.TryGetProperty("validFrom", out var v) && v.ValueKind == JsonValueKind.String ? DateOnly.FromDateTime(v.GetDateTime()) : null);
         }).ToList();
+        var coverage = answer.TryGetProperty("coverage", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString()! : "";
+        return new WarmOutcome(results, coverage);
     }
 
     /// <summary>
@@ -67,3 +69,6 @@ internal static partial class Systems
     private static DateOnly? FileDate(string path) =>
         Regex.Match(Path.GetFileName(path), @"\d{4}-\d{2}-\d{2}") is { Success: true } m && DateOnly.TryParseExact(m.Value, "yyyy-MM-dd", out var day) ? day : null;
 }
+
+/// <summary>D-warm's results for one question plus the <c>coverage</c> (<c>hit</c>, <c>thin</c> or <c>miss</c>) it answered with.</summary>
+internal sealed record WarmOutcome(IReadOnlyList<Result> Results, string Coverage);
