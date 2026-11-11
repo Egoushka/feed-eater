@@ -14,7 +14,7 @@ using FeedEater.Text;
 namespace FeedEater.WeeklyIdeas;
 
 /// <summary>
-/// Mondays at <c>WeeklyIdeas:At</c>: the week's improve items and what was liked, saved or bookmarked become a ranked shortlist.
+/// Mondays at <c>WeeklyIdeas:At</c>: the week's improve items, imported research notes and what was liked, saved or bookmarked become a ranked shortlist.
 /// Each idea waits in the inbox for Keep or Drop (Keep files it as a GitHub issue labelled triage in its project's repo); the top few go to Telegram.
 /// An idea whose source was filed before, or that repeats an issue or a backlog row, is left out. Quiet hours hold it.
 /// </summary>
@@ -162,6 +162,11 @@ public sealed class WeeklyIdeasJob(
         foreach (var b in await store.BookmarksAsync(since, MaxLeads, ct))
         {
             leads.Add(new Lead("bookmarked", b.Title, b.Url!, ""));
+        }
+
+        foreach (var n in await store.NotesAsync(since, MaxLeads, ct))
+        {
+            leads.Add(new Lead(ResearchNotesImporter.Signal, n.Title, n.Url, n.Content));
         }
 
         var offered = await store.OfferedGapUrlsAsync(ct);

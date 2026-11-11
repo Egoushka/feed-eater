@@ -51,6 +51,18 @@ public sealed class WeeklyIdeaStore(FeedDb db)
             """, new { since = since.UtcDateTime, limit }, cancellationToken: ct))).ToList();
     }
 
+    /// <summary>Research-note findings imported since <paramref name="since"/> that are not duplicates of another item.</summary>
+    public async Task<IReadOnlyList<ItemView>> NotesAsync(DateTimeOffset since, int limit, CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<ItemView>(new CommandDefinition(
+            """
+            select id, title, url, published_at, left(content, 600) as content from items
+            where starts_with(source_key, 'research:') and duplicate_of is null and ingested_at >= @since
+            order by ingested_at desc, id desc limit @limit
+            """, new { since = since.UtcDateTime, limit }, cancellationToken: ct))).ToList();
+    }
+
     public async Task<IReadOnlySet<string>> FiledUrlsAsync(CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);

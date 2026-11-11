@@ -42,6 +42,11 @@ if (args.FirstOrDefault() == "import-karakeep")
     return await FeedEater.Library.ImportKarakeepCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "import-notes")
+{
+    return await FeedEater.WeeklyIdeas.ImportNotesCommand.RunAsync(args[1..]);
+}
+
 if (args.FirstOrDefault() == "prior-art")
 {
     return await FeedEater.PriorArt.PriorArtCommand.RunAsync(args[1..], Console.In, Console.Out, Console.Error);
