@@ -221,6 +221,15 @@ public static class ServiceRegistration
                 if (settings.WeeklyIdeas.Enabled && settings.GitHub.IssuesEnabled)
                 {
                     services.AddHostedService<WeeklyIdeasJob>();
+                }
+
+                if (settings.DailyIdeas.Enabled && settings.GitHub.IssuesEnabled)
+                {
+                    services.AddHostedService<DailyIdeasJob>();
+                }
+
+                if ((settings.WeeklyIdeas.Enabled || settings.DailyIdeas.Enabled) && settings.GitHub.IssuesEnabled)
+                {
                     services.AddSingleton<IdeaDecisions>();
                 }
 

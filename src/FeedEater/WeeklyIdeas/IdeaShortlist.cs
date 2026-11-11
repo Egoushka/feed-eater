@@ -23,8 +23,8 @@ public static class IdeaShortlist
     private const int MaxBacklogChars = 80_000;
     private static readonly string[] Efforts = ["S", "M", "L"];
 
-    public static string System(int max) => $$"""
-        You turn one week of the owner's reading signals into a short list of concrete work for his own projects.
+    public static string System(int max, string span = "week") => $$"""
+        You turn one {{span}} of the owner's reading signals into a short list of concrete work for his own projects.
         You get numbered leads (an item he liked or saved, an item marked "improve", or a bookmark), the repos an idea can go to,
         and everything that is already planned or filed.
 
