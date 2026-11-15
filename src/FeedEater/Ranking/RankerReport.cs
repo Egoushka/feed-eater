@@ -24,12 +24,14 @@ public static class RankerReport
         sb.AppendLine("| ranker | first vote | votes | hit rate | swipes | swipe like rate |").AppendLine("|---|---|---|---|---|---|");
         foreach (var r in rows.OrderBy(r => r.FirstAt))
         {
-            var rate = r.HitRate is { } h ? $"{h:P0}{(r.Votes < RankerRow.MinVotes ? " (too few)" : "")}" : "-";
+            var rate = r.HitRate is { } h ? $"{Pct(h)}{(r.Votes < RankerRow.MinVotes ? " (too few)" : "")}" : "-";
             var swipes = r.Likes + r.Dislikes;
-            var swipe = swipes == 0 ? "-" : $"{(double)r.Likes / swipes:P0}";
+            var swipe = swipes == 0 ? "-" : Pct((double)r.Likes / swipes);
             sb.AppendLine(CultureInfo.InvariantCulture, $"| {r.Ranker} | {r.FirstAt:yyyy-MM-dd} | {r.Votes} | {rate} | {swipes} | {swipe} |");
         }
 
         return sb.ToString();
     }
+
+    private static string Pct(double v) => string.Create(CultureInfo.InvariantCulture, $"{Math.Round(v * 100):0}%");
 }

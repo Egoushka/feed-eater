@@ -60,7 +60,7 @@ public sealed class FeedbackStore(FeedDb db)
     public async Task<IReadOnlyList<RankerRow>> RankerRowsAsync(CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
-        return (await c.QueryAsync<RankerRow>(new CommandDefinition(
+        return (await c.QueryAsync<RankerDbRow>(new CommandDefinition(
             """
             select i.ranker,
                    min(e.at) as first_at,
@@ -77,8 +77,10 @@ public sealed class FeedbackStore(FeedDb db)
             where i.ranker is not null
             group by i.ranker
             order by min(e.at)
-            """, cancellationToken: ct))).ToList();
+            """, cancellationToken: ct))).Select(r => new RankerRow(r.Ranker, new DateTimeOffset(DateTime.SpecifyKind(r.First_At, DateTimeKind.Utc)), r.Up, r.Down, r.Likes, r.Dislikes)).ToList();
     }
+
+    private sealed record RankerDbRow(string Ranker, DateTime First_At, int Up, int Down, int Likes, int Dislikes);
 
     public async Task<(short Value, float Weight)?> VoteOfAsync(long itemId, CancellationToken ct)
     {
