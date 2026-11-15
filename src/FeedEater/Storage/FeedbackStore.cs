@@ -55,6 +55,30 @@ public sealed class FeedbackStore(FeedDb db)
             """, new { itemId, value, weight = (float)weight }, cancellationToken: ct));
     }
 
+    /// <summary>Per ranker: votes and swipes on the items it scored; rankers with neither are absent.</summary>
+    public async Task<IReadOnlyList<RankerRow>> RankerRowsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<RankerRow>(new CommandDefinition(
+            """
+            select i.ranker,
+                   min(e.at) as first_at,
+                   count(*) filter (where e.kind = 'vote' and e.v = 1)::int as up,
+                   count(*) filter (where e.kind = 'vote' and e.v = -1)::int as down,
+                   count(*) filter (where e.kind = 'swipe' and e.v = 1)::int as likes,
+                   count(*) filter (where e.kind = 'swipe' and e.v = -1)::int as dislikes
+            from items i
+            join (
+                select item_id, 'vote' as kind, value::int as v, at from votes
+                union all
+                select ref_id, 'swipe', case action when 'like' then 1 else -1 end, created_at from swipe_events where action in ('like', 'dislike')
+            ) e on e.item_id = i.id
+            where i.ranker is not null
+            group by i.ranker
+            order by min(e.at)
+            """, cancellationToken: ct))).ToList();
+    }
+
     public async Task<(short Value, float Weight)?> VoteOfAsync(long itemId, CancellationToken ct)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
