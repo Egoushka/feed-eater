@@ -17,6 +17,9 @@ public sealed record DigestItem
     public string Summary { get; init; } = "";
     public string Why { get; init; } = "";
     public string? Suggestion { get; init; }
+    /// <summary>The stored <c>RankSignals</c> as JSON, null for items scored before they were kept.</summary>
+    public string? RankSignals { get; init; }
+    public string Ranked => RankSignals is null ? "" : System.Text.Json.JsonSerializer.Deserialize<FeedEater.Ranking.RankSignals>(RankSignals)?.Line() ?? "";
     public IReadOnlyList<ClusterMember> AlsoIn { get; init; } = [];
 }
 
@@ -90,7 +93,13 @@ public static class DigestFormatter
         var meta = string.Join(" · ", new[] { Clip(i.Feed, 80), Clip(i.Project ?? "", 40), Clip(i.Kind, 40) }.Where(s => s.Length > 0).Select(E));
         var html = new StringBuilder()
             .Append(i.Suggestion is null ? "📰" : "💡").Append(" <b>").Append(link).Append("</b>\n")
-            .Append("<i>").Append(meta).Append("</i>\n\n")
+            .Append("<i>").Append(meta).Append("</i>\n");
+        if (i.Ranked.Length > 0)
+        {
+            html.Append("<i>").Append(E(Clip(i.Ranked, 200))).Append("</i>\n");
+        }
+
+        html.Append('\n')
             .Append(E(Clip(i.Summary, 1200))).Append('\n')
             .Append(E(Clip(i.Why, 600)));
         if (i.Suggestion is not null)
