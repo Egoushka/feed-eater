@@ -175,7 +175,7 @@ public sealed class RankedLineTests
         var json = System.Text.Json.JsonSerializer.Serialize(new FeedEater.Ranking.RankSignals("a<b", 0.5, 0.1, 0, 0));
         var html = DigestFormatter.Item(new DigestItem { Title = "t", Url = "https://e.com", RankSignals = json }, null, null).Html;
 
-        Assert.Contains("<i>fits a&lt;b 0.50 · liked-like +0.10</i>", html);
+        Assert.Contains("<i>fits a&lt;b 0.50 &#183; liked-like +0.10</i>", html);
     }
 
     [Fact]
