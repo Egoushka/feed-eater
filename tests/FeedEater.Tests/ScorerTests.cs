@@ -71,3 +71,25 @@ public sealed class ScorerTests
         Assert.Equal(0.8, enough.FeedUpRates[2], 6);
     }
 }
+
+public sealed class RankSignalsTests
+{
+    [Fact]
+    public void Parts_sum_to_the_score()
+    {
+        var taste = new Taste(TestVectors.OneHot(5), TestVectors.OneHot(6), new Dictionary<long, double> { [7] = 0.9 });
+        var s = Scorer.Score(1, 7, TestVectors.Blend(0, 5, 0.5f), [new Profile { Key = "a", Kind = "project", Description = "a", Embedding = TestVectors.OneHot(0) }], taste, new WeightsOptions());
+
+        Assert.NotNull(s.Signals);
+        Assert.Equal(s.Score, s.Signals!.Fit + s.Signals.Taste + s.Signals.Prior + s.Signals.Learned, 9);
+    }
+
+    [Fact]
+    public void Line_names_profile_and_nonzero_parts_with_signs()
+    {
+        Assert.Equal("fits chargehand 0.62 · liked-like +0.10 · feed 👍 −0.03", new RankSignals("chargehand", 0.62, 0.10, -0.03, 0).Line());
+    }
+
+    [Fact]
+    public void Line_is_empty_without_profile_and_parts() => Assert.Equal("", new RankSignals(null, 0, 0, 0, 0).Line());
+}

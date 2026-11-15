@@ -243,8 +243,8 @@ public sealed class ItemStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            update items i set score = s.score, profile_key = s.key
-            from unnest(@ids, @values, @keys) as s(id, score, key)
+            update items i set score = s.score, profile_key = s.key, rank_signals = s.signals::jsonb
+            from unnest(@ids, @values, @keys, @signals) as s(id, score, key, signals)
             where i.id = s.id
             """,
             new
@@ -252,6 +252,7 @@ public sealed class ItemStore(FeedDb db)
                 ids = scores.Select(s => s.ItemId).ToArray(),
                 values = scores.Select(s => (float)s.Score).ToArray(),
                 keys = scores.Select(s => s.ProfileKey).ToArray(),
+                signals = scores.Select(s => s.Signals is null ? null : System.Text.Json.JsonSerializer.Serialize(s.Signals)).ToArray(),
             }, cancellationToken: ct));
     }
 
@@ -487,7 +488,7 @@ public sealed class ItemStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         var shown = (await c.QueryAsync<DigestItem>(new CommandDefinition(
             """
-            select i.id, i.title, i.url, coalesce(f.title, '') as feed, r.project, r.kind, r.summary, r.why, r.suggestion
+            select i.id, i.title, i.url, coalesce(f.title, '') as feed, r.project, r.kind, r.summary, r.why, r.suggestion, i.rank_signals::text as rank_signals
             from unnest(@ids::bigint[]) with ordinality as x(id, ord)
             join items i on i.id = x.id
             join reads r on r.item_id = i.id
