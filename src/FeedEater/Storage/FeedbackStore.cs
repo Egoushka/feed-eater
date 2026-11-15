@@ -1,4 +1,5 @@
 using Dapper;
+using FeedEater.Ranking;
 
 namespace FeedEater.Storage;
 
