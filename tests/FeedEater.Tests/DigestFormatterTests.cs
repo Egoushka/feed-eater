@@ -172,13 +172,13 @@ public sealed class RankedLineTests
     [Fact]
     public void Item_shows_the_stored_reason_line_escaped()
     {
-        var json = System.Text.Json.JsonSerializer.Serialize(new FeedEater.Ranking.RankSignals("a<b", 0.5, 0.1, 0, 0));
-        var html = DigestFormatter.Item(new DigestItem { Title = "t", Url = "https://e.com", RankSignals = json }, null, null).Text;
+        var json = System.Html.Json.JsonSerializer.Serialize(new FeedEater.Ranking.RankSignals("a<b", 0.5, 0.1, 0, 0));
+        var html = DigestFormatter.Item(new DigestItem { Title = "t", Url = "https://e.com", RankSignals = json }, null, null).Html;
 
         Assert.Contains("<i>fits a&lt;b 0.50 · liked-like +0.10</i>", html);
     }
 
     [Fact]
     public void Item_without_signals_has_no_reason_line() =>
-        Assert.DoesNotContain("fits", DigestFormatter.Item(new DigestItem { Title = "t", Url = "https://e.com" }, null, null).Text);
+        Assert.DoesNotContain("fits", DigestFormatter.Item(new DigestItem { Title = "t", Url = "https://e.com" }, null, null).Html);
 }
