@@ -22,6 +22,11 @@ if (args.FirstOrDefault() == "taste")
     return await TasteCommand.RunAsync(args[1..]);
 }
 
+if (args.FirstOrDefault() == "ranker")
+{
+    return await RankerCommand.RunAsync(args[1..]);
+}
+
 if (args.FirstOrDefault() == "doctor")
 {
     return await DoctorCommand.RunAsync(args[1..]);

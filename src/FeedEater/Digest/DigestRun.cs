@@ -136,7 +136,8 @@ public sealed class DigestRun(
         var taste = Taste.Build(
             await feedback.PositiveWeightedAsync(o.Caps.Centroid, ct), await feedback.NegativeWeightedAsync(o.Caps.Centroid, ct),
             await feedback.FeedVotesAsync(ct), o.Weights);
-        if (await tasteSwitch.IsOnAsync(ct))
+        var learnedOn = await tasteSwitch.IsOnAsync(ct);
+        if (learnedOn)
         {
             var (model, note) = LearnedTaste.Prepare(await feedback.LabeledVectorsAsync(ct), o.Taste);
             taste = taste with { Learned = model };
@@ -147,7 +148,7 @@ public sealed class DigestRun(
         }
 
         var scored = candidates.Select(c => Scorer.Score(c.Id, c.FeedId, c.Embedding, profileList, taste, o.Weights)).ToList();
-        await items.SetScoresAsync(scored, ct);
+        await items.SetScoresAsync(scored, ct, RankerId.Compute(o.Weights, learnedOn, profileList));
 
         var byId = candidates.ToDictionary(c => c.Id);
         var keys = readContext.Keys;

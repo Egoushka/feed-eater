@@ -238,17 +238,18 @@ public sealed class ItemStore(FeedDb db)
             new { publishedAfter = publishedAfter.UtcDateTime, triagedBefore = triagedBefore.UtcDateTime }, cancellationToken: ct))).ToList();
     }
 
-    public async Task SetScoresAsync(IReadOnlyList<Scored> scores, CancellationToken ct)
+    public async Task SetScoresAsync(IReadOnlyList<Scored> scores, CancellationToken ct, string? ranker = null)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         await c.ExecuteAsync(new CommandDefinition(
             """
-            update items i set score = s.score, profile_key = s.key, rank_signals = s.signals::jsonb
+            update items i set score = s.score, profile_key = s.key, rank_signals = s.signals::jsonb, ranker = @ranker
             from unnest(@ids, @values, @keys, @signals) as s(id, score, key, signals)
             where i.id = s.id
             """,
             new
             {
+                ranker,
                 ids = scores.Select(s => s.ItemId).ToArray(),
                 values = scores.Select(s => (float)s.Score).ToArray(),
                 keys = scores.Select(s => s.ProfileKey).ToArray(),

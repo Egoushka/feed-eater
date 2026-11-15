@@ -1,4 +1,5 @@
 using Dapper;
+using FeedEater.Ranking;
 
 namespace FeedEater.Storage;
 
@@ -54,6 +55,32 @@ public sealed class FeedbackStore(FeedDb db)
             on conflict (item_id) do update set value = excluded.value, weight = excluded.weight, at = excluded.at
             """, new { itemId, value, weight = (float)weight }, cancellationToken: ct));
     }
+
+    /// <summary>Per ranker: votes and swipes on the items it scored; rankers with neither are absent.</summary>
+    public async Task<IReadOnlyList<RankerRow>> RankerRowsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<RankerDbRow>(new CommandDefinition(
+            """
+            select i.ranker,
+                   min(e.at) as first_at,
+                   count(*) filter (where e.kind = 'vote' and e.v = 1)::int as up,
+                   count(*) filter (where e.kind = 'vote' and e.v = -1)::int as down,
+                   count(*) filter (where e.kind = 'swipe' and e.v = 1)::int as likes,
+                   count(*) filter (where e.kind = 'swipe' and e.v = -1)::int as dislikes
+            from items i
+            join (
+                select item_id, 'vote' as kind, value::int as v, at from votes
+                union all
+                select ref_id, 'swipe', case action when 'like' then 1 else -1 end, created_at from swipe_events where action in ('like', 'dislike')
+            ) e on e.item_id = i.id
+            where i.ranker is not null
+            group by i.ranker
+            order by min(e.at)
+            """, cancellationToken: ct))).Select(r => new RankerRow(r.Ranker, new DateTimeOffset(DateTime.SpecifyKind(r.First_At, DateTimeKind.Utc)), r.Up, r.Down, r.Likes, r.Dislikes)).ToList();
+    }
+
+    private sealed record RankerDbRow(string Ranker, DateTime First_At, int Up, int Down, int Likes, int Dislikes);
 
     public async Task<(short Value, float Weight)?> VoteOfAsync(long itemId, CancellationToken ct)
     {
