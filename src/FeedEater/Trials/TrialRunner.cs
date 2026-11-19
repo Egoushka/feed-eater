@@ -45,6 +45,7 @@ public sealed class TrialRunner(TrialStore trials, CardStore cards, ITrialExecut
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            await FinishAsync(trial, TrialStatus.Cancelled, "the runner was stopped while this trial ran.", "", "", "", "", CancellationToken.None);
             throw;
         }
         catch (Exception ex)

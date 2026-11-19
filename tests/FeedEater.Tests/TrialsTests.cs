@@ -132,6 +132,16 @@ public sealed class TrialRulesTests
         handler.Client("http://chargehand/"), Options.Create(new FeedEaterOptions { Trials = new TrialsOptions { Enabled = true, ChargehandUrl = "http://chargehand/", ChargehandKey = "chk1-secret-key" } }));
 
     [Fact]
+    public void Chargehand_location_outside_the_base_url_is_refused()
+    {
+        var baseUrl = new Uri("http://chargehand/");
+
+        Assert.Equal("http://chargehand/v1/runs/7", ChargehandTrialExecutor.Resolve(baseUrl, new Uri("/v1/runs/7", UriKind.Relative))!.AbsoluteUri);
+        Assert.Throws<HttpRequestException>(() => ChargehandTrialExecutor.Resolve(baseUrl, new Uri("http://evil.example/v1/runs/7")));
+        Assert.Null(ChargehandTrialExecutor.Resolve(baseUrl, null));
+    }
+
+    [Fact]
     public async Task Chargehand_executor_posts_a_local_code_run_and_returns_the_result()
     {
         var handler = new StubHandler((_, _) => StubHandler.Json(Completed));

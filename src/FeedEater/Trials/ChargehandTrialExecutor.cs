@@ -33,7 +33,7 @@ public sealed class ChargehandTrialExecutor(HttpClient http, IOptions<FeedEaterO
         using var start = Signed(new HttpRequestMessage(HttpMethod.Post, new Uri(baseUrl, "v1/runs")) { Content = new StringContent(Body(request, settings), Encoding.UTF8, "application/json") }, settings);
         start.Headers.TryAddWithoutValidation("Prefer", "wait=60");
         var response = await http.SendAsync(start, ct);
-        var location = response.Headers.Location?.ToString();
+        var location = Resolve(baseUrl, response.Headers.Location);
         var deadline = DateTimeOffset.UtcNow.AddMinutes(settings.TimeoutMinutes);
         try
         {
@@ -41,20 +41,20 @@ public sealed class ChargehandTrialExecutor(HttpClient http, IOptions<FeedEaterO
             {
                 if (DateTimeOffset.UtcNow > deadline)
                 {
-                    await CancelAsync(baseUrl, location, settings);
+                    await CancelAsync(location, settings);
                     throw new TimeoutException($"the trial did not finish in {settings.TimeoutMinutes} minutes.");
                 }
 
                 await Task.Delay(Poll, ct);
                 response.Dispose();
-                using var next = Signed(new HttpRequestMessage(HttpMethod.Get, new Uri(baseUrl, (location ?? throw new HttpRequestException("chargehand gave no Location for the run.")).TrimStart('/'))), settings);
+                using var next = Signed(new HttpRequestMessage(HttpMethod.Get, location ?? throw new HttpRequestException("chargehand gave no Location for the run.")), settings);
                 response = await http.SendAsync(next, ct);
             }
 
             var body = await response.Content.ReadAsStringAsync(ct);
             if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
             {
-                throw new HttpRequestException($"chargehand refused the trial ({(int)response.StatusCode}): {TrialRules.Redact(Short(body), settings.ChargehandKey)}", null, response.StatusCode);
+                throw new HttpRequestException($"chargehand refused the trial ({(int)response.StatusCode}): {Short(TrialRules.Redact(body, settings.ChargehandKey))}", null, response.StatusCode);
             }
 
             if (Interpret(body, settings.ChargehandKey) is { } outcome)
@@ -62,12 +62,30 @@ public sealed class ChargehandTrialExecutor(HttpClient http, IOptions<FeedEaterO
                 return outcome;
             }
 
-            throw new HttpRequestException($"chargehand answered {(int)response.StatusCode}: {TrialRules.Redact(Short(body), settings.ChargehandKey)}", null, response.StatusCode);
+            throw new HttpRequestException($"chargehand answered {(int)response.StatusCode}: {Short(TrialRules.Redact(body, settings.ChargehandKey))}", null, response.StatusCode);
+        }
+        catch (Exception ex) when (ex is not TimeoutException && location is not null && response.StatusCode == HttpStatusCode.Accepted)
+        {
+            // A poll failed or the service is stopping: do not leave the worker spending on chargehand.
+            await CancelAsync(location, settings);
+            throw;
         }
         finally
         {
             response.Dispose();
         }
+    }
+
+    /// <summary>The run's URL under the configured base. A Location that points anywhere else is refused, so the key is never sent to another host.</summary>
+    internal static Uri? Resolve(Uri baseUrl, Uri? location)
+    {
+        if (location is null)
+        {
+            return null;
+        }
+
+        var resolved = location.IsAbsoluteUri ? location : new Uri(baseUrl, location);
+        return baseUrl.IsBaseOf(resolved) ? resolved : throw new HttpRequestException("chargehand sent a Location outside its own URL.");
     }
 
     internal static string Body(TrialRequest request, TrialsOptions settings) =>
@@ -106,9 +124,9 @@ public sealed class ChargehandTrialExecutor(HttpClient http, IOptions<FeedEaterO
                 case "denied":
                     return new TrialOutcome(TrialStatus.Blocked, tests, benchmark, diffStat, summary, errorMessage.Length > 0 ? errorMessage : "chargehand denied the request.");
                 case "failed" when TrialRules.IsDenialCode(errorCode):
-                    return new TrialOutcome(TrialStatus.Blocked, tests, benchmark, diffStat, summary, $"{errorCode}: {errorMessage}");
+                    return new TrialOutcome(TrialStatus.Blocked, tests, benchmark, diffStat, summary, $"{TrialRules.Redact(errorCode, key)}: {errorMessage}");
                 case "failed":
-                    return new TrialOutcome(TrialStatus.Failed, tests, benchmark, diffStat, summary, $"{errorCode}: {errorMessage}".Trim(' ', ':'));
+                    return new TrialOutcome(TrialStatus.Failed, tests, benchmark, diffStat, summary, $"{TrialRules.Redact(errorCode, key)}: {errorMessage}".Trim(' ', ':'));
                 default:
                     return new TrialOutcome(TrialStatus.Failed, tests, benchmark, diffStat, summary, "chargehand asked a question; a trial runs without one.");
             }
@@ -157,7 +175,7 @@ public sealed class ChargehandTrialExecutor(HttpClient http, IOptions<FeedEaterO
         return (tests, exit, diff);
     }
 
-    private async Task CancelAsync(Uri baseUrl, string? location, TrialsOptions settings)
+    private async Task CancelAsync(Uri? location, TrialsOptions settings)
     {
         if (location is null)
         {
@@ -166,7 +184,7 @@ public sealed class ChargehandTrialExecutor(HttpClient http, IOptions<FeedEaterO
 
         try
         {
-            using var cancel = Signed(new HttpRequestMessage(HttpMethod.Post, new Uri(baseUrl, location.TrimStart('/') + "/cancel")), settings);
+            using var cancel = Signed(new HttpRequestMessage(HttpMethod.Post, new Uri(location.AbsoluteUri.TrimEnd('/') + "/cancel")), settings);
             (await http.SendAsync(cancel, CancellationToken.None)).Dispose();
         }
         catch (HttpRequestException)

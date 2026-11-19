@@ -92,7 +92,7 @@ public static partial class TrialRules
     public static string Redact(string? text, params string[] known)
     {
         var s = text ?? "";
-        foreach (var k in known.Where(k => k.Length >= 6))
+        foreach (var k in known.Where(k => k.Length > 0))
         {
             s = s.Replace(k, "[redacted]", StringComparison.Ordinal);
         }
