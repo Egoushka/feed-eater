@@ -15,4 +15,5 @@ jobs:
       - uses: Egoushka/agent-checks@v0.1.1
         env:
           # This one branch removes the Telegram integration and its tests (spec S1); the allowance is inert on any other branch.
-          AGENT_CHECKS_ALLOW: ${{ github.head_ref == 'feat/telegram-off-ntfy-push' && 'deleted-tests: the Telegram integration and its tests are removed (spec S1); deleted-assertions: assertions on Telegram messages are rewritten against the web path' || '' }}
+          AGENT_CHECKS_ALLOW: |-
+            ${{ github.head_ref == 'feat/telegram-off-ntfy-push' && 'deleted-tests: the Telegram integration and its tests are removed (spec S1); deleted-assertions: assertions on Telegram messages are rewritten against the web path' || '' }}

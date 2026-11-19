@@ -107,7 +107,7 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains(("off", "hindsight"), shown);
         Assert.Contains(("warn", "profile"), shown);
         Assert.Contains("href=\"/ui/setup\"", html, StringComparison.Ordinal);
-        Assert.Contains("required checks fail.", html, StringComparison.Ordinal);
+        Assert.Contains("required check fails.", html, StringComparison.Ordinal);
     }
 
     [Fact]

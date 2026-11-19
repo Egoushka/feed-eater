@@ -354,7 +354,7 @@ public sealed class ReleaseWatcherTests(PostgresFixture pg) : IAsyncLifetime
     {
         await ReleaseItemAsync("juanfont/headscale", "v0.30.0", "Security fix.");
         _inboxDown = true;
-        await Build().RunAsync(default);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Build().RunAsync(default));
 
         var row = Assert.Single(await RowsAsync());
         Assert.True(row.Urgent);

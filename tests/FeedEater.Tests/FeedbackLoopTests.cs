@@ -203,7 +203,7 @@ public sealed class FeedbackLoopTests(PostgresFixture pg) : IAsyncLifetime
             DateTimeOffset.UtcNow, default);
         var (actions, github) = Build();
 
-        var (project, error) = await actions.FileIdeaAsync(id, "jarvis", "Use it for JARVIS memory.", default);
+        var (project, error) = await actions.FileIdeaAsync(id, "octo/jarvis", "Use it for JARVIS memory.", default);
 
         Assert.Null(error);
         Assert.Equal("octo/jarvis", project);
