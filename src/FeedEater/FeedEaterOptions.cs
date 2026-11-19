@@ -55,6 +55,7 @@ public sealed class FeedEaterOptions
     public PeerHarvestOptions PeerHarvest { get; set; } = new();
     public CardsOptions Cards { get; set; } = new();
     public TrialsOptions Trials { get; set; } = new();
+    public RadarOptions Radar { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -670,4 +671,19 @@ public sealed class TrialsOptions
 
     [Description("Longest a single trial may take before it is cancelled and marked failed, in minutes.")]
     public int TimeoutMinutes { get; set; } = 30;
+}
+
+public sealed class RadarOptions
+{
+    [Description("Tech radar export: turn your cards in the assess, trial, adopt and hold states, for repos of kind personal only, into radar.json and open or update a pull request with it in Radar:Repo. Needs Cards:Root, Cards:DenyTermsFile and GitHub:Token (write access to the repo). Off by default; it runs only when you call feed_radar_export.")]
+    public bool Enabled { get; set; }
+
+    [Description("The site repo the radar.json pull request goes to (owner/name); required when the export is on.")]
+    public string Repo { get; set; } = "";
+
+    [Description("Path of the radar file inside Radar:Repo.")]
+    public string Path { get; set; } = "content/radar.json";
+
+    [Description("Branch the export commits to; the pull request is opened from it and reused while it is open.")]
+    public string Branch { get; set; } = "radar/export";
 }

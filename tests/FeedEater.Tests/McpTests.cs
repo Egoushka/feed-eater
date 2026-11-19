@@ -81,7 +81,7 @@ public sealed class McpTests(PostgresFixture pg) : IAsyncLifetime
     {
         var body = await (await _app.CreateClient().SendAsync(Rpc("tools/list", "{}", "test-token"))).Content.ReadAsStringAsync();
 
-        foreach (var tool in new[] { "feed_search", "feed_read", "feed_digests", "feed_digest", "feed_ideas", "prior_art_search", "prior_art_explain", "prior_art_ingest", "feed_cards", "feed_card_set_state", "feed_trial_run", "feed_trials" })
+        foreach (var tool in new[] { "feed_search", "feed_read", "feed_digests", "feed_digest", "feed_ideas", "prior_art_search", "prior_art_explain", "prior_art_ingest", "feed_cards", "feed_card_set_state", "feed_trial_run", "feed_trials", "feed_radar_export" })
         {
             Assert.Contains(tool, body, StringComparison.Ordinal);
         }

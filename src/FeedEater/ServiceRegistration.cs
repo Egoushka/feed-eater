@@ -144,6 +144,8 @@ public static class ServiceRegistration
         services.AddSingleton<TrialStore>();
         services.AddSingleton<TrialQueue>();
         services.AddSingleton<TrialRunner>();
+        services.AddHttpClient<FeedEater.Radar.RadarPublisher>((sp, http) => GitHub(sp, http));
+        services.AddSingleton<FeedEater.Radar.RadarExporter>();
         services.AddHttpClient<ITrialExecutor, ChargehandTrialExecutor>();
         services.AddSingleton<InventoryCollector>();
         services.AddHttpClient<HnSearch>((sp, http) =>

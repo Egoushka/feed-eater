@@ -193,7 +193,7 @@ public sealed class InventoryCollector(IOptions<FeedEaterOptions> options, CardS
 
     private static bool IsLink(string path) => new FileInfo(path).Attributes.HasFlag(FileAttributes.ReparsePoint);
 
-    private static string? ReadText(string root, string path)
+    internal static string? ReadText(string root, string path)
     {
         try
         {
