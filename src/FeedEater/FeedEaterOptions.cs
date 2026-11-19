@@ -53,6 +53,7 @@ public sealed class FeedEaterOptions
     public ApiOptions Api { get; set; } = new();
     public PriorArtOptions PriorArt { get; set; } = new();
     public PeerHarvestOptions PeerHarvest { get; set; } = new();
+    public CardsOptions Cards { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -604,4 +605,40 @@ public sealed class PriorArtOptions
 
     [Description("Prior-art search: the number of different tools the relevant facts of a hit must come from.")]
     public int HitMinTools { get; set; } = 2;
+}
+
+public sealed class CardsOptions
+{
+    [Description("Adoption cards: once a day read the repos of your manifest, match what they run against ranked items and outside signals, and write proposal cards. Needs Cards:Root. The /ui/cards page and the card MCP tools work either way.")]
+    public bool Enabled { get; set; }
+
+    [Description("Directory that holds your checkouts (your workspace root, mounted read-only). Only repos of kind personal or infra in the manifest are read; a path that leaves this directory is skipped.")]
+    public string Root { get; set; } = "";
+
+    [Description("The repo manifest (TOML with [[repo]] rows of name, path, kind, status), relative to Cards:Root.")]
+    public string Manifest { get; set; } = "repos.toml";
+
+    [Description("TOML file with [[mcp]] and [[skill]] rows, relative to Cards:Root; empty to skip it.")]
+    public string InventoryToml { get; set; } = "context/ai-setup/inventory.toml";
+
+    [Description("Local time of day the cards job runs.")]
+    public TimeSpan At { get; set; } = new(3, 0, 0);
+
+    [Description("How many days back an item or a Hacker News story can be and still count as a signal.")]
+    public int LookbackDays { get; set; } = 30;
+
+    [Description("Lowest triage relevance (0 to 3) of a feed item that counts as a signal.")]
+    public int MinRelevance { get; set; } = 2;
+
+    [Description("Fewest points a Hacker News story needs to count as a signal.")]
+    public int HnMinPoints { get; set; } = 20;
+
+    [Description("Most new cards one run writes, the strongest signals first.")]
+    public int MaxNewCards { get; set; } = 30;
+
+    [Description("Most outside lookups (Hacker News, deps.dev) one run makes.")]
+    public int MaxLookups { get; set; } = 120;
+
+    [Description("deps.dev API base URL; empty turns the advisory lookup off.")]
+    public string DepsDevBase { get; set; } = "https://api.deps.dev/v3/";
 }

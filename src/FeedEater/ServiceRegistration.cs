@@ -28,6 +28,7 @@ using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Approvals;
+using FeedEater.Cards;
 using FeedEater.Push;
 using FeedEater.Ui;
 using FeedEater.WeeklyIdeas;
@@ -138,6 +139,22 @@ public static class ServiceRegistration
             Bearer(http, o.Token);
         });
 
+        services.AddSingleton<CardStore>();
+        services.AddSingleton<InventoryCollector>();
+        services.AddHttpClient<HnSearch>((sp, http) =>
+        {
+            http.BaseAddress = new Uri(Settings(sp).Fetch.HnApiBase);
+            http.Timeout = TimeSpan.FromSeconds(10);
+            http.MaxResponseContentBufferSize = 1024 * 1024;
+        });
+        services.AddHttpClient<DepsDevClient>((sp, http) =>
+        {
+            BaseAddress(http, Settings(sp).Cards.DepsDevBase.Length > 0 ? Settings(sp).Cards.DepsDevBase.TrimEnd('/') + "/" : "");
+            http.Timeout = TimeSpan.FromSeconds(10);
+            http.MaxResponseContentBufferSize = 1024 * 1024;
+        });
+        services.AddSingleton<CardGenerator>();
+
         services.AddSingleton<ItemReader>();
         services.AddSingleton<LibraryStore>();
         services.AddSingleton<LibraryService>();
@@ -195,6 +212,11 @@ public static class ServiceRegistration
             if (settings.Karakeep.Enabled || settings.GitHub.Enabled)
             {
                 services.AddHostedService<SignalJob>();
+            }
+
+            if (settings.Cards.Enabled && settings.Cards.Root.Length > 0)
+            {
+                services.AddHostedService<CardsJob>();
             }
 
             services.AddHostedService<DigestJob>();
@@ -261,6 +283,7 @@ public static class ServiceRegistration
         services.AddSingleton<MapStore>();
         services.AddSingleton<TasteMap>();
         services.AddSingleton<MapHandler>();
+        services.AddSingleton<CardsHandler>();
         services.AddSingleton<SwipeStore>();
         services.AddSingleton<SwipeActStore>();
         services.AddSingleton<RecallStore>();
