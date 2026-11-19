@@ -31,6 +31,8 @@ public sealed partial class CardsEndpointTests(PostgresFixture pg) : IAsyncLifet
             b.UseSetting("ConnectionStrings:FeedEater", pg.ConnectionString);
             b.UseSetting("Mcp:Token", Token);
             b.UseSetting("FeedEater:RunJobs", "false");
+            b.UseSetting("FeedEater:Trials:Enabled", "true");
+            b.UseSetting("FeedEater:Trials:Repos", "feed-eater=/srv/code/feed-eater");
             b.UseSetting("FeedEater:Llm:BaseUrl", "http://127.0.0.1:9/");
             b.UseSetting("FeedEater:ProfilePath", "Fixtures/profile.json");
             b.ConfigureTestServices(s => s.RemoveAll<IHostedService>());
@@ -143,5 +145,47 @@ public sealed partial class CardsEndpointTests(PostgresFixture pg) : IAsyncLifet
         Assert.Contains("Dapper: AOT", listed, StringComparison.Ordinal);
         Assert.Contains("https://example.com/a", listed, StringComparison.Ordinal);
         Assert.DoesNotContain("Dapper: AOT", await CallAsync("feed_cards", """{"state":"adopt"}"""), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Cards_page_queues_a_trial_only_for_a_card_in_trial_and_shows_its_result()
+    {
+        await _store.AddAsync(Card("Dapper: AOT"), default);
+        var id = (await _store.ListAsync(null, 1, default)).Single().Id;
+        var cookie = await LoginAsync();
+        var csrf = await CsrfAsync(cookie);
+
+        Assert.DoesNotContain("Queue trial", await (await UiAsync(HttpMethod.Get, $"/ui/cards/{id}", cookie)).Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Forbidden, (await UiAsync(HttpMethod.Post, $"/ui/cards/{id}/trial", cookie)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await UiAsync(HttpMethod.Post, $"/ui/cards/{id}/trial", cookie, ("_csrf", csrf))).StatusCode);
+
+        await _store.SetStateAsync(id, "trial", "run it", default);
+        Assert.Contains("Queue trial", await (await UiAsync(HttpMethod.Get, $"/ui/cards/{id}", cookie)).Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.SeeOther, (await UiAsync(HttpMethod.Post, $"/ui/cards/{id}/trial", cookie, ("_csrf", csrf))).StatusCode);
+
+        var trials = new Trials.TrialStore(pg.Db);
+        var trial = Assert.Single(await trials.ListAsync(id, null, 10, default));
+        await trials.ClaimNextAsync(default);
+        await trials.FinishAsync(trial.Id, "passed", "exit 0: <b>tests</b>", "", "1 file changed, +1 -1", "Status: passed", default);
+        var detail = await (await UiAsync(HttpMethod.Get, $"/ui/cards/{id}", cookie)).Content.ReadAsStringAsync();
+
+        Assert.Contains("1 file changed, +1 -1", detail, StringComparison.Ordinal);
+        Assert.Contains("exit 0: &lt;b&gt;tests&lt;/b&gt;", detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("<b>tests</b>", detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Trial_mcp_tools_queue_a_picked_card_and_list_trials()
+    {
+        await _store.AddAsync(Card("Dapper: AOT"), default);
+        var id = (await _store.ListAsync(null, 1, default)).Single().Id;
+
+        Assert.Contains("only a card you moved to the trial state", await CallAsync("feed_trial_run", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
+        await _store.SetStateAsync(id, "trial", "run it", default);
+        Assert.Contains("trial/", await CallAsync("feed_trial_run", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
+        Assert.Contains("already has a trial", await CallAsync("feed_trial_run", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
+
+        Assert.Contains("trial/", await CallAsync("feed_trials", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
+        Assert.Contains("unknown status", await CallAsync("feed_trials", """{"status":"weird"}"""), StringComparison.Ordinal);
     }
 }

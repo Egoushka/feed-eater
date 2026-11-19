@@ -54,6 +54,7 @@ public sealed class FeedEaterOptions
     public PriorArtOptions PriorArt { get; set; } = new();
     public PeerHarvestOptions PeerHarvest { get; set; } = new();
     public CardsOptions Cards { get; set; } = new();
+    public TrialsOptions Trials { get; set; } = new();
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
@@ -644,4 +645,29 @@ public sealed class CardsOptions
 
     [Description("deps.dev API base URL; empty turns the advisory lookup off.")]
     public string DepsDevBase { get; set; } = "https://api.deps.dev/v3/";
+}
+
+public sealed class TrialsOptions
+{
+    [Description("Adoption trials: run the cards you moved to the trial state, one at a time, through chargehand on a throwaway branch. Needs Trials:ChargehandUrl and Trials:Repos. Off by default; nothing runs unless you queue a card.")]
+    public bool Enabled { get; set; }
+
+    [Description("Base URL of the chargehand HTTP server that runs a trial (POST /v1/runs).")]
+    public string ChargehandUrl { get; set; } = "";
+
+    [Secret]
+    [Description("Bearer key of the chargehand account the trials are charged to.")]
+    public string ChargehandKey { get; set; } = "";
+
+    [Description("Repos a trial may touch, as comma separated name=path pairs: the card's repo name and where the chargehand host has its checkout. A card whose repo is not listed cannot be queued.")]
+    public string Repos { get; set; } = "";
+
+    [Description("Chargehand preset a trial runs with. It must write code on a branch and run the tests.")]
+    public string Preset { get; set; } = "code";
+
+    [Description("Most one trial may spend, in USD (request/v1 budget_usd).")]
+    public double BudgetUsd { get; set; } = 1.00;
+
+    [Description("Longest a single trial may take before it is cancelled and marked failed, in minutes.")]
+    public int TimeoutMinutes { get; set; } = 30;
 }
