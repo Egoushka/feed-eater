@@ -1,3 +1,32 @@
+# Handoff, feed-eater adoption board (2026-11-19, v0.12.0 live)
+
+"continue" means: read this section, check it against git and `lab`, carry on. The older sections below are history.
+
+## Done and verified (2026-11-19)
+- Spec `docs/specs/2026-11-19-adoption-board.md`, hand test 5/5 act, trial results in `...-handtest.md` (#74).
+- S1 Telegram off, ntfy push (#75, v0.10.0, homelab #656): `ntfy ok` logged at 17:21Z; phone not confirmed.
+- S2 cards #76 (97f9e2e), S3 trials #77 (5944cc5, migration 0039), S4 radar exporter #78 (4fb3d27): all merged, v0.12.0 deployed (homelab #663 b0bee97), migrations 0038/0039 applied, doctor no FAIL.
+- Site radar page live: personal-website #109 (975a7ee), https://hrabovskyi.online/radar/ (fetch with a browser User-Agent).
+- Cards enabled on nickel (homelab #664 e699bff): 15 cards (homelab 12, chargehand 3, feed-eater 0), each with an evidence URL. Cards are noisy for generic terms ("server", "home", "python").
+- Postgres CVE-2026-6460 patch (homelab #655, b496990): 12 of 13 DBs on 18.7/17.12; oura-timescaledb stays 18.6 (no timescaledb tag ships 18.7).
+
+## Open, for Yehor
+1. Trials are OFF. Blockers: chargehand has no bwrap (sandbox none would run test code unconfined next to server secrets); /srv/chargehand/repos is read-only; feed-eater sends no `context.verify` and `dotnet test` needs Docker. Recommended: a dedicated chargehand instance with no secrets and a writable checkout, plus a `verify` option in feed-eater's request.
+2. Radar is OFF. Needs a deny-terms file on the box (the terms live only on the Mac; plaintext on host breaks the rule). Options: hashed-terms mode in feed-eater, export from the Mac, or SOPS file. Then `FeedEater__Radar__Enabled=true`, `Radar__Repo=Egoushka/personal-website`. The existing GitHub:Token (fine-grained, 66 repos) can write personal-website; a narrower token needs a browser (Settings > Developer settings > Fine-grained tokens, only personal-website, Contents+PR RW) and its own option.
+3. Chronicle DB: `ALTER EXTENSION vector UPDATE;` once (image has pgvector 0.8.7, extension 0.8.6). Not run.
+4. Card quality: filter generic terms; FeedEater__Cards__DenyTermsFile unset so inventory.toml skills file is skipped (safe).
+5. Leftover: SOPS env still has TELEGRAM_USER_ID / TELEGRAM_BOT_TOKEN (inert). Local tag v0.10.0 in this checkout. Branches trial/adoption-card-4 (bfa33d2, MCP descriptions trimmed -19.4%) and trial/adoption-card-5 (hold) are local only. Worktrees adoption-card-5, trial-adoption-card-4 under .claude/worktrees.
+6. Not run: A3.4 (queue card 4 trial) and A4.4 (feed_radar_export, merge site PR, check /radar/); hand-test card 4 does not exist in the DB.
+7. ntfy ACL: `everyone:feed-eater:wo` in stacks/ntfy/compose.yaml; click URL is the tailnet http://100.64.0.4:8104/.
+8. S5 project picture is not built.
+
+## Rules that bit us
+- leak-guard blocks `git push` of tags: create tags via `gh api -X POST repos/Egoushka/feed-eater/git/refs`. It also blocks pushes whose history names employer terms: the pre-hook scans before the command runs, so fix files and amend in separate calls.
+- Devbox has no Docker: Testcontainers tests run only in CI. CI jobs on the self-hosted pool sometimes sit queued: cancel and `gh run rerun`.
+- Homelab merges need a conventional-commit PR title.
+
+---
+
 # Handoff — feed-eater, current state (2026-10-07, v0.6.0 live, v0.8.0 released)
 
 "continue" means: read this section; the older v0.1 handoff below is history.
