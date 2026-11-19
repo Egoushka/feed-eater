@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
@@ -7,11 +6,10 @@ using Npgsql;
 using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Digest;
 
-/// <summary>Runs the digest inside the 07:30–12:00 window, held while quiet hours are in effect (a digest asked for by hand is not); a failure is reported once on Telegram and retried with backoff.</summary>
+/// <summary>Runs the digest inside the 07:30–12:00 window, held while quiet hours are in effect (a digest asked for by hand is not); a failure is reported once as an inbox notice and retried with backoff.</summary>
 public sealed class DigestJob(
     DigestRun run, DigestStore digests, IInbox inbox, DigestTrigger trigger, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<DigestJob> logger)
@@ -76,9 +74,9 @@ public sealed class DigestJob(
         try
         {
             await inbox.AddAsync(new InboxEntry(key, InboxKinds.Notice, Payload: new JsonObject { ["text"] = text },
-                ExpiresAt: Time.GetUtcNow().AddDays(2)), new OutMessage(WebUtility.HtmlEncode(text)), ct);
+                ExpiresAt: Time.GetUtcNow().AddDays(2)), ct);
         }
-        catch (Exception notify) when (notify is HttpRequestException or TelegramException or JsonException or NpgsqlException)
+        catch (Exception notify) when (notify is HttpRequestException or JsonException or NpgsqlException)
         {
             Logger.LogWarning(notify, "Could not send the digest notice");
         }
@@ -91,10 +89,9 @@ public sealed class DigestJob(
         {
             await inbox.AddAsync(new InboxEntry($"notice:digest:{key}:failed", InboxKinds.Notice,
                 Payload: new JsonObject { ["text"] = $"Digest {key} failed: {error}. Retrying until {until}." },
-                ExpiresAt: Time.GetUtcNow().AddDays(2)),
-                new OutMessage($"Digest {key} failed: {WebUtility.HtmlEncode(error)}. Retrying until {until}."), ct);
+                ExpiresAt: Time.GetUtcNow().AddDays(2)), ct);
         }
-        catch (Exception notify) when (notify is HttpRequestException or TelegramException or JsonException or NpgsqlException)
+        catch (Exception notify) when (notify is HttpRequestException or JsonException or NpgsqlException)
         {
             Logger.LogWarning(notify, "Could not report the digest failure");
         }

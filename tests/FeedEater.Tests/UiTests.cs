@@ -39,15 +39,14 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     /// <summary><paramref name="settings"/> are applied last, so they override the defaults below.</summary>
-    private WebApplicationFactory<Program> Factory(string token, bool telegram = false, params (string Key, string Value)[] settings) =>
+    private WebApplicationFactory<Program> Factory(string token, bool jobs = false, params (string Key, string Value)[] settings) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             (string Key, string Value)[] defaults =
             [
                 ("ConnectionStrings:FeedEater", pg.ConnectionString),
                 ("Mcp:Token", token),
-                ("FeedEater:RunJobs", telegram ? "true" : "false"),
-                ("FeedEater:Telegram:Token", telegram ? "123:test" : ""),
+                ("FeedEater:RunJobs", jobs ? "true" : "false"),
                 ("FeedEater:Llm:BaseUrl", "http://127.0.0.1:9/"),
                 ("FeedEater:Llm:MonthlyBudget", "5"),
                 ("FeedEater:Karakeep:BaseUrl", "http://127.0.0.1:9/"),   // nothing listens: saving reports Karakeep as down
@@ -368,7 +367,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("Spend this month", todayPage, StringComparison.Ordinal);
         Assert.Contains("$0.50", todayPage, StringComparison.Ordinal);
         Assert.Contains("of $5.00", todayPage, StringComparison.Ordinal);
-        Assert.Contains("Run the digest", todayPage, StringComparison.Ordinal);   // telegram off: explains instead of offering a button
+        Assert.Contains("Run the digest", todayPage, StringComparison.Ordinal);   // jobs off: explains instead of offering a button
         Assert.Contains("Filed in LAB", todayPage, StringComparison.Ordinal);
 
         Assert.Contains("Postgres 19 lands", await GetAsync("/ui/search?q=postgres", cookie), StringComparison.Ordinal);
@@ -490,7 +489,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task The_run_digest_button_queues_a_force_request_and_the_page_shows_it()
     {
-        await using var app = Factory(Token, telegram: true);
+        await using var app = Factory(Token, jobs: true);
         var http = Client(app);
         var cookie = await LoginAsync(http);
         var (_, today) = await SeedDigestAsync();
@@ -511,7 +510,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_run_digest_button_is_off_without_a_telegram_token()
+    public async Task The_run_digest_button_is_off_when_the_jobs_are_off()
     {
         var cookie = await LoginAsync();
 
@@ -912,7 +911,7 @@ public sealed partial class UiTests(PostgresFixture pg) : IAsyncLifetime
         var off = await GetAsync("/ui/autopsy", cookie);
         Assert.Contains("The autopsy is off", off, StringComparison.Ordinal);
         Assert.Contains("href=\"/ui/autopsy\"", off, StringComparison.Ordinal);   // the nav entry
-        await using (var on = Factory(Token, telegram: true, ("FeedEater:GitHub:User", "octocat")))
+        await using (var on = Factory(Token, jobs: true, ("FeedEater:GitHub:User", "octocat"), ("FeedEater:Swipe:Enabled", "true")))
         {
             using var http = Client(on);
             var empty = await (await http.SendAsync(Req(HttpMethod.Get, "/ui/autopsy", await LoginAsync(http)))).Content.ReadAsStringAsync();

@@ -8,7 +8,6 @@ using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Signals;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
 
@@ -21,9 +20,9 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
 
-    private sealed record Rig(AutopsyJob Job, FakeTimeProvider Time, StubHandler Github, List<string> Sent);
+    private sealed record Rig(AutopsyJob Job, FakeTimeProvider Time, StubHandler Github, List<InboxEntry> Sent);
 
-    private bool _telegramDown;
+    private bool _inboxDown;
 
     /// <summary><paramref name="repos"/>: name to (stars, days since the last push, archived). A repo that is not listed answers 404.</summary>
     private static Func<string, HttpResponseMessage> Github(Dictionary<string, (int Stars, int PushedDaysAgo, bool Archived)> repos) => path =>
@@ -39,33 +38,21 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
             : StubHandler.Json($$"""{"full_name":"{{name}}","created_at":"2024-01-01T00:00:00Z","pushed_at":"{{Now.AddDays(-r.PushedDaysAgo):O}}","stargazers_count":{{r.Stars}},"archived":{{(r.Archived ? "true" : "false")}}}""");
     };
 
-    private Rig Build(Func<string, HttpResponseMessage> github, bool telegramFails = false, string token = "")
+    private Rig Build(Func<string, HttpResponseMessage> github, bool inboxFails = false, string token = "")
     {
         var time = new FakeTimeProvider(Now);
-        var sent = new List<string>();
-        _telegramDown = telegramFails;
+        _inboxDown = inboxFails;
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv",
-            Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 },
             GitHub = new GitHubOptions { User = "octocat", Token = token },
         });
-        var stub = new StubHandler((_, body) =>
-        {
-            if (_telegramDown)
-            {
-                return StubHandler.Json("""{"ok":false,"description":"Too Many Requests"}""");
-            }
-
-            sent.Add(body);
-            return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
-        });
+        var inbox = new RecordingInbox(new InboxService(new InboxStore(pg.Db), time), () => _inboxDown);
         var ghStub = new StubHandler((request, _) => github(request.RequestUri!.AbsolutePath));
-        var telegram = new TelegramClient(stub.Client("http://tg/botT/"));
         var job = new AutopsyJob(
-            new AutopsyStore(pg.Db), new GitHubStarsClient(ghStub.Client("http://github/"), options), new InboxService(new InboxStore(pg.Db), telegram, options, time),
+            new AutopsyStore(pg.Db), new GitHubStarsClient(ghStub.Client("http://github/"), options), inbox,
             new QuietHours(new CursorStore(pg.Db), options, time), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<AutopsyJob>.Instance);
-        return new Rig(job, time, ghStub, sent);
+        return new Rig(job, time, ghStub, inbox.Entries);
     }
 
     private async Task<long> SnapshotAsync(string title, string? repo, int? stars = 100, int ageDays = 90, long feed = 1, int? relevance = 3)
@@ -153,10 +140,9 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Null(r.Items.Single(i => i.ItemId == ids[4]).StarsNow);
         Assert.All(await MonthsOfAsync(ids), m => Assert.Equal("2026-11-01", m));
 
-        var message = Assert.Single(rig.Sent);
+        var message = Assert.Single(rig.Sent).Payload!["html"]!.GetValue<string>();
         Assert.Contains("Hype autopsy", message, StringComparison.Ordinal);
         Assert.Contains("stars up 20% or more", message, StringComparison.Ordinal);
-        Assert.Contains("\"chat_id\":42", message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -360,29 +346,29 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
     {
         await SeedMixedAsync();
         var limited = false;
-        var rig = Build(path => limited ? RateLimited(HttpStatusCode.TooManyRequests) : Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value))(path), telegramFails: true);
+        var rig = Build(path => limited ? RateLimited(HttpStatusCode.TooManyRequests) : Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value))(path), inboxFails: true);
         var store = new AutopsyStore(pg.Db);
 
-        await Assert.ThrowsAsync<TelegramException>(() => rig.Job.TickAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Job.TickAsync(default));
         var calls = rig.Github.Calls.Count;
         limited = true;   // a retry that asked again would hit the limit and drop the report
 
         for (var retry = 0; retry < 3; retry++)
         {
-            await Assert.ThrowsAsync<TelegramException>(() => rig.Job.TickAsync(default));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Job.TickAsync(default));
         }
 
         Assert.Equal(calls, rig.Github.Calls.Count);
         Assert.Null((await store.LatestAsync(default))!.SentAt);
 
-        _telegramDown = false;
+        _inboxDown = false;
         await rig.Job.TickAsync(default);
 
         var sent = (await store.LatestAsync(default))!;
         Assert.NotNull(sent.SentAt);
         Assert.Equal(5, sent.Report.Items.Count);
         Assert.Equal(calls, rig.Github.Calls.Count);
-        Assert.Contains("Hype autopsy", Assert.Single(rig.Sent), StringComparison.Ordinal);
+        Assert.Contains("Hype autopsy", Assert.Single(rig.Sent).Payload!["html"]!.GetValue<string>(), StringComparison.Ordinal);
         Assert.Single(await store.ListAsync(10, default));
     }
 
@@ -390,10 +376,10 @@ public sealed class AutopsyJobTests(PostgresFixture pg) : IAsyncLifetime
     public async Task A_failed_send_keeps_the_autopsy_unsent_and_the_retry_sends_it()
     {
         await SeedMixedAsync();
-        var rig = Build(Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value)), telegramFails: true);
+        var rig = Build(Github(Mixed.ToDictionary(kv => kv.Key, kv => kv.Value)), inboxFails: true);
         var store = new AutopsyStore(pg.Db);
 
-        await Assert.ThrowsAsync<TelegramException>(() => rig.Job.TickAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Job.TickAsync(default));
 
         var stored = (await store.LatestAsync(default))!;
         Assert.Null(stored.SentAt);   // stored, so /ui/autopsy has it, but not marked sent

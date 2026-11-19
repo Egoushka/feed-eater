@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using FeedEater.Digest;
 using FeedEater.Llm;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Search;
 
@@ -26,9 +25,6 @@ public sealed partial class ArchiveAnswer(ArchiveSearch search, ItemStore items,
     private const int SourceChars = 800;
     private const int MaxAnswer = 1500;
     private const int MaxTokens = 400;
-
-    /// <summary>The Telegram reply: the answer and its cited items as HTML.</summary>
-    public async Task<OutMessage> AskAsync(string question, CancellationToken ct) => new(Render(await AnswerAsync(question, ct)));
 
     /// <summary>The answer and the cited hits, ordered by their source number.</summary>
     public async Task<AskResult> AnswerAsync(string question, CancellationToken ct)

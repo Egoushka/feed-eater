@@ -41,7 +41,7 @@ public static class ManageApi
             .Produces<StartFollowResponse>();
 
         group.MapDelete("/follows/{id:long}", async (long id, StoryFollower follower, CancellationToken ct) =>
-                await follower.CloseAsync(id, null, ct) ? Results.NoContent() : Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "No such active follow"))
+                await follower.CloseAsync(id, ct) ? Results.NoContent() : Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "No such active follow"))
             .WithName("StopFollow");
 
         group.MapGet("/feeds", ListFeedsAsync)
@@ -114,7 +114,7 @@ public static class ManageApi
 
         group.MapPost("/digest/run", async (RunDigestBody? body, DigestTrigger trigger, IOptions<FeedEaterOptions> options, CancellationToken ct) =>
             {
-                if (!Delivers(options.Value))
+                if (!options.Value.RunJobs)
                 {
                     return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "The digest job is not running");
                 }
@@ -140,9 +140,9 @@ public static class ManageApi
         return group;
     }
 
-    /// <summary>The digest and the weekly jobs run only with background jobs on and a place to deliver to.</summary>
+    /// <summary>The weekly jobs run only with background jobs on and the swipe stack to deliver to.</summary>
     private static bool Delivers(FeedEaterOptions settings) =>
-        settings.RunJobs && (settings.Telegram.Token.Length > 0 || settings.Swipe.Enabled);
+        settings.RunJobs && settings.Swipe.Enabled;
 
     private static IResult Miniflux() =>
         Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Add or remove feeds in Miniflux");

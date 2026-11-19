@@ -107,16 +107,6 @@ if (string.IsNullOrEmpty(token))
     app.Logger.LogWarning("Mcp:Token is not set; /mcp refuses every request");
 }
 
-if (feedEater.RunJobs && feedEater.Telegram.Token.Length == 0)
-{
-    app.Logger.LogWarning("FeedEater:Telegram:Token is not set; the digest and the Telegram poller are off");
-}
-
-if (feedEater.Telegram.Token.Length > 0 && feedEater.Telegram.AllowedUserId == 0)
-{
-    app.Logger.LogWarning("FeedEater:Telegram:AllowedUserId is 0: the bot only answers /start, with your Telegram id; set it and restart");
-}
-
 // Inside the API a bare status (404, 405, a body that does not bind) gets a problem body too.
 app.UseWhen(c => c.Request.Path.StartsWithSegments(ApiEndpoints.Prefix), api => api.UseStatusCodePages());
 

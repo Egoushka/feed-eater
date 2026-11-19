@@ -5,7 +5,7 @@ using FeedEater.Storage;
 namespace FeedEater.Ranking;
 
 /// <summary>
-/// Whether the learned term is on: <c>/learn on|off</c> from Telegram wins over <c>FeedEater:Taste:Learn</c>, so turning it on needs
+/// Whether the learned term is on: the setting made through the web UI or the settings API wins over <c>FeedEater:Taste:Learn</c>, so turning it on needs
 /// no deploy. The weekly review says when the learned model has pulled ahead.
 /// </summary>
 public sealed class TasteSwitch(CursorStore cursors, FeedbackStore feedback, IOptions<FeedEaterOptions> options)
@@ -58,7 +58,7 @@ public sealed class TasteSwitch(CursorStore cursors, FeedbackStore feedback, IOp
         var (heuristic, learned) = LearnedTaste.CrossValidate(data);
         return heuristic is { } h && learned is { } l && l - h >= TasteReport.RequiredGain
             ? string.Create(CultureInfo.InvariantCulture,
-                $"The learned ranking now matches your votes better than the current one ({l:0.00} vs {h:0.00}, held out). Send /learn on to use it.")
+                $"The learned ranking now matches your votes better than the current one ({l:0.00} vs {h:0.00}, held out). Turn it on in the settings to use it.")
             : null;
     }
 }

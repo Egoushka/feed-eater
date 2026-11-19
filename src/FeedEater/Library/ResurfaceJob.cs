@@ -4,7 +4,6 @@ using Microsoft.Extensions.Options;
 using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Library;
 
@@ -36,12 +35,8 @@ public sealed class ResurfaceJob(
 
             var savedAt = new DateTimeOffset(DateTime.SpecifyKind(saved.SavedAt, DateTimeKind.Utc));
             var days = (int)(now - savedAt).TotalDays;
-            var text = $"Saved {days} days ago, still unread: {WebUtility.HtmlEncode(item.Title)}";
-            var html = Uri.TryCreate(item.Url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
-                ? $"{text}\n<a href=\"{WebUtility.HtmlEncode(uri.AbsoluteUri)}\">{WebUtility.HtmlEncode(uri.AbsoluteUri)}</a>"
-                : text;
             await inbox.AddAsync(new InboxEntry($"resurface:{id}:{key}", InboxKinds.Resurface, ItemId: id,
-                Payload: new JsonObject { ["savedAt"] = savedAt.ToString("O"), ["title"] = item.Title }, ExpiresAt: now.AddDays(7)), new OutMessage(html), ct);
+                Payload: new JsonObject { ["savedAt"] = savedAt.ToString("O"), ["title"] = item.Title }, ExpiresAt: now.AddDays(7)), ct);
             added++;
         }
 

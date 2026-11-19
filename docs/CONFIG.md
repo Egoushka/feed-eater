@@ -21,10 +21,11 @@ An integration is off until its required settings are filled. An off integration
 | GitHub issues | `GitHub:Token` and `GitHub:FallbackRepo` | Ideas go to the local list (see `Ideas:Sink`); open issues are not read into project vectors and there is no weekly ideas shortlist. |
 | Karakeep | `Karakeep:BaseUrl` and `Karakeep:Token` | No 📌 button and no bookmark import. |
 | GitHub stars | `GitHub:User` | No stars import. |
-| Hype autopsy | `GitHub:User` and `Telegram:Token` | No repo snapshots and no monthly autopsy; `GitHub:Token` is optional and lifts the 60 requests an hour limit. |
+| Hype autopsy | `GitHub:User` and `Swipe:Enabled` | No repo snapshots and no monthly autopsy; `GitHub:Token` is optional and lifts the 60 requests an hour limit. |
 | Hindsight | `Hindsight:BaseUrl` | No weekly summary is sent. |
 | Release watch | `Watch:Source` or `Watch:FallbackPath` | No release watch and no release alerts. |
 | Linked pages | `Fetch:MaxPerDay` above 0 | No linked page or Hacker News comment is fetched. |
+| Push (ntfy) | `Push:NtfyUrl` and `Push:Topic` | No push message after the digest. |
 
 ## General
 
@@ -34,7 +35,7 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:DigestGiveUpAt` | `12:00:00` | Local time of day after which a digest that has not gone out is given up for the day. |
 | `FeedEater:ProfilePath` | `/config/profile.json` | Your profile: who you are, your projects and topics. A missing file means the built-in example interests are used and the digest says so. |
 | `FeedEater:RunJobs` | `true` | False stops every background job (ingest, digest, polling); the web UI and /mcp still run. |
-| `FeedEater:TimeZone` | `UTC` | IANA time zone for the digest time, quiet hours and the dates shown in the UI and Telegram, e.g. Europe/Berlin. |
+| `FeedEater:TimeZone` | `UTC` | IANA time zone for the digest time, quiet hours and the dates shown in the UI, e.g. Europe/Berlin. |
 
 ## Api
 
@@ -83,7 +84,7 @@ An integration is off until its required settings are filled. An off integration
 
 | Key | Default | Description |
 |---|---|---|
-| `FeedEater:Duel:Enabled` | `true` | False turns the twice-daily duel off: two unvoted items in one message, one tap picks the one you would rather read. Needs the Telegram bot. |
+| `FeedEater:Duel:Enabled` | `true` | False turns the twice-daily duel off: two unvoted items as one card, one tap picks the one you would rather read. Needs Swipe:Enabled. |
 | `FeedEater:Duel:PerDay` | `2` | Most duels sent per local day; later slots of the day are skipped. |
 | `FeedEater:Duel:Times` | `12:30,20:30` | Local times a duel is sent, comma separated (HH:mm). A slot missed while the service was down is sent only within 2 hours of its time. |
 
@@ -200,12 +201,21 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:PriorArt:MinSimilarity` | `0.35` | Prior-art search: cosine similarity at or above which a fact counts as relevant to the question. A fact below it is still listed, flagged not relevant, and does not count toward coverage. |
 | `FeedEater:PriorArt:StaleAfterDays` | `180` | Prior-art search: a claim recorded more than this many days ago is flagged stale. |
 
+## Push
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Push:BaseUrl` | (empty) | Public address of this web UI; the push message links to its Today page. Empty uses Api:BaseUrl. |
+| `FeedEater:Push:NtfyUrl` | (empty) | ntfy server address, e.g. https://ntfy.sh/ or your own. With the topic it turns on one push message per digest; empty turns it off. |
+| `FeedEater:Push:Token` | (empty) | ntfy access token, sent as a bearer token; empty for a topic that needs none. |
+| `FeedEater:Push:Topic` | (empty) | ntfy topic the digest message is published to. |
+
 ## Quiet
 
 | Key | Default | Description |
 |---|---|---|
 | `FeedEater:Quiet:From` | (empty) | Local time at which quiet hours start; both From and To must be set. A window may cross midnight. Empty means no quiet hours. |
-| `FeedEater:Quiet:ManualHours` | `12` | Hours a manual /quiet on lasts. |
+| `FeedEater:Quiet:ManualHours` | `12` | Hours a manual quiet mode lasts. |
 | `FeedEater:Quiet:To` | (empty) | Local time at which quiet hours end. |
 
 ## Source
@@ -248,16 +258,8 @@ An integration is off until its required settings are filled. An off integration
 
 | Key | Default | Description |
 |---|---|---|
-| `FeedEater:Taste:Learn` | `false` | Adds a learned term to the ranking. With fewer than MinVotes votes it refuses to switch on. /learn on\|off overrides this. |
+| `FeedEater:Taste:Learn` | `false` | Adds a learned term to the ranking. With fewer than MinVotes votes it refuses to switch on. The switch in the web UI settings overrides this. |
 | `FeedEater:Taste:MinVotes` | `100` | Votes needed (and 10 of each kind) before the learned term can be switched on. |
-
-## Telegram
-
-| Key | Default | Description |
-|---|---|---|
-| `FeedEater:Telegram:AllowedUserId` | `0` | Your numeric Telegram user id: the only sender the bot answers, and the chat digests go to. |
-| `FeedEater:Telegram:BaseUrl` | `https://api.telegram.org/` | Telegram Bot API URL. |
-| `FeedEater:Telegram:Token` | (empty) | Bot token from @BotFather. Without it the Telegram poller is off; the digest and the inbox jobs (duels, follows, the weekly review, ideas, the autopsy) still run when Swipe:Enabled is true, and wait in the swipe stack. |
 
 ## Watch
 
@@ -275,9 +277,8 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:WeeklyIdeas:At` | `09:00:00` | Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start. |
 | `FeedEater:WeeklyIdeas:BacklogToken` | (empty) | GitHub token that can read the backlog file; empty for a public repository. |
 | `FeedEater:WeeklyIdeas:BacklogUrl` | (empty) | GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; GitHub issues and earlier shortlists still are. |
-| `FeedEater:WeeklyIdeas:Enabled` | `true` | Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, with the top few on Telegram. Ideas are filed as GitHub issues labelled triage only after Keep (Telegram button, swipe card). Needs GitHub issues (GitHub:Token and GitHub:FallbackRepo), and Telegram or Swipe. False turns the job off. |
+| `FeedEater:WeeklyIdeas:Enabled` | `true` | Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, waiting in the swipe stack. Ideas are filed as GitHub issues labelled triage only after Keep (swipe card). Needs GitHub issues (GitHub:Token and GitHub:FallbackRepo), and Swipe. False turns the job off. |
 | `FeedEater:WeeklyIdeas:MaxFiled` | `5` | Most ideas filed as GitHub issues per week. |
-| `FeedEater:WeeklyIdeas:TopInMessage` | `3` | Ideas listed in the Telegram message, best first. |
 
 ## Weights
 

@@ -4,7 +4,6 @@ using FeedEater.Library;
 using Microsoft.Extensions.Options;
 using FeedEater.Ranking;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 using FeedEater.Ui;
 
 namespace FeedEater.Swipe;
@@ -31,7 +30,7 @@ internal sealed record Queued(string Kind, long RefId, string? Category, string 
 /// <summary>Starts, resumes and ends sessions, hands out the cards and applies what the owner does with them. Every id the client names is a position in the session's own queue.</summary>
 public sealed class SwipeService(
     SwipeStore store, RecallStore recall, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
-    InboxStore inbox, InboxCards inboxCards, SwipeActStore acts, FollowStore follows, WeeklyIdeaStore ideas, CallbackHandler callbacks, LibraryService library, LibraryStore libraryStore, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
+    InboxStore inbox, InboxCards inboxCards, SwipeActStore acts, FollowStore follows, WeeklyIdeaStore ideas, ItemActions callbacks, LibraryService library, LibraryStore libraryStore, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
 {
     public static readonly string[] Acts = ["idea", "save", "share", "like", "dislike", "open"];
     private static readonly string[] RecallActs = ["good", "again"];

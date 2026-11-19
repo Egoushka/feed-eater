@@ -10,11 +10,12 @@ using FeedEater.Library;
 using FeedEater.Memory;
 using FeedEater.Issues;
 using FeedEater.Profiles;
+using FeedEater.Push;
 using FeedEater.Review;
+using FeedEater.Swipe;
 using FeedEater.Watch;
 using FeedEater.WeeklyIdeas;
 using FeedEater.Signals;
-using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
 
@@ -29,17 +30,19 @@ public sealed class CompositionTests
         ["FeedEater:Watch:FallbackPath"] = "/watch.json",
         ["FeedEater:GitHub:Token"] = "github-token",
         ["FeedEater:GitHub:FallbackRepo"] = "octo/feed",
+        ["FeedEater:Push:NtfyUrl"] = "http://ntfy/",
+        ["FeedEater:Push:Topic"] = "feed",
     };
 
     /// <summary>Builds the container the way the host does, but never starts it.</summary>
-    private static IHost Build(bool runJobs, string telegramToken = "123:test", IReadOnlyDictionary<string, string?>? extra = null)
+    private static IHost Build(bool runJobs, IReadOnlyDictionary<string, string?>? extra = null)
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:FeedEater"] = "Host=localhost;Database=unused",
             ["FeedEater:RunJobs"] = runJobs.ToString(),
-            ["FeedEater:Telegram:Token"] = telegramToken,
+            ["FeedEater:Swipe:Enabled"] = "true",
         });
         builder.Configuration.AddInMemoryCollection(extra ?? new Dictionary<string, string?>());
         builder.Services.AddFeedEater(builder.Configuration);
@@ -49,12 +52,15 @@ public sealed class CompositionTests
     private static Type[] Jobs(IHost host) => host.Services.GetServices<IHostedService>()
         .Select(s => s.GetType()).Where(t => t.Namespace!.StartsWith("FeedEater", StringComparison.Ordinal)).ToArray();
 
+    private static void AssertJobs(Type[] expected, IHost host) =>
+        Assert.Equal(expected.Select(t => t.Name).Order(StringComparer.Ordinal), Jobs(host).Select(t => t.Name).Order(StringComparer.Ordinal));
+
     [Fact]
     public void Every_background_job_resolves_when_jobs_are_enabled_and_every_integration_is_configured()
     {
         using var host = Build(runJobs: true, extra: AllIntegrations);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(WeeklyIdeasJob), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(ResurfaceJob), typeof(RepoSnapshotJob), typeof(AutopsyJob) }, Jobs(host));
+        AssertJobs(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(WeeklyReview), typeof(WeeklyIdeasJob), typeof(DuelJob), typeof(FollowJob), typeof(ResurfaceJob), typeof(RepoSnapshotJob), typeof(AutopsyJob), typeof(PushJob), typeof(CategoryBuilder), typeof(SwipeContentJob) }, host);
     }
 
     [Fact]
@@ -66,17 +72,17 @@ public sealed class CompositionTests
     }
 
     [Fact]
-    public void Digest_and_poller_are_not_registered_without_a_token()
+    public void Without_swipe_the_digest_runs_and_the_inbox_jobs_do_not()
     {
-        using var host = Build(runJobs: true, telegramToken: "", extra: AllIntegrations);
+        using var host = Build(runJobs: true, extra: new Dictionary<string, string?>(AllIntegrations) { ["FeedEater:Swipe:Enabled"] = "false" });
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(SignalJob), typeof(WeeklyRetain), typeof(ReleaseWatcher) }, Jobs(host));
+        AssertJobs(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(SignalJob), typeof(DigestJob), typeof(WeeklyRetain), typeof(ReleaseWatcher), typeof(PushJob) }, host);
     }
 
     [Fact]
-    public void With_swipe_and_no_Telegram_the_inbox_jobs_and_the_digest_run_and_the_poller_does_not()
+    public void With_swipe_the_inbox_jobs_and_the_digest_run()
     {
-        using var host = Build(runJobs: true, telegramToken: "", extra: new Dictionary<string, string?>
+        using var host = Build(runJobs: true, extra: new Dictionary<string, string?>
         {
             ["FeedEater:Swipe:Enabled"] = "true",
             ["FeedEater:Duel:Enabled"] = "true",
@@ -87,7 +93,6 @@ public sealed class CompositionTests
         Assert.Contains(typeof(WeeklyReview), hosted);
         Assert.Contains(typeof(DuelJob), hosted);
         Assert.Contains(typeof(FollowJob), hosted);
-        Assert.DoesNotContain(typeof(TelegramPoller), hosted);
         Assert.Contains(typeof(DigestJob), hosted);
     }
 
@@ -96,7 +101,7 @@ public sealed class CompositionTests
     {
         using var host = Build(runJobs: true);
 
-        Assert.Equivalent(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(TelegramPoller), typeof(FollowJob), typeof(ResurfaceJob) }, Jobs(host));
+        AssertJobs(new[] { typeof(Ingestor), typeof(ProfileBuilder), typeof(LibraryEnricher), typeof(CategoryBuilder), typeof(SwipeContentJob), typeof(DigestJob), typeof(WeeklyReview), typeof(DuelJob), typeof(FollowJob), typeof(ResurfaceJob) }, host);
     }
 
     [Fact]
@@ -133,13 +138,13 @@ public sealed class CompositionTests
     }
 
     [Fact]
-    public void The_follow_job_needs_a_bot_token_and_the_setting_on()
+    public void The_follow_job_needs_swipe_and_the_setting_on()
     {
         using var off = Build(runJobs: true, extra: new Dictionary<string, string?> { ["FeedEater:Follow:Enabled"] = "false" });
-        using var noBot = Build(runJobs: true, telegramToken: "");
+        using var noSwipe = Build(runJobs: true, extra: new Dictionary<string, string?> { ["FeedEater:Swipe:Enabled"] = "false" });
 
         Assert.DoesNotContain(typeof(FollowJob), Jobs(off));
-        Assert.DoesNotContain(typeof(FollowJob), Jobs(noBot));
+        Assert.DoesNotContain(typeof(FollowJob), Jobs(noSwipe));
     }
 
     [Fact]
@@ -161,8 +166,8 @@ public sealed class CompositionTests
 
         Assert.NotNull(host.Services.GetRequiredService<DigestRun>());
         Assert.NotNull(host.Services.GetRequiredService<IdeaFiler>());
-        Assert.NotNull(host.Services.GetRequiredService<CallbackHandler>());
-        Assert.NotNull(host.Services.GetRequiredService<ReplyHandler>());
+        Assert.NotNull(host.Services.GetRequiredService<ItemActions>());
+        Assert.NotNull(host.Services.GetRequiredService<PushNotifier>());
         Assert.NotEmpty(Jobs(host));
     }
 }

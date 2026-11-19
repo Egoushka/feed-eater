@@ -9,7 +9,7 @@ public sealed partial class SetupFilesTests
 {
     private static readonly string[] RequiredKeys =
     [
-        "POSTGRES_PASSWORD", "Mcp__Token", "FeedEater__Llm__ApiKey", "FeedEater__Telegram__Token", "FeedEater__Telegram__AllowedUserId",
+        "POSTGRES_PASSWORD", "Mcp__Token", "FeedEater__Llm__ApiKey",
     ];
 
     private static readonly string Env = File.ReadAllText(RepoRoot.File(".env.example"));
@@ -57,8 +57,7 @@ public sealed partial class SetupFilesTests
         var set = Assignment().Matches(Env).Where(m => !m.Value.StartsWith('#')).ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value.Trim());
 
         Assert.All(RequiredKeys, k => Assert.True(set.ContainsKey(k), $"{k} is not set in .env.example"));
-        Assert.All(new[] { "POSTGRES_PASSWORD", "Mcp__Token", "FeedEater__Llm__ApiKey", "FeedEater__Telegram__Token" }, k => Assert.Equal("", set[k]));
-        Assert.Equal("0", set["FeedEater__Telegram__AllowedUserId"]);
+        Assert.All(new[] { "POSTGRES_PASSWORD", "Mcp__Token", "FeedEater__Llm__ApiKey" }, k => Assert.Equal("", set[k]));
         Assert.Contains("POSTGRES_PASSWORD", Compose, StringComparison.Ordinal);
     }
 
@@ -83,7 +82,7 @@ public sealed partial class SetupFilesTests
 
         var options = new ConfigurationBuilder().AddInMemoryCollection(values).Build().GetSection(FeedEaterOptions.Section).Get<FeedEaterOptions>()!;
 
-        Assert.Equal(0, options.Telegram.AllowedUserId);
+        Assert.Equal("", options.Push.NtfyUrl);
         Assert.Equal("https://api.openai.com/v1/", options.Llm.BaseUrl);
         Assert.NotNull(options.Zone);
     }

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Dapper;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -8,7 +7,6 @@ using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Issues;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
 
@@ -18,9 +16,7 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
     // 2026-10-06 is in EEST (UTC+3).
     private static DateTimeOffset Kyiv(int hour, int minute = 0) => new(2026, 10, 6, hour, minute, 0, TimeSpan.FromHours(3));
 
-    private readonly List<(string Method, string Body)> _telegram = [];
-    private bool _telegramFails;
-    private bool _editFails;
+    private bool _inboxFails;
 
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
@@ -57,55 +53,31 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         return ids;
     }
 
-    private (DuelJob Job, FakeTimeProvider Time, List<string> Sent) BuildJob(DateTimeOffset now, int perDay = 2, TimeSpan? quietFrom = null, TimeSpan? quietTo = null, string telegramToken = "T")
+    private sealed class FlakyInbox(InboxService inner, Func<bool> fails) : IInbox
+    {
+        public Task<InboxPost> AddAsync(InboxEntry entry, CancellationToken ct) =>
+            fails() ? throw new InvalidOperationException("inbox down") : inner.AddAsync(entry, ct);
+    }
+
+    private (DuelJob Job, FakeTimeProvider Time) BuildJob(DateTimeOffset now, int perDay = 2, TimeSpan? quietFrom = null, TimeSpan? quietTo = null)
     {
         var time = new FakeTimeProvider(now);
-        var sent = new List<string>();
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv",
-            Telegram = new TelegramOptions { Token = telegramToken, AllowedUserId = 42 },
             Duel = new DuelOptions { PerDay = perDay },
             Quiet = new QuietOptions { From = quietFrom, To = quietTo },
         });
-        var stub = new StubHandler((_, body) =>
-        {
-            if (_telegramFails)
-            {
-                return StubHandler.Json("""{"ok":false,"description":"Too Many Requests"}""");
-            }
-
-            sent.Add(body);
-            return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
-        });
-        var telegram = new TelegramClient(stub.Client("http://tg/botT/"));
+        var inbox = new FlakyInbox(new InboxService(new InboxStore(pg.Db), time), () => _inboxFails);
         var job = new DuelJob(
-            new DuelStore(pg.Db), new InboxService(new InboxStore(pg.Db), telegram, options, time), new QuietHours(new CursorStore(pg.Db), options, time),
+            new DuelStore(pg.Db), inbox, new QuietHours(new CursorStore(pg.Db), options, time),
             new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DuelJob>.Instance);
-        return (job, time, sent);
+        return (job, time);
     }
 
-    private CallbackHandler BuildHandler()
-    {
-        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42 } });
-        var telegram = new TelegramClient(new StubHandler((request, body) =>
-        {
-            var method = request.RequestUri!.Segments[^1];
-            _telegram.Add((method, body));
-            return method == "editMessageText" && _editFails
-                ? StubHandler.Json("""{"ok":false,"description":"Bad Request: message can't be edited"}""")
-                : StubHandler.Json("""{"ok":true,"result":true}""");
-        }).Client("http://tg/botT/"));
-        var items = new ItemStore(pg.Db);
-        var feedback = new FeedbackStore(pg.Db);
-        IIdeaSink sink = new GitHubIdeaSink(new GitHubIssues(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://github/")), options);
-        var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
-        return new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), Seed.Library(pg, options), options, NullLogger<CallbackHandler>.Instance);
-    }
+    private Task<int> SentAsync() => ScalarAsync<int>("select count(*)::int from inbox where kind = 'duel'");
 
-    private static TgCallback Tap(long duelId, char pick, long from = 42) => new("cb1", from, 42, 7, CallbackData.Duel(duelId, pick));
-
-    private string Answers() => string.Join('\n', _telegram.Where(t => t.Method == "answerCallbackQuery").Select(t => t.Body));
+    private static Task<DuelAnswer> AnswerAsync(DuelStore store, long duel, char pick) => store.AnswerAsync(duel, pick, default);
 
     private sealed record Vote(short Value, float Weight);
 
@@ -114,8 +86,6 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         await using var c = await pg.Db.DataSource.OpenConnectionAsync();
         return await c.QuerySingleOrDefaultAsync<Vote>("select value, weight from votes where item_id = @itemId", new { itemId });
     }
-
-    private static string Text(string body) => JsonSerializer.Deserialize<JsonElement>(body).GetProperty("text").GetString()!;
 
     [Theory]
     [InlineData(12, 29, null)]
@@ -140,10 +110,10 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Each_slot_sends_one_duel_with_three_buttons_and_the_second_slot_a_new_pair()
+    public async Task Each_slot_adds_one_duel_and_the_second_slot_a_new_pair()
     {
         await PoolAsync(11);
-        var (job, time, sent) = BuildJob(Kyiv(12, 30));
+        var (job, time) = BuildJob(Kyiv(12, 30));
 
         await job.TickAsync(default);
         await job.TickAsync(default);
@@ -151,12 +121,7 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Equal(2, sent.Count);
-        Assert.Contains("first", sent[0], StringComparison.Ordinal);
-        Assert.Contains("\"callback_data\":\"d:1:a\"", sent[0], StringComparison.Ordinal);
-        Assert.Contains("\"callback_data\":\"d:1:b\"", sent[0], StringComparison.Ordinal);
-        Assert.Contains("\"callback_data\":\"d:1:s\"", sent[0], StringComparison.Ordinal);
-        Assert.Contains("\"callback_data\":\"d:2:a\"", sent[1], StringComparison.Ordinal);
+        Assert.Equal(2, await SentAsync());
         var pairs = await new DuelStore(pg.Db).SeenPairsAsync(default);
         Assert.Equal(2, pairs.Count);
     }
@@ -165,27 +130,26 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
     public async Task A_duel_is_an_inbox_entry_with_both_items()
     {
         await PoolAsync(11);
-        var (job, _, sent) = BuildJob(Kyiv(13));
+        var (job, _) = BuildJob(Kyiv(13));
 
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Single(sent);
+        Assert.Equal(1, await SentAsync());
         var duel = await ScalarAsync<long>("select id from duels");
         Assert.Equal("duel", await ScalarAsync<string>("select kind from inbox where key = @k", new { k = $"duel:{duel}" }));
         Assert.Equal(duel, await ScalarAsync<long>("select ref_id from inbox where key = @k", new { k = $"duel:{duel}" }));
     }
 
     [Fact]
-    public async Task Without_Telegram_the_duel_is_kept_and_not_marked_failed()
+    public async Task A_delivered_duel_is_not_marked_failed()
     {
         await PoolAsync(11);
-        var (job, _, sent) = BuildJob(Kyiv(13), telegramToken: "");
+        var (job, _) = BuildJob(Kyiv(13));
 
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Empty(sent);
         Assert.Null(await ScalarAsync<DateTime?>("select send_failed_at from duels"));
         Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from inbox where kind = 'duel'"));
     }
@@ -197,19 +161,19 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
     public async Task A_slot_missed_while_down_is_sent_at_start_only_within_two_hours(int hour, int minute, int expected)
     {
         await PoolAsync(11);
-        var (job, _, sent) = BuildJob(Kyiv(hour, minute));
+        var (job, _) = BuildJob(Kyiv(hour, minute));
 
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Equal(expected, sent.Count);
+        Assert.Equal(expected, await SentAsync());
     }
 
     [Fact]
     public async Task No_more_than_PerDay_are_sent_and_a_skipped_slot_is_not_caught_up()
     {
         await PoolAsync(11);
-        var (job, time, sent) = BuildJob(Kyiv(12, 30), perDay: 1);
+        var (job, time) = BuildJob(Kyiv(12, 30), perDay: 1);
         var cursors = new CursorStore(pg.Db);
 
         await job.TickAsync(default);
@@ -218,7 +182,7 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         time.SetUtcNow(Kyiv(21, 30));
         await job.TickAsync(default);
 
-        Assert.Single(sent);
+        Assert.Equal(1, await SentAsync());
         Assert.Equal("2026-10-06@20:30", await cursors.GetAsync("job:duel", default));
     }
 
@@ -227,40 +191,40 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
     {
         var ids = await PoolAsync(11);
         await new DuelStore(pg.Db).CreateAsync(ids[0], ids[1], Kyiv(20, 30).AddDays(-1), default);
-        var (job, _, sent) = BuildJob(Kyiv(12, 30), perDay: 1);
+        var (job, _) = BuildJob(Kyiv(12, 30), perDay: 1);
 
         await job.TickAsync(default);
 
-        Assert.Single(sent);
+        Assert.Equal(1, await SentAsync());
     }
 
     [Fact]
     public async Task Quiet_hours_hold_a_duel_until_they_end_if_that_is_still_within_the_slots_two_hours()
     {
         await PoolAsync(11);
-        var (job, time, sent) = BuildJob(Kyiv(12, 30), quietFrom: new TimeSpan(12, 0, 0), quietTo: new TimeSpan(14, 0, 0));
+        var (job, time) = BuildJob(Kyiv(12, 30), quietFrom: new TimeSpan(12, 0, 0), quietTo: new TimeSpan(14, 0, 0));
 
         await job.TickAsync(default);
-        Assert.Empty(sent);
+        Assert.Equal(0, await SentAsync());
 
         time.SetUtcNow(Kyiv(14, 5));
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Single(sent);
+        Assert.Equal(1, await SentAsync());
     }
 
     [Fact]
     public async Task A_pair_that_was_sent_is_not_offered_again_even_when_it_is_the_only_one_in_the_band()
     {
         await PoolAsync(6);
-        var (job, time, sent) = BuildJob(Kyiv(12, 30));
+        var (job, time) = BuildJob(Kyiv(12, 30));
 
         await job.TickAsync(default);
         time.SetUtcNow(Kyiv(20, 30));
         await job.TickAsync(default);
 
-        Assert.Single(sent);
+        Assert.Equal(1, await SentAsync());
         Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from duels where answered_at is null"));
     }
 
@@ -268,48 +232,42 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
     public async Task With_fewer_than_six_eligible_items_nothing_is_sent_and_the_slot_is_done()
     {
         await PoolAsync(5);
-        var (job, _, sent) = BuildJob(Kyiv(12, 30));
+        var (job, _) = BuildJob(Kyiv(12, 30));
 
         await job.TickAsync(default);
 
-        Assert.Empty(sent);
+        Assert.Equal(0, await SentAsync());
         Assert.Equal("2026-10-06@12:30", await new CursorStore(pg.Db).GetAsync("job:duel", default));
     }
 
     [Fact]
-    public async Task A_failed_send_keeps_the_duel_so_a_delivered_message_still_works_and_the_retry_takes_another_pair()
+    public async Task A_failed_add_keeps_the_duel_marked_failed_and_the_retry_takes_another_pair()
     {
         await PoolAsync(11);
-        var (job, _, sent) = BuildJob(Kyiv(12, 30), perDay: 1);
-        _telegramFails = true;
+        var (job, _) = BuildJob(Kyiv(12, 30), perDay: 1);
+        _inboxFails = true;
 
-        await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => job.TickAsync(default));
         Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from duels where send_failed_at is not null"));
         Assert.Null(await new CursorStore(pg.Db).GetAsync("job:duel", default));
 
-        // Telegram may have delivered it before the call failed: the buttons name duel 1.
-        await BuildHandler().HandleAsync(Tap(1, 'a'), default);
-        Assert.DoesNotContain("No such duel", Answers(), StringComparison.Ordinal);
-        Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from votes where value = 1"));
-
-        _telegramFails = false;
+        _inboxFails = false;
         await job.TickAsync(default);   // the failed one does not count toward the day's cap
 
-        Assert.Single(sent);
-        Assert.Contains("\"callback_data\":\"d:2:a\"", sent[0], StringComparison.Ordinal);
+        Assert.Equal(1, await SentAsync());
         Assert.Equal(2, (await new DuelStore(pg.Db).SeenPairsAsync(default)).Count);
     }
 
     [Fact]
-    public async Task A_pair_that_always_fails_to_send_is_not_picked_again_by_the_next_attempts()
+    public async Task A_pair_that_always_fails_to_be_added_is_not_picked_again_by_the_next_attempts()
     {
         await PoolAsync(11);
-        var (job, _, _) = BuildJob(Kyiv(12, 30));
-        _telegramFails = true;
+        var (job, _) = BuildJob(Kyiv(12, 30));
+        _inboxFails = true;
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => job.TickAsync(default));
         }
 
         Assert.Equal(3, (await new DuelStore(pg.Db).SeenPairsAsync(default)).Count);
@@ -340,44 +298,22 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         Assert.All(pool, i => Assert.Equal("Feed 1", i.Feed));
     }
 
-    [Fact]
-    public void Titles_feeds_and_links_are_escaped_and_clipped_in_the_duel_and_after_the_tap()
-    {
-        var hostile = new DuelItem { Id = 1, StoryId = 1, Title = "<script>alert(1)</script> & \"q\"", Feed = "<b>feed</b>", Url = "https://e.example/?a=\"><i>" };
-        var plain = new DuelItem { Id = 2, StoryId = 2, Title = new string('x', 500), Feed = "", Url = "javascript:alert(1)" };
-
-        var message = DuelFormatter.Message(9, hostile, plain);
-
-        Assert.DoesNotContain("<script>", message.Html, StringComparison.Ordinal);
-        Assert.DoesNotContain("<b>feed</b>", message.Html, StringComparison.Ordinal);
-        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;q&quot;", message.Html, StringComparison.Ordinal);
-        Assert.Contains("href=\"https://e.example/?a=&quot;&gt;&lt;i&gt;\"", message.Html, StringComparison.Ordinal);
-        Assert.Contains("&lt;b&gt;feed&lt;/b&gt;", message.Html, StringComparison.Ordinal);
-        Assert.DoesNotContain("javascript:", message.Html, StringComparison.Ordinal);
-        Assert.DoesNotContain(new string('x', 400), message.Html, StringComparison.Ordinal);
-        Assert.Equal(["d:9:a", "d:9:b", "d:9:s"], message.Keyboard!.Single().Select(b => b.Data));
-        Assert.True(message.Keyboard!.Single().All(b => System.Text.Encoding.UTF8.GetByteCount(b.Data) <= 64));
-        Assert.Equal("You picked &lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;q&quot;", DuelFormatter.Picked(hostile.Title));
-        Assert.Equal("Skipped", DuelFormatter.Picked(null));
-    }
-
     [Theory]
     [InlineData('a', 0, 1)]
     [InlineData('b', 1, 0)]
     public async Task The_winner_gets_a_thumbs_up_and_the_loser_a_thumbs_down_at_half_weight(char pick, int winner, int loser)
     {
         var ids = new[] { await PoolItemAsync(0, "Alpha <b>"), await PoolItemAsync(1, "Beta") };
-        var duel = await new DuelStore(pg.Db).CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
+        var store = new DuelStore(pg.Db);
+        var duel = await store.CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
 
-        await BuildHandler().HandleAsync(Tap(duel, pick), default);
+        var answer = await AnswerAsync(store, duel, pick);
 
+        Assert.Equal(DuelOutcome.Answered, answer.Outcome);
+        Assert.Equal(winner == 0 ? "Alpha <b>" : "Beta", answer.Title);
         Assert.Equal(new Vote(1, 1f), await VoteAsync(ids[winner]));
         Assert.Equal(new Vote(-1, 0.5f), await VoteAsync(ids[loser]));
         Assert.Equal(ids[winner], await ScalarAsync<long>("select winner from duels where id = @duel", new { duel }));
-        var edit = _telegram.Single(t => t.Method == "editMessageText").Body;
-        Assert.Equal("You picked " + (winner == 0 ? "Alpha &lt;b&gt;" : "Beta"), Text(edit));
-        Assert.DoesNotContain("reply_markup", edit, StringComparison.Ordinal);
-        Assert.Contains("\"message_id\":7", edit, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -387,13 +323,13 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         var feedback = new FeedbackStore(pg.Db);
         await feedback.SetVoteAsync(ids[0], -1, default, weight: 2);
         await feedback.SetVoteAsync(ids[1], 1, default, weight: 3);
-        var duel = await new DuelStore(pg.Db).CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
+        var store = new DuelStore(pg.Db);
+        var duel = await store.CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
 
-        await BuildHandler().HandleAsync(Tap(duel, 'a'), default);
+        await AnswerAsync(store, duel, 'a');
 
         Assert.Equal(new Vote(-1, 2f), await VoteAsync(ids[0]));
         Assert.Equal(new Vote(1, 3f), await VoteAsync(ids[1]));
-        Assert.Contains("You picked", _telegram.Single(t => t.Method == "editMessageText").Body, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -403,59 +339,35 @@ public sealed class DuelTests(PostgresFixture pg) : IAsyncLifetime
         var store = new DuelStore(pg.Db);
         var duel = await store.CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
 
-        await BuildHandler().HandleAsync(Tap(duel, 's'), default);
+        var answer = await AnswerAsync(store, duel, 's');
 
+        Assert.Null(answer.Title);
         Assert.Equal(0, await ScalarAsync<int>("select count(*)::int from votes"));
         Assert.Equal(1, await ScalarAsync<int>("select count(*)::int from duels where answered_at is not null and winner is null"));
-        Assert.Equal("Skipped", Text(_telegram.Single(t => t.Method == "editMessageText").Body));
         Assert.Contains((ids[0], ids[1]), await store.SeenPairsAsync(default));
     }
 
     [Fact]
-    public async Task Someone_elses_tap_changes_nothing()
+    public async Task A_second_answer_is_ignored_and_does_not_overwrite_a_vote_cast_since()
     {
         var ids = new[] { await PoolItemAsync(0), await PoolItemAsync(1) };
-        var duel = await new DuelStore(pg.Db).CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
+        var store = new DuelStore(pg.Db);
+        var duel = await store.CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
 
-        await BuildHandler().HandleAsync(Tap(duel, 'a', from: 7), default);
-
-        Assert.Equal(0, await ScalarAsync<int>("select count(*)::int from votes"));
-        Assert.Null(await ScalarAsync<DateTime?>("select answered_at from duels where id = @duel", new { duel }));
-        Assert.DoesNotContain(_telegram, t => t.Method == "editMessageText");
-        Assert.Contains("Not for you.", Answers(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task A_second_tap_is_ignored_and_does_not_overwrite_a_vote_cast_since()
-    {
-        var ids = new[] { await PoolItemAsync(0), await PoolItemAsync(1) };
-        var duel = await new DuelStore(pg.Db).CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
-        var handler = BuildHandler();
-
-        await handler.HandleAsync(Tap(duel, 'a'), default);
+        await AnswerAsync(store, duel, 'a');
         await new FeedbackStore(pg.Db).SetVoteAsync(ids[1], 1, default, weight: 3);
-        await handler.HandleAsync(Tap(duel, 'b'), default);
+        var second = await AnswerAsync(store, duel, 'b');
 
+        Assert.Equal(DuelOutcome.AlreadyAnswered, second.Outcome);
         Assert.Equal(new Vote(1, 1f), await VoteAsync(ids[0]));
         Assert.Equal(new Vote(1, 3f), await VoteAsync(ids[1]));
-        Assert.Equal(1, _telegram.Count(t => t.Method == "editMessageText"));
-        Assert.Contains("Already answered", Answers(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task A_tap_on_a_duel_that_does_not_exist_is_answered_and_a_failed_edit_does_not_lose_the_votes()
+    public async Task An_answer_to_a_duel_that_does_not_exist_says_so()
     {
-        var handler = BuildHandler();
-        await handler.HandleAsync(Tap(99, 'a'), default);
-        Assert.Contains("No such duel", Answers(), StringComparison.Ordinal);
+        var answer = await AnswerAsync(new DuelStore(pg.Db), 99, 'a');
 
-        var ids = new[] { await PoolItemAsync(0), await PoolItemAsync(1) };
-        var duel = await new DuelStore(pg.Db).CreateAsync(ids[0], ids[1], DateTimeOffset.UtcNow, default);
-        _editFails = true;
-
-        await handler.HandleAsync(Tap(duel, 'a'), default);
-
-        Assert.Equal(new Vote(1, 1f), await VoteAsync(ids[0]));
-        Assert.Contains("saved", Answers(), StringComparison.Ordinal);
+        Assert.Equal(DuelOutcome.NoDuel, answer.Outcome);
     }
 }

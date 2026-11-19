@@ -11,7 +11,6 @@ using FeedEater.Loops;
 using FeedEater.Inbox;
 using FeedEater.Issues;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 using FeedEater.WeeklyIdeas;
 
 namespace FeedEater.Tests;
@@ -66,12 +65,11 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
 
-    private (WeeklyIdeasJob Job, StubHandler GitHub, StubHandler Telegram) Build(TimeProvider time, string backlogUrl = "http://backlog/file")
+    private (WeeklyIdeasJob Job, StubHandler GitHub) Build(TimeProvider time, string backlogUrl = "http://backlog/file")
     {
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv",
-            Telegram = new TelegramOptions { AllowedUserId = 42, Token = "T" },
             GitHub = new GitHubOptions { Token = "t", FallbackRepo = "octo/feed" },
             WeeklyIdeas = new WeeklyIdeasOptions { BacklogUrl = backlogUrl },
         });
@@ -88,16 +86,15 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
             _chatBodies.Add(body);
             return StubHandler.Json(JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = _chatReply } } }, usage = new { prompt_tokens = 10, completion_tokens = 5 } }));
         });
-        var telegram = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
         var backlog = new StubHandler((_, _) => _backlog is null ? StubHandler.Json("{}", HttpStatusCode.BadGateway) : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(_backlog) });
         var cursors = new CursorStore(pg.Db);
         var job = new WeeklyIdeasJob(
             new WeeklyIdeaStore(pg.Db), new FixtureGaps(() => _gapReport), new ProfileStore(pg.Db), new GitHubIssues(github.Client("http://github/")),
             new BacklogClient(backlog.Client("http://backlog/"), options),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
-            new TelegramClient(telegram.Client("http://tg/botT/")), new InboxStore(pg.Db), new QuietHours(cursors, options, time),
+            new InboxStore(pg.Db), new QuietHours(cursors, options, time),
             cursors, options, new LoopHealth(time), time, new ListLogger<WeeklyIdeasJob>(_logs));
-        return (job, github, telegram);
+        return (job, github);
     }
 
     private bool Gate()
@@ -118,7 +115,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await SeedAsync();
         _chatReply = """{"ideas":[{"lead":1,"idea":"Turn on caching","project":"octo/homelab","where":"homelab-gitops","effort":"S","why":"Saves requests."}]}""";
         var time = new FakeTimeProvider(Monday);
-        var (job, github, _) = Build(time);
+        var (job, github) = Build(time);
         await job.TickAsync(default);
         await using var c = await pg.Db.DataSource.OpenConnectionAsync();
         var id = await c.ExecuteScalarAsync<long>("select id from inbox where kind = 'idea'");
@@ -146,11 +143,11 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_shortlist_stages_ideas_and_files_nothing_and_the_top_go_to_Telegram_with_buttons()
+    public async Task The_shortlist_stages_ideas_and_files_nothing_and_waits_in_the_inbox()
     {
         await SeedAsync();
         _chatReply = """{"ideas":[{"lead":1,"idea":"Turn on caching","project":"octo/homelab","where":"homelab-gitops","effort":"S","why":"Saves requests."}]}""";
-        var (job, github, telegram) = Build(new FakeTimeProvider(Monday));
+        var (job, github) = Build(new FakeTimeProvider(Monday));
 
         await job.TickAsync(default);
 
@@ -159,11 +156,6 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal(0, await ScalarAsync<int>("select count(*) from weekly_ideas"));
         Assert.Contains("homelab-gitops", await ScalarAsync<string>("select payload->>'body' from inbox where kind = 'idea'"), StringComparison.Ordinal);
         Assert.Equal("octo/homelab", await ScalarAsync<string>("select payload->>'project' from inbox where kind = 'idea'"));
-        var message = Assert.Single(telegram.Calls);
-        Assert.Contains("Ideas for 2026-W43", message.Body, StringComparison.Ordinal);
-        Assert.Contains("Turn on caching", message.Body, StringComparison.Ordinal);
-        Assert.Contains("ik:", message.Body, StringComparison.Ordinal);
-        Assert.Contains("id:", message.Body, StringComparison.Ordinal);
         Assert.Contains("AIS-1", _chatBodies.Single(), StringComparison.Ordinal);            // the backlog reached the model
         Assert.Contains("octo/homelab: Existing issue", _chatBodies.Single(), StringComparison.Ordinal);
         Assert.DoesNotContain("A pull request", _chatBodies.Single(), StringComparison.Ordinal);   // and octo/feed's 404 only skips its issues
@@ -176,47 +168,12 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await SeedAsync();
         await new ResearchNotesImporter(new ItemStore(pg.Db), TimeProvider.System).ImportAsync("Fixtures/research-notes", default);
         _chatReply = """{"ideas":[]}""";
-        var (job, _, _) = Build(new FakeTimeProvider(Monday));
+        var (job, _) = Build(new FakeTimeProvider(Monday));
 
         await job.TickAsync(default);
 
         Assert.Contains("Souin: HTTP cache middleware", _chatBodies.Single(), StringComparison.Ordinal);
         Assert.Contains(ResearchNotesImporter.Signal, _chatBodies.Single(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Every_staged_idea_gets_Keep_and_Drop_buttons_and_only_the_top_are_detailed()
-    {
-        var staged = Enumerable.Range(1, 5).Select(i => (new ShortlistEntry(i, $"Idea {i}", "LAB", "box", "S", $"Why {i}"), new Lead("improve", $"Source {i}", $"https://e.org/{i}", ""), (long)i)).ToList();
-
-        var message = WeeklyIdeasJob.Message("2026-W43", staged, 3);
-
-        Assert.Equal(5, message.Keyboard!.Count);
-        Assert.Equal(["ik:4", "id:4"], message.Keyboard[3].Select(b => b.Data));
-        Assert.Contains("4. Idea 4", message.Html, StringComparison.Ordinal);
-        Assert.Contains("5. Idea 5", message.Html, StringComparison.Ordinal);
-        Assert.DoesNotContain("Why 4", message.Html, StringComparison.Ordinal);
-        Assert.Contains("Why 3", message.Html, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Keep_with_the_local_sink_answers_Filed_in_the_repo_not_Saved_as_an_idea()
-    {
-        var (decisions, _, inboxId) = await StagedAsync();
-        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42, Token = "T" } });
-        var telegram = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":true}"""));
-        var client = new TelegramClient(telegram.Client("http://tg/botT/"));
-        var items = new ItemStore(pg.Db);
-        var feedback = new FeedbackStore(pg.Db);
-        var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), new LocalIdeaSink(), TimeProvider.System);
-        var callbacks = new CallbackHandler(client, feedback, filer, items, new DuelStore(pg.Db),
-            Seed.Library(pg, options), options, NullLogger<CallbackHandler>.Instance, decisions: decisions);
-
-        await callbacks.HandleAsync(new TgCallback("cb1", 42, 42, 1, CallbackData.KeepIdea(inboxId)), default);
-
-        var answer = Assert.Single(telegram.Calls).Body;
-        Assert.Contains("Filed in octo/homelab", answer, StringComparison.Ordinal);
-        Assert.DoesNotContain("Saved as an idea", answer, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -259,7 +216,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await SeedAsync();
         _chatReply = """{"ideas":[{"lead":3,"idea":"Try the bookmarked tool","project":"octo/homelab"}]}""";   // lead 3 is the bookmark
         var time = new FakeTimeProvider(Monday);
-        var (job, _, _) = Build(time);
+        var (job, _) = Build(time);
 
         await job.TickAsync(default);
         time.Advance(TimeSpan.FromDays(7));
@@ -309,18 +266,17 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         var url = await SeedAsync();
         await new WeeklyIdeaStore(pg.Db).AddAsync(new FiledIdea(FeedEater.Text.UrlCanonicalizer.Canonical(url), "2026-W42", "Earlier", "octo/homelab", 1), default);
         _chatReply = """{"ideas":[]}""";
-        var (job, github, telegram) = Build(new FakeTimeProvider(Monday));
+        var (job, github) = Build(new FakeTimeProvider(Monday));
 
         await job.TickAsync(default);
 
         Assert.DoesNotContain("Tool A adds caching", _chatBodies.Single(), StringComparison.Ordinal);
         Assert.Contains("Tool B showcase", _chatBodies.Single(), StringComparison.Ordinal);
         Assert.DoesNotContain(github.Calls, c => c.Method == HttpMethod.Post);
-        Assert.Empty(telegram.Calls);
 
         await pg.ResetAsync();
         _chatBodies.Clear();
-        var (empty, _, _) = Build(new FakeTimeProvider(Monday));
+        var (empty, _) = Build(new FakeTimeProvider(Monday));
         await empty.TickAsync(default);
         Assert.Empty(_chatBodies);
     }
@@ -331,7 +287,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await SeedAsync();
         _backlog = null;
         _chatReply = """{"ideas":[{"lead":1,"idea":"X","project":"octo/homelab"}]}""";
-        var (job, github, _) = Build(new FakeTimeProvider(Monday));
+        var (job, github) = Build(new FakeTimeProvider(Monday));
 
         await Assert.ThrowsAsync<HttpRequestException>(() => job.TickAsync(default));
 
@@ -347,7 +303,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         _gapReport = PeerGapLeadsTests.FourRows();
         _chatReply = """{"ideas":[]}""";
         var time = new FakeTimeProvider(Monday);
-        var (job, _, _) = Build(time);
+        var (job, _) = Build(time);
 
         await job.TickAsync(default);
 
@@ -377,7 +333,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         _gapReport = PeerGapLeadsTests.FourRows();
         _chatReply = """{"ideas":[]}""";
         await new WeeklyIdeaStore(pg.Db).DropAsync("feed-eater://gaps/octo/homelab/confident-pair", "2026-W42", "Earlier", "octo/homelab", default);
-        var (job, _, _) = Build(new FakeTimeProvider(Monday));
+        var (job, _) = Build(new FakeTimeProvider(Monday));
 
         await job.TickAsync(default);
 
@@ -387,11 +343,11 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_gap_idea_is_staged_for_the_sets_repo_with_its_peers_and_is_not_a_link_in_Telegram()
+    public async Task A_gap_idea_is_staged_for_the_sets_repo_with_its_peers_and_is_not_a_link()
     {
         _gapReport = PeerGapLeadsTests.FourRows();
         _chatReply = """{"ideas":[{"lead":1,"idea":"Add the confident feature","project":"octo/feed","where":"homelab","effort":"M","why":"Two peers have it."}]}""";
-        var (job, _, telegram) = Build(new FakeTimeProvider(Monday));
+        var (job, _) = Build(new FakeTimeProvider(Monday));
 
         await job.TickAsync(default);
 
@@ -401,9 +357,6 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("https://github.com/peer/a/blob/abc123/src/a.cs#L10-L20", body, StringComparison.Ordinal);
         Assert.Contains("https://github.com/peer/b/blob/abc123/src/a.cs#L10-L20", body, StringComparison.Ordinal);
         Assert.DoesNotContain("](feed-eater://", body, StringComparison.Ordinal);
-        var message = Assert.Single(telegram.Calls);
-        Assert.DoesNotContain("feed-eater://", message.Body, StringComparison.Ordinal);
-        Assert.Contains("Add the confident feature", message.Body, StringComparison.Ordinal);
         Assert.Contains(_logs, l => l.Contains("Peer-gap ideas staged (1)", StringComparison.Ordinal) && l.Contains("confident-pair", StringComparison.Ordinal));
     }
 
@@ -412,12 +365,12 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     {
         await SeedAsync();
         _chatReply = """{"ideas":[{"lead":1,"idea":"X","project":"octo/homelab"}]}""";
-        var (job, _, telegram) = Build(new FakeTimeProvider(Monday));
+        var (job, _) = Build(new FakeTimeProvider(Monday));
 
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Single(telegram.Calls);
+        Assert.Single(_chatBodies);
         Assert.Equal("2026-10-19", await new CursorStore(pg.Db).GetAsync("job:weekly-ideas", default));
     }
 
@@ -426,7 +379,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     {
         await SeedAsync();
         _chatReply = """{"ideas":[{"lead":1,"idea":"X","project":"octo/homelab"}]}""";
-        var (job, _, telegram) = Build(new FakeTimeProvider(Monday));
+        var (job, _) = Build(new FakeTimeProvider(Monday));
         var cursors = new CursorStore(pg.Db);
 
         await job.TickAsync(default);
@@ -434,7 +387,7 @@ public sealed class WeeklyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Equal(2, telegram.Calls.Count);
+        Assert.Equal(2, _chatBodies.Count);
         Assert.Null(await cursors.GetAsync(WeeklyIdeasJob.ForceCursor, default));
     }
 }

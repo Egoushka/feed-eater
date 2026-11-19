@@ -17,7 +17,7 @@ public sealed class TasteSwitchTests(PostgresFixture pg) : IAsyncLifetime
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
-    public async Task The_telegram_switch_wins_over_the_config_and_without_it_the_config_decides(bool configured, bool switched)
+    public async Task The_switch_wins_over_the_config_and_without_it_the_config_decides(bool configured, bool switched)
     {
         var taste = Build(configured);
         Assert.Equal(configured, await taste.IsOnAsync(default));
@@ -36,8 +36,8 @@ public sealed class TasteSwitchTests(PostgresFixture pg) : IAsyncLifetime
     {
         var report = new WeeklyReport(new DateTimeOffset(2026, 10, 4, 15, 30, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 11, 15, 30, 0, TimeSpan.Zero), 1, 0, 0, 0, 0, [], [], [], [], []);
 
-        var html = WeeklyFormatter.Message("2026-10-11", report, TimeZoneInfo.Utc, "Send /learn on <now>.").Html;
+        var html = WeeklyFormatter.Message("2026-10-11", report, TimeZoneInfo.Utc, "Turn it on <now>.");
 
-        Assert.EndsWith("\n\n<b>Ranking</b>\nSend /learn on &lt;now&gt;.", html, StringComparison.Ordinal);
+        Assert.EndsWith("\n\n<b>Ranking</b>\nTurn it on &lt;now&gt;.", html, StringComparison.Ordinal);
     }
 }

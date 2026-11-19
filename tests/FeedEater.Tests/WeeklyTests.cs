@@ -6,7 +6,6 @@ using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Review;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
 
@@ -138,7 +137,7 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
             Enumerable.Range(0, 12).Select(i => new WeeklyIdea(i, $"Idea <{i}>", "LAB")).ToList(),
             [new FeedCount(1, "A & B", 3)], [new FeedCount(2, "Noisy", 40)]);
 
-        var html = WeeklyFormatter.Message("2026-10-11", report, TimeZoneInfo.FindSystemTimeZoneById("Europe/Kyiv")).Html;
+        var html = WeeklyFormatter.Message("2026-10-11", report, TimeZoneInfo.FindSystemTimeZoneById("Europe/Kyiv"));
 
         Assert.StartsWith("<b>Weekly review · 4 Oct to 11 Oct</b>", html, StringComparison.Ordinal);
         Assert.Contains("10 items · 4 shown in digests · 👍 5 · 👎 1 · 💡 12", html, StringComparison.Ordinal);
@@ -152,23 +151,12 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
         Assert.True(html.Length < 4096);
     }
 
-    private (WeeklyReview Job, FakeTimeProvider Time, List<string> Sent) BuildJob(DateTimeOffset now, bool telegramFails = false)
+    private (WeeklyReview Job, FakeTimeProvider Time, List<InboxEntry> Sent) BuildJob(DateTimeOffset now, bool inboxFails = false)
     {
         var time = new FakeTimeProvider(now);
-        var sent = new List<string>();
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 } });
-        var stub = new StubHandler((_, body) =>
-        {
-            if (telegramFails)
-            {
-                return StubHandler.Json("""{"ok":false,"description":"Too Many Requests"}""");
-            }
-
-            sent.Add(body);
-            return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
-        });
-        var telegram = new TelegramClient(stub.Client("http://tg/botT/"));
-        return (new WeeklyReview(new WeeklyStore(pg.Db), new InboxService(new InboxStore(pg.Db), telegram, options, time), new QuietHours(new CursorStore(pg.Db), options, time), new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<WeeklyReview>.Instance), time, sent);
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv" });
+        var inbox = new RecordingInbox(new InboxService(new InboxStore(pg.Db), time), () => inboxFails);
+        return (new WeeklyReview(new WeeklyStore(pg.Db), inbox, new QuietHours(new CursorStore(pg.Db), options, time), new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<WeeklyReview>.Instance), time, inbox.Entries);
     }
 
     [Fact]
@@ -186,7 +174,7 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Equal(1, firstRunSent);   // a missed Sunday runs at start; the key is last Sunday's, so the figures are of the window ending now
         Assert.Equal(2, sent.Count);
-        Assert.Contains("Weekly review", sent[^1], StringComparison.Ordinal);
+        Assert.Contains("Weekly review", sent[^1].Payload!["html"]!.GetValue<string>(), StringComparison.Ordinal);
         var row = (await new WeeklyStore(pg.Db).LatestAsync(default))!;
         Assert.Equal("2026-10-11", row.WeekOf);
         Assert.NotNull(row.SentAt);
@@ -215,9 +203,9 @@ public sealed class WeeklyTests(PostgresFixture pg) : IAsyncLifetime
 
         await pg.ResetAsync();   // forget the quiet run's done-marker
         await SeedWeekAsync();
-        var (failing, _, _) = BuildJob(Until.AddMinutes(1), telegramFails: true);
-        await Assert.ThrowsAsync<TelegramException>(() => failing.TickAsync(default));
-        await Assert.ThrowsAsync<TelegramException>(() => failing.TickAsync(default));
+        var (failing, _, _) = BuildJob(Until.AddMinutes(1), inboxFails: true);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.TickAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.TickAsync(default));
 
         var row = (await new WeeklyStore(pg.Db).LatestAsync(default))!;
         Assert.Null(row.SentAt);   // stored, not marked sent, so the UI has it and the job retries

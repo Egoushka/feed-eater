@@ -10,7 +10,6 @@ using FeedEater.Memory;
 using FeedEater.Issues;
 using FeedEater.Setup;
 using FeedEater.Signals;
-using FeedEater.Telegram;
 using FeedEater.Watch;
 
 namespace FeedEater.Tests;
@@ -162,73 +161,6 @@ public sealed class SetupChecksTests
 
         Assert.Equal(CheckStatus.Fail, row.Result.Status);
         Assert.Contains("FeedEater__Llm__EmbedModel", row.Result.Fix, StringComparison.Ordinal);
-    }
-
-    // telegram
-
-    private static TelegramClient Bot(string response) => new(new StubHandler((_, _) => StubHandler.Json(response)).Client("http://tg/botT/"));
-
-    [Fact]
-    public async Task Telegram_is_ok_with_a_working_token_and_an_owner()
-    {
-        var o = Opts(x => x.Telegram = new TelegramOptions { Token = "123:abc", AllowedUserId = 42 });
-
-        var row = await RunAsync((s, opts) => new TelegramCheck(s, opts), o, s => s.AddSingleton(Bot("""{"ok":true,"result":{"username":"my_feed_bot"}}""")));
-
-        Assert.Equal(CheckStatus.Ok, row.Result.Status);
-        Assert.Equal("bot @my_feed_bot, owner id 42", row.Result.Detail);
-    }
-
-    [Fact]
-    public async Task Telegram_with_owner_id_0_is_a_failure_that_points_at_start()
-    {
-        var o = Opts(x => x.Telegram = new TelegramOptions { Token = "123:abc" });
-
-        var row = await RunAsync((s, opts) => new TelegramCheck(s, opts), o, s => s.AddSingleton(Bot("""{"ok":true,"result":{"username":"my_feed_bot"}}""")));
-
-        Assert.Equal(CheckStatus.Fail, row.Result.Status);
-        Assert.True(row.Required);
-        Assert.Contains("/start", row.Result.Fix, StringComparison.Ordinal);
-        Assert.Contains("@my_feed_bot", row.Result.Fix, StringComparison.Ordinal);
-        Assert.Contains("FeedEater__Telegram__AllowedUserId", row.Result.Fix, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Telegram_without_a_token_fails_and_names_BotFather()
-    {
-        var row = await RunAsync((s, opts) => new TelegramCheck(s, opts), Opts(), s => { });
-
-        Assert.Equal(CheckStatus.Fail, row.Result.Status);
-        Assert.Contains("@BotFather", row.Result.Fix, StringComparison.Ordinal);
-        Assert.Contains("FeedEater__Telegram__Token", row.Result.Fix, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Telegram_with_a_rejected_token_fails()
-    {
-        var o = Opts(x => x.Telegram = new TelegramOptions { Token = "123:abc", AllowedUserId = 42 });
-
-        var row = await RunAsync((s, opts) => new TelegramCheck(s, opts), o, s => s.AddSingleton(Bot("""{"ok":false,"error_code":401,"description":"Unauthorized"}""")));
-
-        Assert.Equal(CheckStatus.Fail, row.Result.Status);
-        Assert.Contains("Unauthorized", row.Result.Detail, StringComparison.Ordinal);
-        Assert.Contains("copy it again", row.Result.Fix, StringComparison.Ordinal);
-    }
-
-    // profile
-
-    [Fact]
-    public async Task A_valid_profile_is_ok_and_the_example_is_a_warning_not_a_failure()
-    {
-        var valid = await RunAsync(new ProfileCheck(Options.Create(Opts(x => x.ProfilePath = "Fixtures/profile.json"))));
-        var example = await RunAsync(new ProfileCheck(Options.Create(Opts(x => x.ProfilePath = "/nope/profile.json"))));
-
-        Assert.Equal(CheckStatus.Ok, valid.Result.Status);
-        Assert.Contains("3 projects, 2 topics", valid.Result.Detail, StringComparison.Ordinal);
-        Assert.Equal(CheckStatus.Warn, example.Result.Status);
-        Assert.False(example.Required);
-        Assert.Contains("example interests in use", example.Result.Detail, StringComparison.Ordinal);
-        Assert.Contains("/nope/profile.json", example.Result.Fix, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -521,7 +453,7 @@ public sealed class SetupChecksTests
     {
         var options = Opts(x =>
         {
-            x.Telegram = new TelegramOptions { Token = "123456:telegram-secret" };
+            x.Push = new PushOptions { Token = "push-secret-token" };
             x.Karakeep = new KarakeepOptions { Token = "karakeep-secret-key" };
         });
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -530,13 +462,13 @@ public sealed class SetupChecksTests
             ["ConnectionStrings:FeedEater"] = "Host=db;Database=feed;Username=feed;Password=hunter2hunter2",
         }).Build();
         var leaky = new FakeCheck("leaky", _ => Task.FromResult(CheckResult.Fail(
-            $"401 for key {Key}\nand token 123456:telegram-secret, karakeep-secret-key, mcp-secret-token, hunter2hunter2",
+            $"401 for key {Key}\nand token push-secret-token, karakeep-secret-key, mcp-secret-token, hunter2hunter2",
             $"Fix {Key}.\n\n   Again {Key}")), required: true);
 
         var row = (await new CheckRunner([leaky], Options.Create(options), config).RunAsync(default)).Single();
 
         var text = row.Result.Detail + "|" + row.Result.Fix;
-        foreach (var secret in new[] { Key, "123456:telegram-secret", "karakeep-secret-key", "mcp-secret-token", "hunter2hunter2" })
+        foreach (var secret in new[] { Key, "push-secret-token", "karakeep-secret-key", "mcp-secret-token", "hunter2hunter2" })
         {
             Assert.DoesNotContain(secret, text, StringComparison.Ordinal);
         }

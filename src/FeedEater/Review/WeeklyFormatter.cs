@@ -2,17 +2,16 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Review;
 
-/// <summary>The Sunday review as one Telegram HTML message. Lists are capped so the visible text stays far under 4,096 characters.</summary>
+/// <summary>The Sunday review as one HTML fragment. Lists are capped so the visible text stays far under 4,096 characters.</summary>
 public static class WeeklyFormatter
 {
     private const int MaxIdeas = 8;
     private const int MaxProjects = 8;
 
-    public static OutMessage Message(string weekOf, WeeklyReport r, TimeZoneInfo zone, string? tasteNote = null)
+    public static string Message(string weekOf, WeeklyReport r, TimeZoneInfo zone, string? tasteNote = null)
     {
         var from = TimeZoneInfo.ConvertTime(r.Since, zone).ToString("d MMM", CultureInfo.InvariantCulture);
         var h = new StringBuilder($"<b>Weekly review · {E(from)} to {E(DateOnly.ParseExact(weekOf, "yyyy-MM-dd", CultureInfo.InvariantCulture).ToString("d MMM", CultureInfo.InvariantCulture))}</b>\n");
@@ -64,7 +63,7 @@ public static class WeeklyFormatter
             h.Append("\n\n<b>Ranking</b>\n").Append(E(tasteNote));
         }
 
-        return new OutMessage(h.ToString());
+        return h.ToString();
     }
 
     private static string E(string text) => WebUtility.HtmlEncode(text);

@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace FeedEater.Api;
 
-public sealed record StatusResponse(string Version, string Gate, DateTimeOffset? GateUntil, string? GateWhy, DigestStatus? Digest, bool Telegram, bool Swipe);
+public sealed record StatusResponse(string Version, string Gate, DateTimeOffset? GateUntil, string? GateWhy, DigestStatus? Digest, bool Swipe);
 
 public sealed record DigestStatus(string Date, string Status, int Items, DateTimeOffset? SentAt);
 
@@ -63,7 +63,7 @@ public static class ApiEndpoints
 
         var row = await digests.GetAsync(trigger.Today(), ct);
         var digest = row is null ? null : new DigestStatus(row.LocalDate, row.Status, row.ItemIds.Length, row.SentAt is { } sent ? new DateTimeOffset(DateTime.SpecifyKind(sent, DateTimeKind.Utc)) : null);
-        return new StatusResponse(Version(), gate, until, why, digest, settings.Telegram.Token.Length > 0, settings.Swipe.Enabled);
+        return new StatusResponse(Version(), gate, until, why, digest, settings.Swipe.Enabled);
     }
 
     private static string Version()

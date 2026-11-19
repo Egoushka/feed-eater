@@ -142,25 +142,4 @@ public sealed class ClusterTests(PostgresFixture pg) : IAsyncLifetime
         Assert.All(hits, h => Assert.Equal(2, h.Also));
         Assert.Equal([second, third], Assert.Single(digest).AlsoIn.Select(m => m.Id));
     }
-
-    [Fact]
-    public async Task The_telegram_card_lists_the_other_feeds_with_safe_links_only()
-    {
-        var item = new DigestItem
-        {
-            Id = 1,
-            Title = "T",
-            Url = "https://a.example",
-            Feed = "F",
-            Summary = "S",
-            Why = "W",
-            AlsoIn = [new(2, "t", "https://b.example/x", "Feed B"), new(3, "t", "javascript:alert(1)", "<b>Feed C</b>"), new(4, "t", "https://d.example", "D"), new(5, "t", "https://e.example", "E")],
-        };
-
-        var html = DigestFormatter.Item(item, null, null).Html;
-
-        Assert.Contains("Also in: <a href=\"https://b.example/x\">Feed B</a>, &lt;b&gt;Feed C&lt;/b&gt;, <a href=\"https://d.example\">D</a> +1", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("javascript:", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("Also in", DigestFormatter.Item(item with { AlsoIn = [] }, null, null).Html, StringComparison.Ordinal);
-    }
 }

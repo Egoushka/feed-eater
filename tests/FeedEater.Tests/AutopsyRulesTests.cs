@@ -158,7 +158,7 @@ public sealed class AutopsyRulesTests
         var items = new[] { Item(1, "Blog", 3, RepoVerdict.Grew), Item(2, "Blog", 3, RepoVerdict.Quiet), Item(3, "Forum", 2, RepoVerdict.Alive), Item(4, "Forum", 2, RepoVerdict.Gone) };
         var report = AutopsyScorer.Build(items, noRepo: 2, noBaseline: 1, notChecked: 3, At);
 
-        var html = AutopsyFormatter.Message("2026-11-01", report).Html;
+        var html = AutopsyFormatter.Message("2026-11-01", report);
 
         Assert.StartsWith("<b>Hype autopsy · November 2026</b>", html, StringComparison.Ordinal);
         Assert.Contains("4 👍 items", html, StringComparison.Ordinal);
@@ -181,7 +181,7 @@ public sealed class AutopsyRulesTests
             .Select(i => i with { Repo = $"acme/{hostile}" }).ToList();
         var report = AutopsyScorer.Build(items, 0, 0, 0, At);
 
-        var html = AutopsyFormatter.Message("2026-11-01", report).Html;
+        var html = AutopsyFormatter.Message("2026-11-01", report);
 
         Assert.DoesNotContain("<script", html, StringComparison.Ordinal);
         Assert.DoesNotContain("javascript:", html, StringComparison.Ordinal);
@@ -199,7 +199,7 @@ public sealed class AutopsyRulesTests
         var items = new[] { Item(1, "Blog", 3, RepoVerdict.Alive, new string('a', before) + "😀😀😀") };
         var report = AutopsyScorer.Build(items, 0, 0, 0, At);
 
-        var html = AutopsyFormatter.Message("2026-11-01", report).Html;
+        var html = AutopsyFormatter.Message("2026-11-01", report);
 
         Assert.Contains(new string('a', before) + "…", html, StringComparison.Ordinal);
         var bytes = new System.Text.UTF8Encoding(false, throwOnInvalidBytes: true).GetBytes(html);   // throws on a lone surrogate

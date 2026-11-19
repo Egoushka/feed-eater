@@ -30,7 +30,7 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
                 ("FeedEater:RunJobs", "false"),
                 ("FeedEater:Llm:BaseUrl", "http://llm.example/v1/"),
                 ("FeedEater:Llm:ApiKey", SetupStubs.ApiKey),
-                ("FeedEater:Telegram:Token", SetupStubs.BotToken),
+                ("FeedEater:Push:Token", SetupStubs.PushToken),
                 ("FeedEater:Karakeep:BaseUrl", "http://karakeep.example/"),
                 ("FeedEater:Karakeep:Token", "kk-karakeep-key"),
                 ("FeedEater:GitHub:BaseUrl", "http://github.example/"),
@@ -107,7 +107,7 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains(("off", "hindsight"), shown);
         Assert.Contains(("warn", "profile"), shown);
         Assert.Contains("href=\"/ui/setup\"", html, StringComparison.Ordinal);
-        Assert.Contains("required checks fail.", html, StringComparison.Ordinal);
+        Assert.Contains("required check fails.", html, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public sealed partial class SetupUiTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Contains("FeedEater__GitHub__Token", html, StringComparison.Ordinal);
         Assert.Contains("Using the example interests; edit /nope/profile.json", html, StringComparison.Ordinal);
-        foreach (var secret in new[] { SetupStubs.ApiKey, SetupStubs.BotToken, "gh-secret-key", "kk-karakeep-key", Token })
+        foreach (var secret in new[] { SetupStubs.ApiKey, SetupStubs.PushToken, "gh-secret-key", "kk-karakeep-key", Token })
         {
             Assert.DoesNotContain(secret, html, StringComparison.Ordinal);
         }

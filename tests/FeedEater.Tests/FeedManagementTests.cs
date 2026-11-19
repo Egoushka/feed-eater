@@ -7,7 +7,6 @@ using FeedEater.Loops;
 using FeedEater.Issues;
 using FeedEater.Sources;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
 
@@ -118,124 +117,6 @@ public sealed class FeedManagementTests(PostgresFixture pg) : IAsyncLifetime
         var result = await kit.Manager.AddAsync("http://10.0.0.5/feed", default);
 
         Assert.Contains("Source:AllowedHosts", result.Error, StringComparison.Ordinal);
-        Assert.Empty(kit.Stub.Calls);
-    }
-}
-
-[Collection(PostgresCollection.Name)]
-public sealed class FeedsCommandTests(PostgresFixture pg) : IAsyncLifetime
-{
-    private readonly List<string> _sent = [];
-
-    public Task InitializeAsync() => pg.ResetAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
-
-    private CommandHandler Handler(SourceKit kit, bool builtin = true)
-    {
-        var options = Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { AllowedUserId = 42 } });
-        var telegram = new TelegramClient(new StubHandler((request, body) =>
-        {
-            if (request.RequestUri!.Segments[^1] == "sendMessage")
-            {
-                _sent.Add(JsonSerializer.Deserialize<JsonElement>(body).GetProperty("text").GetString()!);
-            }
-
-            return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
-        }).Client("http://tg/botT/"));
-        var items = new ItemStore(pg.Db);
-        var feedback = new FeedbackStore(pg.Db);
-        var llm = new FeedEater.Llm.LiteLlmClient(new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable)).Client("http://llm/"), new UsageStore(pg.Db), options);
-        IIdeaSink sink = new GitHubIdeaSink(new GitHubIssues(new StubHandler((_, _) => StubHandler.Json("{}")).Client("http://github/")), options);
-        var filer = new IdeaFiler(items, feedback, new ProfileStore(pg.Db), sink, TimeProvider.System);
-        var callbacks = new CallbackHandler(telegram, feedback, filer, items, new DuelStore(pg.Db), Seed.Library(pg, options), options, NullLogger<CallbackHandler>.Instance);
-        var search = new FeedEater.Search.ArchiveSearch(items, llm);
-        var replies = new ReplyHandler(telegram, callbacks, items, new ProfileStore(pg.Db), llm, new FeedEater.Search.ItemAnswer(items, llm, options), sink, options, NullLogger<ReplyHandler>.Instance);
-        return new CommandHandler(
-            telegram, new DigestTrigger(new CursorStore(pg.Db), options, TimeProvider.System), new QuietHours(new CursorStore(pg.Db), options, TimeProvider.System),
-            search, new FeedEater.Search.ArchiveAnswer(search, items, llm, options), replies,
-            new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), feedback, options), options,
-            builtin ? new FeedsCommand(kit.Feeds, kit.Manager) : null);
-    }
-
-    private static TgMessage From(long id, string text) => new(id, 42, text);
-
-    [Fact]
-    public async Task Feeds_lists_every_feed_with_failures_marked_and_every_title_encoded()
-    {
-        var kit = new SourceKit(pg, r => r.RequestUri!.Host == "bad.example" ? SourceKit.Status(HttpStatusCode.NotFound) : SourceKit.Xml(SourceKit.Rss(("g1", "Post", SourceKit.Now, "x"))));
-        await kit.AddFeedAsync("https://good.example/feed", "Fine & <i>fancy</i>");
-        await kit.AddFeedAsync("https://bad.example/feed", "Broken");
-        await kit.Poller.RunAsync(default);
-
-        await Handler(kit).HandleAsync(From(42, "/feeds"), default);
-
-        var text = Assert.Single(_sent);
-        Assert.StartsWith("2 feeds", text, StringComparison.Ordinal);
-        Assert.Contains("Fine &amp; &lt;i&gt;fancy&lt;/i&gt;", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("<i>", text, StringComparison.Ordinal);
-        Assert.Contains("Broken ⚠️ HTTP 404", text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Feeds_with_no_feeds_says_how_to_add_one()
-    {
-        var kit = new SourceKit(pg, _ => SourceKit.Status(HttpStatusCode.NotFound));
-
-        await Handler(kit).HandleAsync(From(42, "/feeds"), default);
-
-        Assert.Contains("/feeds add", Assert.Single(_sent), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Feeds_add_subscribes_and_reports_what_it_stored_or_why_not()
-    {
-        var kit = new SourceKit(pg, r => r.RequestUri!.Host == "good.example"
-            ? SourceKit.Xml(SourceKit.Rss(("g1", "Post", SourceKit.Now.AddHours(-1), "x")))
-            : SourceKit.Status(HttpStatusCode.NotFound));
-        var handler = Handler(kit);
-
-        await handler.HandleAsync(From(42, "/feeds add https://good.example/feed"), default);
-        kit.Time.Advance(TimeSpan.FromSeconds(2));   // the same host is asked once a second
-        await handler.HandleAsync(From(42, "/feeds add https://good.example/feed"), default);
-        await handler.HandleAsync(From(42, "/feeds add https://bad.example/<feed>"), default);
-
-        Assert.Equal(
-            ["Added Feed title; 1 recent entry stored.", "Already subscribed: Feed title.", "Not added: Could not read it: HTTP 404."],
-            _sent);
-    }
-
-    [Theory]
-    [InlineData("/feeds add")]
-    [InlineData("/feeds remove https://x.example/feed")]
-    [InlineData("/feeds nonsense")]
-    public async Task Other_arguments_get_the_usage_line(string text)
-    {
-        var kit = new SourceKit(pg, _ => SourceKit.Status(HttpStatusCode.NotFound));
-
-        await Handler(kit).HandleAsync(From(42, text), default);
-
-        Assert.Equal(FeedsCommand.Usage, Assert.Single(_sent));
-    }
-
-    [Fact]
-    public async Task Nobody_but_the_owner_is_answered()
-    {
-        var kit = new SourceKit(pg, _ => SourceKit.Status(HttpStatusCode.NotFound));
-
-        await Handler(kit).HandleAsync(From(99, "/feeds add https://x.example/feed"), default);
-
-        Assert.Empty(_sent);
-        Assert.Empty(kit.Stub.Calls);
-    }
-
-    [Fact]
-    public async Task In_miniflux_mode_feeds_points_at_Miniflux()
-    {
-        var kit = new SourceKit(pg, _ => SourceKit.Status(HttpStatusCode.NotFound));
-
-        await Handler(kit, builtin: false).HandleAsync(From(42, "/feeds add https://x.example/feed"), default);
-
-        Assert.Contains("Miniflux", Assert.Single(_sent), StringComparison.Ordinal);
         Assert.Empty(kit.Stub.Calls);
     }
 }

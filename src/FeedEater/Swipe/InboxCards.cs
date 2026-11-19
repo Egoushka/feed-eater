@@ -127,7 +127,7 @@ public sealed class InboxCards(InboxStore inbox, ItemStore items, DuelStore duel
             case (_, "open"):
                 return new ActResult(true, "");
             case (InboxKinds.Follow, "stop"):
-                return await follower.CloseAsync(row.RefId ?? 0, null, ct) ? new ActResult(true, "Stopped following") : new ActResult(true, AlreadyStopped);
+                return await follower.CloseAsync(row.RefId ?? 0, ct) ? new ActResult(true, "Stopped following") : new ActResult(true, AlreadyStopped);
             case (InboxKinds.Resurface, "keep"):
                 return new ActResult(true, "Kept");
             case (InboxKinds.Resurface, "read") when row.ItemId is { } readId && await library.GetAsync(readId, ct) is { ReadAt: not null }:

@@ -20,7 +20,7 @@ flowchart LR
   reader --> archive[(archive: Postgres + pgvector)]
   archive --> rank[ranking by your interests and votes]
   rank --> models[small model triages, larger model reads]
-  models --> out[morning digest: Telegram or swipe page]
+  models --> out[morning digest: web page, push link or swipe page]
   out -- "👍 👎 📌" --> archive
   archive --> ui[web UI at /ui]
   archive --> mcp[MCP tools for AI clients]
@@ -40,9 +40,9 @@ searchable for an AI assistant instead of throwing it away.
 - **Reads your feeds itself** (RSS 2.0, Atom, JSON Feed, OPML import), or copies them from Miniflux, a self-hosted
   feed reader, if you already run one.
 - **Keeps every entry** in a searchable archive, with duplicates and repeat stories across feeds linked together.
-- **Sends a morning digest** of up to 12 items, each with a summary, why it matters and a suggestion, to Telegram or
-  to a phone swipe page. 👍, 👎 and swipes teach the ranking.
-- **Answers questions from the archive**, citing the items it used, in Telegram or through the API.
+- **Sends a morning digest** of up to 12 items, each with a summary, why it matters and a suggestion, to the web UI
+  (`/ui`) and a phone swipe page, with an optional ntfy push message that links to it. 👍, 👎 and swipes teach the ranking.
+- **Answers questions from the archive**, citing the items it used, through the API.
 - **Saves items to its own library**, where they get full text and a summary, and come back if left unread.
 - **Lets any MCP client search it.** MCP (Model Context Protocol) is how AI assistants call outside tools; feed-eater
   exposes five read-only ones, and three more for a prior-art base: how existing tools solve a problem, with the evidence.
@@ -56,21 +56,19 @@ not built yet; the server side of it is.
 
 ## Quick start
 
-You need Docker with Compose, an OpenAI-compatible API key (OpenAI by default), a Telegram account and an OPML file
+You need Docker with Compose, an OpenAI-compatible API key (OpenAI by default) and an OPML file
 of your feeds, or one feed URL.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Egoushka/feed-eater/main/compose.example.yaml -o compose.yaml
 curl -fsSL https://raw.githubusercontent.com/Egoushka/feed-eater/main/.env.example -o .env
-mkdir config                                  # fill .env, create a bot with @BotFather, put feeds.opml here
-docker compose up -d
-# send /start to your bot, put the id it answers with in .env (FeedEater__Telegram__AllowedUserId), then:
+mkdir config                                  # fill .env, put feeds.opml here
 docker compose up -d
 docker compose run --rm feed-eater import-opml /config/feeds.opml
 docker compose run --rm feed-eater doctor     # one line per integration: ok, off or FAIL with the fix
 ```
 
-Then send `/digest` to the bot. [Setup](docs/SETUP.md) walks through each step, every optional integration and
+Then open `/ui`, sign in with `Mcp__Token` and press Run the digest; for a push message on your phone set `FeedEater__Push__NtfyUrl`, `FeedEater__Push__Topic` and `FeedEater__Push__BaseUrl`. [Setup](docs/SETUP.md) walks through each step, every optional integration and
 upgrades. The embedding column is fixed at 1536 dimensions, so the embedding model must return that size (the
 default does).
 
@@ -92,7 +90,7 @@ One .NET 10 process and one Postgres 18 database with the pgvector extension for
    needed on day one.
 3. The top 60 get a one-line verdict from a small model; the top 12 of those that matter are read in full by a
    stronger one, which writes a summary, why it matters, and a suggestion.
-4. The digest goes out as one message or card per item. Your reactions feed back into step 2.
+4. The digest is stored for the web UI and the swipe stack, and one push message links to it. Your reactions feed back into step 2.
 
 The invariant that keeps the bill flat: model spend is capped by those fixed counts, not by how many feeds you add;
 only embeddings grow with volume. Every fetch of a page goes through one guarded fetcher that refuses private

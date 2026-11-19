@@ -16,7 +16,7 @@ namespace FeedEater.Tests;
 internal static class SetupStubs
 {
     public const string ApiKey = "sk-very-secret";
-    public const string BotToken = "123456:telegram-secret";
+    public const string PushToken = "push-secret-token";
 
     private static readonly string Chat = """{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":3,"completion_tokens":1}}""";
 
@@ -33,7 +33,6 @@ internal static class SetupStubs
         {
             _ when path.EndsWith("/chat/completions", StringComparison.Ordinal) => StubHandler.Json(Chat),
             _ when path.EndsWith("/embeddings", StringComparison.Ordinal) => StubHandler.Json(TestVectors.EmbeddingResponse(1)),
-            _ when path.EndsWith("/getMe", StringComparison.Ordinal) => StubHandler.Json("""{"ok":true,"result":{"id":1,"username":"my_feed_bot"}}"""),
             _ when path.EndsWith("/projects/", StringComparison.Ordinal) => StubHandler.Json("""{"results":[]}"""),
             _ when path.EndsWith("/bookmarks", StringComparison.Ordinal) => StubHandler.Json("""{"bookmarks":[]}"""),
             _ when path.EndsWith("/entries", StringComparison.Ordinal) => StubHandler.Json("""{"entries":[]}"""),
@@ -202,8 +201,7 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
             ("Mcp:Token", "mcp-secret-token"),
             ("FeedEater:RunJobs", "true"),
             ("FeedEater:Llm:ApiKey", SetupStubs.ApiKey),
-            ("FeedEater:Telegram:Token", SetupStubs.BotToken),
-            ("FeedEater:Telegram:AllowedUserId", "42"),
+            ("FeedEater:Push:Token", SetupStubs.PushToken),
             ("FeedEater:ProfilePath", "Fixtures/profile.json"),
         ];
         return new ConfigurationBuilder()
@@ -235,7 +233,7 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
         var (code, output) = await DoctorAsync(Config(), SetupStubs.Services());
 
         Assert.Equal(0, code);
-        foreach (var name in new[] { "database", "llm chat", "llm embeddings", "telegram", "feed source", "profile" })
+        foreach (var name in new[] { "database", "llm chat", "llm embeddings", "feed source", "profile" })
         {
             Assert.Equal("ok", StatusOf(output, name));
         }
@@ -245,7 +243,6 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
             Assert.Equal("off", StatusOf(output, name));
         }
 
-        Assert.Contains("bot @my_feed_bot, owner id 42", output, StringComparison.Ordinal);
         Assert.Contains("built-in reader: 1 feed, 1 fetched", output, StringComparison.Ordinal);
         Assert.EndsWith("Everything required works." + Environment.NewLine, output, StringComparison.Ordinal);
     }
@@ -257,18 +254,16 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
             ? StubHandler.Json($$$"""{"error":{"message":"Incorrect API key provided: {{{SetupStubs.ApiKey}}}"}}""", HttpStatusCode.Unauthorized)
             : null);
 
-        var (code, output) = await DoctorAsync(Config(("FeedEater:Telegram:AllowedUserId", "0")), stub);
+        var (code, output) = await DoctorAsync(Config(), stub);
 
         Assert.Equal(1, code);
         Assert.Equal("ok", StatusOf(output, "database"));
         Assert.Equal("FAIL", StatusOf(output, "llm chat"));
         Assert.Equal("FAIL", StatusOf(output, "llm embeddings"));
-        Assert.Equal("FAIL", StatusOf(output, "telegram"));
         Assert.Equal("FAIL", StatusOf(output, "feed source"));
         Assert.Contains("FeedEater__Llm__ApiKey", output, StringComparison.Ordinal);
-        Assert.Contains("Send /start to @my_feed_bot", output, StringComparison.Ordinal);
         Assert.Contains("or add one at /ui/sources", output, StringComparison.Ordinal);
-        Assert.EndsWith("4 required checks failing: llm chat, llm embeddings, telegram, feed source." + Environment.NewLine, output, StringComparison.Ordinal);
+        Assert.EndsWith("3 required checks failing: llm chat, llm embeddings, feed source." + Environment.NewLine, output, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -301,15 +296,13 @@ public sealed class SetupDatabaseTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Doctor_never_prints_a_secret_even_when_a_service_echoes_it()
     {
-        var stub = SetupStubs.Services(request => request.RequestUri!.AbsolutePath.EndsWith("/getMe", StringComparison.Ordinal)
-            ? StubHandler.Json($$"""{"ok":false,"description":"bad token {{SetupStubs.BotToken}} for {{SetupStubs.ApiKey}}"}""")
-            : request.RequestUri.AbsolutePath.EndsWith("/chat/completions", StringComparison.Ordinal)
-                ? StubHandler.Json($$"""{"error":"key {{SetupStubs.ApiKey}} mcp-secret-token"}""", HttpStatusCode.Unauthorized)
-                : null);
+        var stub = SetupStubs.Services(request => request.RequestUri!.AbsolutePath.EndsWith("/chat/completions", StringComparison.Ordinal)
+            ? StubHandler.Json($$"""{"error":"key {{SetupStubs.ApiKey}} mcp-secret-token {{SetupStubs.PushToken}}"}""", HttpStatusCode.Unauthorized)
+            : null);
 
         var (_, output) = await DoctorAsync(Config(), stub);
 
-        foreach (var secret in new[] { SetupStubs.ApiKey, SetupStubs.BotToken, "mcp-secret-token", new NpgsqlConnectionStringBuilder(pg.ConnectionString).Password! })
+        foreach (var secret in new[] { SetupStubs.ApiKey, SetupStubs.PushToken, "mcp-secret-token", new NpgsqlConnectionStringBuilder(pg.ConnectionString).Password! })
         {
             Assert.DoesNotContain(secret, output, StringComparison.Ordinal);
         }
