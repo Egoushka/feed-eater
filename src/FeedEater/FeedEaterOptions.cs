@@ -621,6 +621,9 @@ public sealed class CardsOptions
     [Description("TOML file with [[mcp]] and [[skill]] rows, relative to Cards:Root; empty to skip it.")]
     public string InventoryToml { get; set; } = "context/ai-setup/inventory.toml";
 
+    [Description("Terms that must never reach the board: a text file, one literal string per line, case-insensitive, # comments (the workspace leak-guard terms file). A skills and servers row, an inventory item or a search term that contains one is dropped before anything is stored, queried or logged. Required for Cards:InventoryToml: without a readable file that file is skipped.")]
+    public string DenyTermsFile { get; set; } = "";
+
     [Description("Local time of day the cards job runs.")]
     public TimeSpan At { get; set; } = new(3, 0, 0);
 

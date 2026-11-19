@@ -2,7 +2,7 @@
 -- Two new tables, nothing existing is touched; the app only reads them when the cards job or page is used.
 create table inventory_item (
     id          bigserial primary key,
-    kind        text not null,                 -- nuget | npm | image | mcp | skill
+    kind        text not null check (kind in ('nuget', 'npm', 'image', 'mcp', 'skill')),
     name        text not null,
     version     text not null default '',
     repo        text not null,
@@ -13,6 +13,7 @@ create table inventory_item (
 
 create table card (
     id                bigserial primary key,
+    term              text not null,                    -- the inventory term the card is about, lower case; one card per repo and term, so a held or dropped term never comes back
     title             text not null,
     what              text not null,
     repo              text not null,
@@ -26,5 +27,5 @@ create table card (
     created_at        timestamptz not null default now(),
     state_changed_at  timestamptz,
     source_signal_ids bigint[] not null default '{}',   -- items.id of the feed items that backed the card
-    unique (repo, title)
+    unique (repo, term)
 );

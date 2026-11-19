@@ -57,7 +57,7 @@ MCP tools `feed_cards` (list) and `feed_card_set_state`.
 Acceptance checks:
 - A2.1 `dotnet test --filter Cards` passes: inventory parses a sample csproj, `package.json`, Compose file and `inventory.toml`; a version-bump-only candidate yields no card; a card without `where_in_stack` is rejected.
 - A2.2 `squawk db/migrations/<next>_cards.sql` exits 0 and the migration test applies it on a fresh Postgres 18 container.
-- A2.3 `GET /cards` returns 200 with one row per card, and Playwright screenshot at 390 px and 1280 px passes the `ui-design` gate (recorded in the PR).
+- A2.3 `GET /ui/cards` returns 200 with one row per card, and Playwright screenshot at 390 px and 1280 px passes the `ui-design` gate (recorded in the PR).
 - A2.4 live: `feed_cards` returns at least 5 cards for the 3 repos of the hand test within one day of deploy, each with at least one evidence URL.
 - A2.5 `feed_card_set_state` rejects an unknown state and writes a `state_reason`.
 

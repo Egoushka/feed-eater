@@ -1,5 +1,6 @@
 using System.Net;
 using Dapper;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using FeedEater.Cards;
@@ -74,9 +75,24 @@ public sealed class CardsParserTests
             [[skill]]
             name = "engineering"
             version = "1.0"
+            status = "active"
+
+            [[skill]]
+            name = "paused"
+            status = "disabled"
+
+            [[mcp]]
+            name = "side-tool"
+            status = "active"
+            work = true
+
+            [[skill]]
+            name = "scoped"
+            status = "active"
+            scope = "work"
             """;
 
-        var items = InventoryParsers.InventoryToml(toml, "workspace", "context/ai-setup/inventory.toml");
+        var items = InventoryParsers.InventoryToml(toml, "workspace", "context/ai-setup/inventory.toml", DenyList.Empty);
 
         Assert.Equal(["mcp context7", "skill engineering 1.0"], items.Select(i => $"{i.Kind} {i.Name} {i.Version}".Trim()));
     }
@@ -164,6 +180,123 @@ public sealed class CardsParserTests
             Directory.Delete(root, true);
             Directory.Delete(outside, true);
         }
+    }
+
+    internal const string Fake = "acmecorp";   // a neutral stand-in for a term on the deny list; the real list is a file named by Cards:DenyTermsFile
+
+    internal static string DenyFile(string dir)
+    {
+        var path = Path.Combine(dir, "terms.txt");
+        File.WriteAllText(path, $"# comment\n{Fake}\nab\n");
+        return path;
+    }
+
+    [Fact]
+    public void Cards_a_deny_listed_row_is_dropped_by_name_note_or_text_and_inactive_rows_too()
+    {
+        var dir = Directory.CreateTempSubdirectory("cards-deny").FullName;
+        try
+        {
+            var deny = DenyList.Load(DenyFile(dir))!;
+            var toml = $"""
+                [[skill]]
+                name = "{Fake}-review"
+                status = "active"
+
+                [[skill]]
+                name = "plain"
+                status = "active"
+                note = "used for the {Fake.ToUpperInvariant()} project"
+
+                [[mcp]]
+                name = "fine"
+                status = "active"
+                why = "general use"
+                """;
+
+            Assert.Equal(["fine"], InventoryParsers.InventoryToml(toml, "workspace", "inventory.toml", deny).Select(i => i.Name));
+            Assert.Null(DenyList.Load(Path.Combine(dir, "missing.txt")));
+            Assert.Null(DenyList.Load(""));
+            Assert.False(deny.Matches("ab", "nothing"));   // lines under 3 characters are ignored
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Cards_collector_skips_the_skills_file_without_a_deny_list_and_filters_it_with_one()
+    {
+        var root = Directory.CreateTempSubdirectory("cards-toml").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "context"));
+            File.WriteAllText(Path.Combine(root, "repos.toml"), "");
+            File.WriteAllText(Path.Combine(root, "context/inv.toml"), $"""
+                [[skill]]
+                name = "{Fake}-tool"
+                status = "active"
+
+                [[skill]]
+                name = "general"
+                status = "active"
+                """);
+            var collector = new InventoryCollector(Options.Create(new FeedEaterOptions()), null!, NullLogger<InventoryCollector>.Instance);
+
+            Assert.Empty(collector.Scan(new CardsOptions { Root = root, InventoryToml = "context/inv.toml" }, default).Found);
+            var (found, _) = collector.Scan(new CardsOptions { Root = root, InventoryToml = "context/inv.toml", DenyTermsFile = DenyFile(root) }, default);
+
+            Assert.Equal(["general"], found.Select(i => i.Name));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void Cards_collector_follows_a_symlink_in_the_middle_of_a_path_and_refuses_one_that_leaves_the_root()
+    {
+        var root = Directory.CreateTempSubdirectory("cards-mid").FullName;
+        var outside = Directory.CreateTempSubdirectory("cards-mid-out").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(outside, "repo"));
+            File.WriteAllText(Path.Combine(outside, "repo/package.json"), """{"dependencies":{"leaked":"1.0.0"}}""");
+            Directory.CreateDirectory(Path.Combine(root, "real/repo"));
+            File.WriteAllText(Path.Combine(root, "real/repo/package.json"), """{"dependencies":{"kept":"1.0.0"}}""");
+            Directory.CreateSymbolicLink(Path.Combine(root, "escape"), outside);
+            Directory.CreateSymbolicLink(Path.Combine(root, "alias"), Path.Combine(root, "real"));
+            File.WriteAllText(Path.Combine(root, "repos.toml"), """
+                [[repo]]
+                name = "out"
+                path = "escape/repo"
+                kind = "personal"
+                [[repo]]
+                name = "in"
+                path = "alias/repo"
+                kind = "personal"
+                """);
+            var collector = new InventoryCollector(Options.Create(new FeedEaterOptions()), null!, NullLogger<InventoryCollector>.Instance);
+
+            var (found, read) = collector.Scan(new CardsOptions { Root = root, InventoryToml = "escape/inv.toml", DenyTermsFile = DenyFile(root) }, default);
+
+            Assert.Equal(["in"], read);
+            Assert.Equal(["kept"], found.Select(i => i.Name));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+            Directory.Delete(outside, true);
+        }
+    }
+
+    [Fact]
+    public void Cards_a_reason_over_the_cap_is_rejected()
+    {
+        Assert.Null(CardRules.CheckTransition("hold", new string('x', CardRules.MaxReason)));
+        Assert.Contains("longer than", CardRules.CheckTransition("hold", new string('x', CardRules.MaxReason + 1)), StringComparison.Ordinal);
     }
 
     private static InventoryItem Usage(string name = "Dapper") => new("nuget", name, "2.1.60", "feed-eater", "src/App.csproj");
@@ -272,7 +405,7 @@ public sealed class CardsStoreTests(PostgresFixture pg) : IAsyncLifetime
     public Task DisposeAsync() => Task.CompletedTask;
 
     private static NewCard Card(string title = "Dapper: AOT", string where = "feed-eater: Dapper (nuget, src/App.csproj)") =>
-        new(title, "what", "feed-eater", where, [new EvidenceLink("https://example.com/a", "A", "your feeds", null)], "small", "gain", []);
+        new(title.ToLowerInvariant(), title, "what", "feed-eater", where, [new EvidenceLink("https://example.com/a", "A", "your feeds", null)], "small", "gain", []);
 
     [Fact]
     public async Task Cards_store_round_trips_evidence_and_ignores_a_rerun()
@@ -357,5 +490,76 @@ public sealed class CardsStoreTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal([real], card.SourceSignalIds);
         Assert.Contains("src/App.csproj", card.WhereInStack, StringComparison.Ordinal);
         Assert.NotEmpty(card.Evidence);
+    }
+
+    [Fact]
+    public async Task Cards_a_deny_listed_term_is_never_queried_stored_or_logged()
+    {
+        var dir = Directory.CreateTempSubdirectory("cards-gen").FullName;
+        try
+        {
+            await _store.ReplaceInventoryAsync(
+                [new InventoryItem("skill", $"{CardsParserTests.Fake}-review", "", "workspace", "inv.toml"), new InventoryItem("skill", "general", "", "workspace", "inv.toml")], ["workspace"], default);
+            var item = await Seed.ItemAsync(pg, 1, $"{CardsParserTests.Fake}-review is out for general use", TestVectors.OneHot(0));
+            await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+            {
+                await c.ExecuteAsync("insert into triage (item_id, relevance, kind, model) values (@item, 3, 'improve', 'm')", new { item });
+            }
+
+            var logs = new List<string>();
+            var requests = new List<string>();
+            var hn = new HnSearch(new StubHandler((r, _) =>
+            {
+                requests.Add(r.RequestUri!.ToString());
+                return StubHandler.Json("""{"hits":[]}""");
+            }).Client("https://hn.example/api/v1/"));
+            var options = Options.Create(new FeedEaterOptions { Cards = new CardsOptions { DepsDevBase = "", DenyTermsFile = CardsParserTests.DenyFile(dir) } });
+
+            await new CardGenerator(_store, hn, new DepsDevClient(new HttpClient()), options, TimeProvider.System, new ListLogger<CardGenerator>(logs)).GenerateAsync(default);
+
+            Assert.DoesNotContain(requests, r => r.Contains(CardsParserTests.Fake, StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(requests, r => r.Contains("general", StringComparison.Ordinal));
+            Assert.Empty(await _store.ListAsync(null, 10, default));
+            Assert.DoesNotContain(logs, l => l.Contains(CardsParserTests.Fake, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task Cards_a_held_term_never_comes_back_under_a_new_headline()
+    {
+        await _store.ReplaceInventoryAsync([new InventoryItem("nuget", "Dapper", "2.1.60", "feed-eater", "src/App.csproj")], ["feed-eater"], default);
+        var first = await Seed.ItemAsync(pg, 1, "Dapper AOT is production ready", TestVectors.OneHot(0));
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("insert into triage (item_id, relevance, kind, model) values (@first, 3, 'improve', 'm')", new { first });
+        }
+
+        var options = Options.Create(new FeedEaterOptions { Cards = new CardsOptions { DepsDevBase = "" } });
+        var hn = new HnSearch(new StubHandler((_, _) => StubHandler.Json("""{"hits":[]}""")).Client("https://hn.example/api/v1/"));
+        var generator = new CardGenerator(_store, hn, new DepsDevClient(new HttpClient()), options, TimeProvider.System, NullLogger<CardGenerator>.Instance);
+        Assert.Equal(1, await generator.GenerateAsync(default));
+        var id = (await _store.ListAsync(null, 10, default)).Single().Id;
+        await _store.SetStateAsync(id, "hold", "not now", default);
+
+        var second = await Seed.ItemAsync(pg, 1, "Dapper 3 brings a new source generator", TestVectors.OneHot(1));
+        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
+        {
+            await c.ExecuteAsync("insert into triage (item_id, relevance, kind, model) values (@second, 3, 'improve', 'm')", new { second });
+        }
+
+        Assert.Equal(0, await generator.GenerateAsync(default));
+        Assert.Equal("hold", Assert.Single(await _store.ListAsync(null, 10, default)).State);
+        Assert.False(await _store.AddAsync(Card("Dapper: a different headline") with { Term = "dapper" }, default));
+    }
+
+    [Fact]
+    public async Task Cards_inventory_kind_is_limited_to_the_known_kinds()
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        await Assert.ThrowsAsync<Npgsql.PostgresException>(async () => await c.ExecuteAsync("insert into inventory_item (kind, name, repo, source_path) values ('gem', 'x', 'r', 'p')"));
     }
 }

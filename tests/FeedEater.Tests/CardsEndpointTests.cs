@@ -45,7 +45,7 @@ public sealed partial class CardsEndpointTests(PostgresFixture pg) : IAsyncLifet
     }
 
     private static NewCard Card(string title) =>
-        new(title, "what", "feed-eater", "feed-eater: Dapper (nuget, src/App.csproj)", [new EvidenceLink("https://example.com/a", "Evidence <b>A</b>", "your feeds", null)], "small", "gain", []);
+        new(title.ToLowerInvariant(), title, "what", "feed-eater", "feed-eater: Dapper (nuget, src/App.csproj)", [new EvidenceLink("https://example.com/a", "Evidence <b>A</b>", "your feeds", null)], "small", "gain", []);
 
     private async Task<string> LoginAsync()
     {

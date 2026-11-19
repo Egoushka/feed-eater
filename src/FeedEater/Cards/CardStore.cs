@@ -16,7 +16,7 @@ public sealed record FeedHit
 public sealed class CardStore(FeedDb db)
 {
     private const string Columns =
-        "id, title, what, repo, where_in_stack, evidence::text as evidence, evidence_checked, effort, gain, state, state_reason, created_at, state_changed_at, source_signal_ids";
+        "id, term, title, what, repo, where_in_stack, evidence::text as evidence, evidence_checked, effort, gain, state, state_reason, created_at, state_changed_at, source_signal_ids";
 
     public async Task ReplaceInventoryAsync(IReadOnlyList<InventoryItem> found, IReadOnlyCollection<string> repos, CancellationToken ct)
     {
@@ -63,7 +63,7 @@ public sealed class CardStore(FeedDb db)
             """, new { since, like, minRelevance }, cancellationToken: ct))).ToList();
     }
 
-    /// <summary>False when the card is invalid or one with the same repo and title exists (a rerun does not duplicate).</summary>
+    /// <summary>Throws for an invalid card; false when the repo already has a card for the term, whatever its state (a held or dropped term does not come back).</summary>
     public async Task<bool> AddAsync(NewCard card, CancellationToken ct)
     {
         if (CardRules.Validate(card) is { } error)
@@ -74,11 +74,11 @@ public sealed class CardStore(FeedDb db)
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return await c.ExecuteAsync(new CommandDefinition(
             """
-            insert into card (title, what, repo, where_in_stack, evidence, effort, gain, source_signal_ids)
-            values (@Title, @What, @Repo, @WhereInStack, @evidence::jsonb, @Effort, @Gain, @ids)
-            on conflict (repo, title) do nothing
+            insert into card (term, title, what, repo, where_in_stack, evidence, effort, gain, source_signal_ids)
+            values (@Term, @Title, @What, @Repo, @WhereInStack, @evidence::jsonb, @Effort, @Gain, @ids)
+            on conflict (repo, term) do nothing
             """,
-            new { card.Title, card.What, card.Repo, card.WhereInStack, evidence = JsonSerializer.Serialize(card.Evidence, Json.Options), card.Effort, card.Gain, ids = card.SourceSignalIds.ToArray() },
+            new { card.Term, card.Title, card.What, card.Repo, card.WhereInStack, evidence = JsonSerializer.Serialize(card.Evidence, Json.Options), card.Effort, card.Gain, ids = card.SourceSignalIds.ToArray() },
             cancellationToken: ct)) > 0;
     }
 
@@ -94,6 +94,13 @@ public sealed class CardStore(FeedDb db)
     {
         await using var c = await db.DataSource.OpenConnectionAsync(ct);
         return (await c.QuerySingleOrDefaultAsync<RawCard>(new CommandDefinition($"select {Columns} from card where id = @id", new { id }, cancellationToken: ct)))?.ToRow();
+    }
+
+    /// <summary>Every term that has a card in any state.</summary>
+    public async Task<HashSet<string>> CardTermsAsync(CancellationToken ct)
+    {
+        await using var c = await db.DataSource.OpenConnectionAsync(ct);
+        return (await c.QueryAsync<string>(new CommandDefinition("select distinct term from card", cancellationToken: ct))).ToHashSet(StringComparer.Ordinal);
     }
 
     public async Task<IReadOnlyDictionary<string, int>> CountsAsync(CancellationToken ct)
@@ -120,6 +127,7 @@ public sealed class CardStore(FeedDb db)
     private sealed record RawCard
     {
         public long Id { get; init; }
+        public string Term { get; init; } = "";
         public string Title { get; init; } = "";
         public string What { get; init; } = "";
         public string Repo { get; init; } = "";
@@ -135,7 +143,7 @@ public sealed class CardStore(FeedDb db)
         public long[] SourceSignalIds { get; init; } = [];
 
         public CardRow ToRow() => new(
-            Id, Title, What, Repo, WhereInStack, JsonSerializer.Deserialize<List<EvidenceLink>>(Evidence, Json.Options) ?? [], EvidenceChecked, Effort, Gain,
+            Id, Term, Title, What, Repo, WhereInStack, JsonSerializer.Deserialize<List<EvidenceLink>>(Evidence, Json.Options) ?? [], EvidenceChecked, Effort, Gain,
             State, StateReason, DateTime.SpecifyKind(CreatedAt, DateTimeKind.Utc), StateChangedAt is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : null, SourceSignalIds);
     }
 }

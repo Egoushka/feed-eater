@@ -70,6 +70,7 @@ An integration is off until its required settings are filled. An off integration
 | Key | Default | Description |
 |---|---|---|
 | `FeedEater:Cards:At` | `03:00:00` | Local time of day the cards job runs. |
+| `FeedEater:Cards:DenyTermsFile` | (empty) | Terms that must never reach the board: a text file, one literal string per line, case-insensitive, # comments (the workspace leak-guard terms file). A skills and servers row, an inventory item or a search term that contains one is dropped before anything is stored, queried or logged. Required for Cards:InventoryToml: without a readable file that file is skipped. |
 | `FeedEater:Cards:DepsDevBase` | `https://api.deps.dev/v3/` | deps.dev API base URL; empty turns the advisory lookup off. |
 | `FeedEater:Cards:Enabled` | `false` | Adoption cards: once a day read the repos of your manifest, match what they run against ranked items and outside signals, and write proposal cards. Needs Cards:Root. The /ui/cards page and the card MCP tools work either way. |
 | `FeedEater:Cards:HnMinPoints` | `20` | Fewest points a Hacker News story needs to count as a signal. |

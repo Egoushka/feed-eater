@@ -11,12 +11,19 @@ public sealed class CardGenerator(
         var o = options.Value.Cards;
         var since = time.GetUtcNow().UtcDateTime.AddDays(-o.LookbackDays);
         var lookups = o.MaxLookups;
-        var inventory = await store.InventoryAsync(ct);
+        var deny = DenyList.Load(o.DenyTermsFile) ?? DenyList.Empty;
+        var inventory = (await store.InventoryAsync(ct)).Where(i => !deny.Matches(i.Name, i.Repo, i.SourcePath)).ToList();
+        var carded = await store.CardTermsAsync(ct);
         var cards = new List<(int Weight, NewCard Card)>();
 
         foreach (var group in inventory.Where(i => CardRules.Searchable(i.Term)).GroupBy(i => i.Term, StringComparer.OrdinalIgnoreCase))
         {
             ct.ThrowIfCancellationRequested();
+            if (carded.Contains(group.Key.ToLowerInvariant()))
+            {
+                continue;   // decided or still waiting: one card per term, never a new one for a new headline
+            }
+
             var usages = group.ToList();
             var signals = new List<CardSignal>();
             foreach (var hit in await store.HitsAsync(group.Key, since, o.MinRelevance, ct))
@@ -36,6 +43,7 @@ public sealed class CardGenerator(
                 }
             }
 
+            signals.RemoveAll(sig => deny.Matches(sig.Title, sig.Url));
             if (CardRules.Build(new CardCandidate(group.Key, usages, signals)) is { } card)
             {
                 cards.Add((signals.Where(s => !s.VersionBump).Max(s => s.Weight), card));

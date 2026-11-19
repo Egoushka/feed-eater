@@ -112,10 +112,18 @@ public static partial class InventoryParsers
         return found;
     }
 
-    /// <summary>The <c>[[mcp]]</c> and <c>[[skill]]</c> tables of an inventory.toml: their <c>name</c> and, when present, <c>version</c>.</summary>
-    public static IReadOnlyList<InventoryItem> InventoryToml(string toml, string repo, string path) =>
-        Tables(toml).Where(t => t.Table is "mcp" or "skill" && t.Values.ContainsKey("name"))
+    /// <summary>
+    /// The active <c>[[mcp]]</c> and <c>[[skill]]</c> tables of an inventory.toml: their <c>name</c> and, when present, <c>version</c>.
+    /// A row is dropped, with all its text, when it is not active, is marked work, or any of its values matches the deny list.
+    /// </summary>
+    public static IReadOnlyList<InventoryItem> InventoryToml(string toml, string repo, string path, DenyList deny) =>
+        Tables(toml).Where(t => t.Table is "mcp" or "skill" && t.Values.ContainsKey("name") && t.Values.GetValueOrDefault("status") == "active"
+                && !MarkedWork(t.Values) && !deny.Matches([.. t.Values.Values]))
             .Select(t => new InventoryItem(t.Table, t.Values["name"], t.Values.GetValueOrDefault("version", ""), repo, path)).ToList();
+
+    private static bool MarkedWork(Dictionary<string, string> row) =>
+        row.GetValueOrDefault("work") == "true"
+        || row.Any(kv => kv.Key is "scope" or "kind" or "audience" or "surface" or "owner" or "side" && kv.Value.Equals("work", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The <c>[[repo]]</c> rows of repos.toml that are readable: kind personal or infra, not archived, a relative path with no <c>..</c>.</summary>
     public static IReadOnlyList<ManifestRepo> Manifest(string toml) =>
@@ -146,7 +154,7 @@ public static partial class InventoryParsers
             }
             else if (current is not null && KeyValue().Match(line) is { Success: true } m)
             {
-                current[m.Groups[1].Value] = m.Groups[2].Value.Replace("\\\"", "\"", StringComparison.Ordinal).Replace("\\\\", "\\", StringComparison.Ordinal);
+                current[m.Groups[1].Value] = (m.Groups[2].Success ? m.Groups[2].Value : m.Groups[3].Value).Replace("\\\"", "\"", StringComparison.Ordinal).Replace("\\\\", "\\", StringComparison.Ordinal);
             }
         }
 
@@ -156,6 +164,6 @@ public static partial class InventoryParsers
     [GeneratedRegex(@"^\s*image:\s*(\S+)", RegexOptions.Multiline)]
     private static partial Regex ImageLine();
 
-    [GeneratedRegex("^([A-Za-z0-9_-]+)\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\"")]
+    [GeneratedRegex("^([A-Za-z0-9_-]+)\\s*=\\s*(?:\"((?:[^\"\\\\]|\\\\.)*)\"|(true|false)\\b)")]
     private static partial Regex KeyValue();
 }

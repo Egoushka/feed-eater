@@ -32,14 +32,15 @@ public sealed class InventoryCollector(IOptions<FeedEaterOptions> options, CardS
     /// <summary>The items found and the repos that were readable. Files only: no database, no network.</summary>
     internal (List<InventoryItem> Found, List<string> Read) Scan(CardsOptions o, CancellationToken ct)
     {
-        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(o.Root));
+        var root = RealPath(Path.GetFullPath(o.Root));
+        var deny = DenyList.Load(o.DenyTermsFile);
         var found = new List<InventoryItem>();
         var read = new List<string>();
-        var manifest = ReadText(Path.Combine(root, o.Manifest));
+        var manifest = ReadText(root, Path.Combine(root, o.Manifest));
         foreach (var repo in manifest is null ? [] : InventoryParsers.Manifest(manifest))
         {
-            var dir = Path.GetFullPath(Path.Combine(root, repo.Path));
-            if (!dir.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !Directory.Exists(dir) || IsLink(dir))
+            var dir = Inside(root, Path.Combine(root, repo.Path));
+            if (dir is null || !Directory.Exists(dir))
             {
                 continue;
             }
@@ -55,20 +56,91 @@ public sealed class InventoryCollector(IOptions<FeedEaterOptions> options, CardS
                 }
 
                 ct.ThrowIfCancellationRequested();
-                if (ReadText(file) is { } text)
+                if (ReadText(root, file) is { } text)
                 {
                     found.AddRange(Parse(Path.GetFileName(file), text, repo.Name, Path.GetRelativePath(dir, file).Replace('\\', '/')));
                 }
             }
         }
 
-        if (o.InventoryToml.Length > 0 && InventoryParsers.SafeRelative(o.InventoryToml) && ReadText(Path.Combine(root, o.InventoryToml)) is { } toml)
+        // The skills and servers file names tools the owner uses everywhere, work ones too: it is read only with a deny list to filter it by.
+        if (o.InventoryToml.Length > 0 && InventoryParsers.SafeRelative(o.InventoryToml))
         {
-            found.AddRange(InventoryParsers.InventoryToml(toml, "workspace", o.InventoryToml));
-            read.Add("workspace");
+            if (deny is null)
+            {
+                logger.LogWarning("Cards:DenyTermsFile is not set or not readable; the skills and servers file is skipped");
+            }
+            else if (Inside(root, Path.Combine(root, o.InventoryToml)) is { } tomlPath && ReadText(root, tomlPath) is { } toml)
+            {
+                found.AddRange(InventoryParsers.InventoryToml(toml, "workspace", o.InventoryToml, deny));
+                read.Add("workspace");
+            }
+        }
+
+        if (deny is not null)
+        {
+            var before = found.Count;
+            found.RemoveAll(i => deny.Matches(i.Name, i.SourcePath, i.Repo));
+            if (found.Count < before)
+            {
+                logger.LogInformation("Inventory: {Dropped} items matched the deny list and were dropped", before - found.Count);
+            }
         }
 
         return (found, read);
+    }
+
+    /// <summary>
+    /// The canonical path of <paramref name="path"/> when it stays under <paramref name="root"/> after every symlink in it,
+    /// ancestors included, is followed; otherwise null. <paramref name="root"/> must already be canonical.
+    /// </summary>
+    internal static string? Inside(string root, string path)
+    {
+        var real = RealPath(path);
+        return real.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) ? real : null;
+    }
+
+    /// <summary>Resolves each path segment in turn, so a link in the middle of a path is followed, not only one at the end.</summary>
+    internal static string RealPath(string path)
+    {
+        var current = Path.GetPathRoot(path)!;
+        var pending = new Stack<string>(path[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Reverse());
+        for (var hops = 0; pending.Count > 0;)
+        {
+            var segment = pending.Pop();
+            if (segment == ".")
+            {
+                continue;
+            }
+
+            if (segment == "..")
+            {
+                current = Path.GetDirectoryName(current) ?? current;
+                continue;
+            }
+
+            var next = Path.Combine(current, segment);
+            var target = Directory.Exists(next) ? new DirectoryInfo(next).LinkTarget : File.Exists(next) ? new FileInfo(next).LinkTarget : null;
+            if (target is null)
+            {
+                current = next;
+                continue;
+            }
+
+            if (++hops > 40)
+            {
+                throw new IOException("too many symbolic links");
+            }
+
+            var resolved = Path.GetFullPath(target, current);
+            current = Path.GetPathRoot(resolved)!;
+            foreach (var part in resolved[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Reverse())
+            {
+                pending.Push(part);
+            }
+        }
+
+        return Path.TrimEndingDirectorySeparator(current);
     }
 
     internal static IReadOnlyList<InventoryItem> Parse(string fileName, string text, string repo, string path) => fileName switch
@@ -121,12 +193,17 @@ public sealed class InventoryCollector(IOptions<FeedEaterOptions> options, CardS
 
     private static bool IsLink(string path) => new FileInfo(path).Attributes.HasFlag(FileAttributes.ReparsePoint);
 
-    private static string? ReadText(string path)
+    private static string? ReadText(string root, string path)
     {
         try
         {
-            var info = new FileInfo(path);
-            return info.Exists && !IsLink(path) && info.Length <= MaxBytes ? File.ReadAllText(path) : null;
+            if (Inside(root, path) is not { } real)
+            {
+                return null;
+            }
+
+            var info = new FileInfo(real);
+            return info.Exists && !IsLink(real) && info.Length <= MaxBytes ? File.ReadAllText(real) : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

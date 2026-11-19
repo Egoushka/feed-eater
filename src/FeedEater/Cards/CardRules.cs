@@ -10,10 +10,10 @@ public sealed record CardSignal(string Source, string Url, string Title, bool Ve
 
 public sealed record CardCandidate(string Term, IReadOnlyList<InventoryItem> Usages, IReadOnlyList<CardSignal> Signals);
 
-public sealed record NewCard(string Title, string What, string Repo, string WhereInStack, IReadOnlyList<EvidenceLink> Evidence, string Effort, string Gain, IReadOnlyList<long> SourceSignalIds);
+public sealed record NewCard(string Term, string Title, string What, string Repo, string WhereInStack, IReadOnlyList<EvidenceLink> Evidence, string Effort, string Gain, IReadOnlyList<long> SourceSignalIds);
 
 public sealed record CardRow(
-    long Id, string Title, string What, string Repo, string WhereInStack, IReadOnlyList<EvidenceLink> Evidence, bool EvidenceChecked,
+    long Id, string Term, string Title, string What, string Repo, string WhereInStack, IReadOnlyList<EvidenceLink> Evidence, bool EvidenceChecked,
     string Effort, string Gain, string State, string StateReason, DateTime CreatedAt, DateTime? StateChangedAt, IReadOnlyList<long> SourceSignalIds);
 
 public static partial class CardRules
@@ -21,14 +21,15 @@ public static partial class CardRules
     public static readonly string[] States = ["proposed", "assess", "trial", "adopt", "hold", "dropped"];
     public const int MaxEvidence = 5;
     public const int MaxUsages = 5;
+    public const int MaxReason = 500;
     private const int MinTermLength = 4;
 
     /// <summary>Why a card cannot be stored, or null. A card needs a place in the stack and at least one http(s) evidence URL.</summary>
     public static string? Validate(NewCard c)
     {
-        if (string.IsNullOrWhiteSpace(c.Title) || string.IsNullOrWhiteSpace(c.What) || string.IsNullOrWhiteSpace(c.Repo))
+        if (string.IsNullOrWhiteSpace(c.Term) || string.IsNullOrWhiteSpace(c.Title) || string.IsNullOrWhiteSpace(c.What) || string.IsNullOrWhiteSpace(c.Repo))
         {
-            return "a card needs a title, a description and a repo.";
+            return "a card needs a term, a title, a description and a repo.";
         }
 
         if (string.IsNullOrWhiteSpace(c.WhereInStack))
@@ -43,6 +44,7 @@ public static partial class CardRules
     public static string? CheckTransition(string state, string? reason) =>
         !States.Contains(state, StringComparer.Ordinal) ? $"unknown state '{state}'; use one of {string.Join(", ", States)}."
         : string.IsNullOrWhiteSpace(reason) ? "reason is required."
+        : reason.Trim().Length > MaxReason ? $"reason is longer than {MaxReason} characters."
         : null;
 
     /// <summary>Terms too generic to search for: framework parts and short words.</summary>
@@ -77,6 +79,7 @@ public static partial class CardRules
             + (c.Usages.Count > MaxUsages ? $"; and {c.Usages.Count - MaxUsages} more" : "");
         var advisory = real.Any(s => s.Source == "deps.dev");
         var card = new NewCard(
+            c.Term.ToLowerInvariant(),
             Clip($"{c.Term}: {top.Title}", 200),
             $"{real.Count} signal{(real.Count == 1 ? "" : "s")} about {c.Term}, strongest from {top.Source}: \"{Clip(top.Title, 160)}\". Only the titles were read; the pages were not (UNKNOWN until read).",
             home, where,
