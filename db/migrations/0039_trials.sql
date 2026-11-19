@@ -15,7 +15,10 @@ create table trial (
     result_md    text not null default ''        -- summary, blocked or failed reason, and the state suggestion; it never changes the card
 );
 
+-- squawk-ignore require-concurrent-index-creation
 create index trial_card_id_idx on trial (card_id, id desc);
 
+-- Both indexes are on the table created above, still empty and unseen by any reader, so there is nothing to block.
 -- A card has at most one trial waiting or running.
+-- squawk-ignore require-concurrent-index-creation
 create unique index trial_one_active_per_card on trial (card_id) where status in ('queued', 'running');

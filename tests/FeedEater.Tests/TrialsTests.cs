@@ -321,6 +321,6 @@ public sealed class TrialsRunnerTests(PostgresFixture pg) : IAsyncLifetime
 
     private sealed class ThrowingExecutor(Exception error) : ITrialExecutor
     {
-        public Task<TrialOutcome> RunAsync(TrialRequest request, CancellationToken ct) => throw error;
+        public Task<TrialOutcome> RunAsync(TrialRequest request, CancellationToken ct) => Task.FromException<TrialOutcome>(error);
     }
 }

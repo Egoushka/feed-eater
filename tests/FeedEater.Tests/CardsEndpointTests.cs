@@ -182,7 +182,7 @@ public sealed partial class CardsEndpointTests(PostgresFixture pg) : IAsyncLifet
 
         Assert.Contains("only a card you moved to the trial state", await CallAsync("feed_trial_run", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
         await _store.SetStateAsync(id, "trial", "run it", default);
-        Assert.Contains("\"queued\"", await CallAsync("feed_trial_run", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
+        Assert.Contains("trial/", await CallAsync("feed_trial_run", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
         Assert.Contains("already has a trial", await CallAsync("feed_trial_run", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
 
         Assert.Contains("trial/", await CallAsync("feed_trials", $$"""{"cardId":{{id}}}"""), StringComparison.Ordinal);
