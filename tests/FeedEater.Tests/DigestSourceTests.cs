@@ -13,7 +13,6 @@ using FeedEater.Loops;
 using FeedEater.Signals;
 using FeedEater.Sources;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
 
@@ -25,7 +24,6 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
     private static readonly DateTimeOffset Now = new(2026, 10, 5, 4, 30, 0, TimeSpan.Zero);
     private static readonly string Article = string.Join(' ', Enumerable.Repeat("The real article explains the Postgres change.", 60));
 
-    private readonly List<string> _sent = [];
     private readonly List<string> _readPrompts = [];
     private HttpStatusCode _articleStatus = HttpStatusCode.OK;
 
@@ -44,7 +42,6 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
         var options = Options.Create(new FeedEaterOptions
         {
             ProfilePath = "Fixtures/profile.json",
-            Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 },
             Approvals = approvals is null ? new ApprovalsOptions() : new ApprovalsOptions { BaseUrl = "http://approvals/", Token = new string('a', 32) }
         });
         var kit = new SourceKit(pg, network ?? (_ => _articleStatus == HttpStatusCode.OK
@@ -61,23 +58,14 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
             _readPrompts.Add(body);
             return StubHandler.Json(Chat("""{"summary":"S.","why":"W.","kind":"improve","project":"homelab","suggestion":"Do it."}"""));
         });
-        var telegram = new StubHandler((request, body) =>
-        {
-            if (request.RequestUri!.Segments[^1] == "sendMessage")
-            {
-                _sent.Add(JsonSerializer.Deserialize<JsonElement>(body).GetProperty("text").GetString()!);
-            }
-
-            return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
-        });
         var time = new FakeTimeProvider(Now);
         var run = new DigestRun(
-            new ItemStore(pg.Db), new ReleaseStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), new DigestStore(pg.Db), new UsageStore(pg.Db),
+            new ItemStore(pg.Db), new ReleaseStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), new DigestStore(pg.Db),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new ItemText(kit.Items, options, new MinifluxClient(miniflux.Client("http://miniflux/")), NullLogger<ItemText>.Instance, new ArticleText(kit.Items, kit.Fetcher, options, NullLogger<ArticleText>.Instance)),
             new GitHubStarsClient(new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.NotFound)).Client("http://github/"), options),
-            new TelegramClient(telegram.Client("http://tg/botT/")),
-            new InboxService(new InboxStore(pg.Db), new TelegramClient(telegram.Client("http://tg/botT/")), options, time), new InboxStore(pg.Db),
+            PushKit.Notifier(pg, options, time),
+            new InboxService(new InboxStore(pg.Db), time), new InboxStore(pg.Db),
             new LoopHealth(time), new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), options, time, NullLogger<DigestRun>.Instance,
             kit.Poller, approvals is null ? null : new ApprovalsClient(approvals.Client("http://approvals/"), options, NullLogger<ApprovalsClient>.Instance));
         return (run, miniflux, kit);
@@ -93,6 +81,18 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
     {
         var hourAgo = Now.UtcDateTime.AddHours(-1);
         return await Seed.ItemAsync(pg, 1, "Keep this one", TestVectors.OneHot(0), hourAgo, hourAgo, content);
+    }
+
+    private async Task<string?> NoteAsync()
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return await c.ExecuteScalarAsync<string?>("select note from digests where local_date = @d::date", new { d = Today });
+    }
+
+    private async Task<string> StatusAsync()
+    {
+        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
+        return (await c.ExecuteScalarAsync<string>("select status from digests where local_date = @d::date", new { d = Today }))!;
     }
 
     private async Task<string> ContentAsync(long id)
@@ -115,7 +115,7 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
         Assert.StartsWith("Real article", await ContentAsync(id), StringComparison.Ordinal);   // stored, like the Miniflux path stores its fetch
         Assert.Empty(miniflux.Calls);
         Assert.Single(kit.Stub.Calls);
-        Assert.Equal(2, _sent.Count);   // header and the item
+        Assert.Equal("sent", await StatusAsync());
     }
 
     [Fact]
@@ -177,7 +177,7 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
 
         Assert.Contains("A short teaser.", Assert.Single(_readPrompts), StringComparison.Ordinal);
         Assert.Equal("A short teaser.", await ContentAsync(id));
-        Assert.Equal(2, _sent.Count);
+        Assert.Equal("sent", await StatusAsync());
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_header_names_feeds_that_keep_failing_and_encodes_the_names()
+    public async Task The_note_names_feeds_that_keep_failing()
     {
         await SeedItemAsync(Article);
         var (run, _, kit) = Build(r => r.RequestUri!.Host == "bad.example" ? SourceKit.Status(HttpStatusCode.NotFound) : SourceKit.Xml("<html></html>", "text/html"));
@@ -205,8 +205,8 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
 
         await run.RunAsync(Today, default);
 
-        Assert.Contains("⚠️ Feed failing: Broken &lt;b&gt;feed&lt;/b&gt; &amp; co; some items may be missing", _sent[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("Miniflux", _sent[0], StringComparison.Ordinal);
+        Assert.Contains("Feed failing: Broken <b>feed</b> & co; some items may be missing", await NoteAsync(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Miniflux", await NoteAsync(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -217,6 +217,6 @@ public sealed class DigestSourceTests(PostgresFixture pg) : IAsyncLifetime
 
         await run.RunAsync(Today, default);
 
-        Assert.DoesNotContain("⚠️", _sent[0], StringComparison.Ordinal);
+        Assert.Null(await NoteAsync());
     }
 }

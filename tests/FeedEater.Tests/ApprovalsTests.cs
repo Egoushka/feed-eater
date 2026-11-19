@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using FeedEater.Approvals;
 using FeedEater.Inbox;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
 
@@ -89,9 +88,7 @@ public sealed class ApprovalsTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     private InboxService Inbox(StubHandler approvals) =>
-        new(new InboxStore(pg.Db), new TelegramClient(new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""")).Client("http://tg/botT/")),
-            Options.Create(new FeedEaterOptions { Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 }, Approvals = Settings().Value.Approvals }),
-            approvals: Client(approvals, Settings()));
+        new(new InboxStore(pg.Db), approvals: Client(approvals, Settings()));
 
     [Fact]
     public async Task A_notice_row_sends_one_card_and_a_duel_row_none()
@@ -99,9 +96,8 @@ public sealed class ApprovalsTests(PostgresFixture pg) : IAsyncLifetime
         var approvals = new StubHandler((_, _) => StubHandler.Json("{}"));
         var inbox = Inbox(approvals);
 
-        await inbox.AddAsync(new InboxEntry("notice:digest:2026-11-01:none", InboxKinds.Notice, Payload: new JsonObject { ["text"] = "No digest today: nothing new" }),
-            new OutMessage("x"), default);
-        await inbox.AddAsync(new InboxEntry("duel:1", InboxKinds.Duel, Payload: new JsonObject { ["text"] = "a or b" }), new OutMessage("y"), default);
+        await inbox.AddAsync(new InboxEntry("notice:digest:2026-11-01:none", InboxKinds.Notice, Payload: new JsonObject { ["text"] = "No digest today: nothing new" }), default);
+        await inbox.AddAsync(new InboxEntry("duel:1", InboxKinds.Duel, Payload: new JsonObject { ["text"] = "a or b" }), default);
 
         var call = Assert.Single(approvals.Calls);
         Assert.Equal("http://approvals/items/feed-eater:notice:digest:2026-11-01:none", call.Uri);

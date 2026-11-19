@@ -7,7 +7,6 @@ using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Issues;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 using FeedEater.WeeklyIdeas;
 
 namespace FeedEater.Tests;
@@ -24,12 +23,11 @@ public sealed class DailyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     public Task InitializeAsync() => pg.ResetAsync();
     public Task DisposeAsync() => Task.CompletedTask;
 
-    private (DailyIdeasJob Job, StubHandler Telegram) Build(TimeProvider time)
+    private DailyIdeasJob Build(TimeProvider time)
     {
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv",
-            Telegram = new TelegramOptions { AllowedUserId = 42, Token = "T" },
             GitHub = new GitHubOptions { Token = "t", FallbackRepo = "octo/feed" },
             DailyIdeas = new DailyIdeasOptions { Enabled = true },
         });
@@ -39,16 +37,15 @@ public sealed class DailyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
             _chatBodies.Add(body);
             return StubHandler.Json(JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = _chatReply } } }, usage = new { prompt_tokens = 10, completion_tokens = 5 } }));
         });
-        var telegram = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
         var backlog = new StubHandler((_, _) => StubHandler.Json("{}", HttpStatusCode.BadGateway));
         var cursors = new CursorStore(pg.Db);
         var job = new DailyIdeasJob(
             new WeeklyIdeaStore(pg.Db), new ProfileStore(pg.Db), new GitHubIssues(github.Client("http://github/")),
             new BacklogClient(backlog.Client("http://backlog/"), options),
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
-            new TelegramClient(telegram.Client("http://tg/botT/")), new InboxStore(pg.Db), new QuietHours(cursors, options, time),
+            new InboxStore(pg.Db), new QuietHours(cursors, options, time),
             cursors, options, new LoopHealth(time), time, new ListLogger<DailyIdeasJob>(_logs));
-        return (job, telegram);
+        return job;
     }
 
     /// <summary>Items liked at <paramref name="at"/>, one per title.</summary>
@@ -81,12 +78,11 @@ public sealed class DailyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
     {
         await LikedAsync(Evening.AddDays(-2), "Liked two days ago");   // outside the last 24 hours
         _chatReply = Ideas(1);
-        var (job, telegram) = Build(new FakeTimeProvider(Evening));
+        var job = Build(new FakeTimeProvider(Evening));
 
         await job.TickAsync(default);
 
         Assert.Empty(_chatBodies);
-        Assert.Empty(telegram.Calls);
         Assert.Equal(0, await StagedAsync());
         Assert.Contains(_logs, l => l.Contains("No leads this day", StringComparison.Ordinal));
         Assert.Equal("2026-10-19", await new CursorStore(pg.Db).GetAsync("job:daily-ideas", default));   // skipped, not retried
@@ -98,7 +94,7 @@ public sealed class DailyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await LikedAsync(Evening.AddHours(-3), "New 1", "New 2", "New 3", "New 4", "New 5", "New 6");
         await LikedAsync(Evening.AddHours(-30), "Yesterday item");
         _chatReply = Ideas(6);
-        var (job, telegram) = Build(new FakeTimeProvider(Evening));
+        var job = Build(new FakeTimeProvider(Evening));
 
         await job.TickAsync(default);
 
@@ -108,8 +104,6 @@ public sealed class DailyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Contains("New 6", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("Yesterday item", prompt, StringComparison.Ordinal);
         Assert.Equal(5, await StagedAsync());
-        var message = Assert.Single(telegram.Calls);
-        Assert.Contains("Ideas for 2026-10-19", message.Body, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -118,7 +112,7 @@ public sealed class DailyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await LikedAsync(Evening.AddHours(-3), "Staged today");
         _chatReply = Ideas(1);
         var time = new FakeTimeProvider(Evening);
-        var (job, telegram) = Build(time);
+        var job = Build(time);
 
         await job.TickAsync(default);
         await job.TickAsync(default);
@@ -133,7 +127,6 @@ public sealed class DailyIdeasJobTests(PostgresFixture pg) : IAsyncLifetime
         await job.TickAsync(default);
 
         Assert.Single(_chatBodies);   // the next day had nothing new
-        Assert.Single(telegram.Calls);
         Assert.Equal(1, await StagedAsync());
         Assert.Equal("2026-10-20", await new CursorStore(pg.Db).GetAsync("job:daily-ideas", default));
     }

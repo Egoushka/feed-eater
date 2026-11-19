@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using FeedEater.Digest;
 using FeedEater.Ingest;
 using FeedEater.Sources;
-using FeedEater.Telegram;
 using FeedEater.Ui;
 
 namespace FeedEater.Tests;
@@ -123,7 +122,6 @@ public sealed class SourceCompositionTests
         {
             ["ConnectionStrings:FeedEater"] = "Host=localhost;Database=unused",
             ["FeedEater:RunJobs"] = runJobs.ToString(),
-            ["FeedEater:Telegram:Token"] = "123:test",
         };
         if (kind is not null)
         {
@@ -144,10 +142,8 @@ public sealed class SourceCompositionTests
         Assert.NotNull(host.Services.GetService<FeedPoller>());
         Assert.NotNull(host.Services.GetService<ArticleText>());
         Assert.NotNull(host.Services.GetService<FeedManager>());
-        Assert.NotNull(host.Services.GetService<FeedsCommand>());
         Assert.NotNull(host.Services.GetService<SourcesUi>());
         Assert.NotNull(host.Services.GetRequiredService<DigestRun>());
-        Assert.NotNull(host.Services.GetRequiredService<CommandHandler>());
         Assert.NotNull(host.Services.GetRequiredService<UiHandlers>());
         Assert.Contains(host.Services.GetServices<IHostedService>(), s => s is Ingestor);
     }
@@ -162,10 +158,8 @@ public sealed class SourceCompositionTests
         Assert.Null(host.Services.GetService<FeedPoller>());
         Assert.Null(host.Services.GetService<ArticleText>());
         Assert.Null(host.Services.GetService<FeedManager>());
-        Assert.Null(host.Services.GetService<FeedsCommand>());
         Assert.Null(host.Services.GetService<SourcesUi>());
         Assert.NotNull(host.Services.GetRequiredService<DigestRun>());
-        Assert.NotNull(host.Services.GetRequiredService<CommandHandler>());
         Assert.NotNull(host.Services.GetRequiredService<UiHandlers>());
         Assert.Contains(host.Services.GetServices<IHostedService>(), s => s is Ingestor);
     }

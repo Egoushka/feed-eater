@@ -18,7 +18,7 @@ public static partial class UiPages
         {
             h.Append(on
                 ? $"<p class=\"empty\">No autopsy yet. One is built on the 1st of a month at 09:00, for 👍 items whose repo snapshot is at least {N(AutopsyRules.MinAgeDays)} days old.</p>"
-                : "<p class=\"empty\">The autopsy is off: it needs GitHub:User and Telegram:Token to be set.</p>");
+                : "<p class=\"empty\">The autopsy is off: it needs GitHub:User and Swipe:Enabled to be set.</p>");
             return Layout(p, "Hype autopsy", "/ui/autopsy", h.ToString());
         }
 

@@ -55,36 +55,9 @@ public sealed class DigestStore(FeedDb db)
     public Task SetSentCountAsync(string date, int sentCount, CancellationToken ct) => ExecuteAsync(
         "update digests set sent_count = @sentCount where local_date = @date::date", new { date, sentCount }, ct);
 
-    /// <summary>A resend starts every part over: last run's send intents are no longer meaningful.</summary>
+    /// <summary>A resend starts the send over.</summary>
     public Task ResetSentAsync(string date, CancellationToken ct) => ExecuteAsync(
         "update digests set sent_count = 0, sent_message_ids = '{}' where local_date = @date::date", new { date }, ct);
-
-    /// <summary>
-    /// Written before the Telegram call for <paramref name="part"/>, so a crash before the message id comes back still
-    /// leaves a trace: on a rerun, <see cref="GetAsync"/> shows this part attempted with id 0 (Telegram's real ids are
-    /// always positive). Appends only when <paramref name="part"/> is exactly the next slot, so a retried call does
-    /// not add a second placeholder.
-    /// </summary>
-    public Task RecordIntentAsync(string date, int part, CancellationToken ct) => ExecuteAsync(
-        """
-        update digests set sent_message_ids = sent_message_ids || 0::bigint
-        where local_date = @date::date and coalesce(array_length(sent_message_ids, 1), 0) = @part
-        """, new { date, part }, ct);
-
-    /// <summary>The Telegram id for a part whose intent was already recorded; <c>sent_count</c> moves past it in the same write.</summary>
-    public Task ConfirmSentAsync(string date, int part, long messageId, CancellationToken ct) => ExecuteAsync(
-        "update digests set sent_message_ids[@index] = @messageId, sent_count = @sentCount where local_date = @date::date",
-        new { date, index = part + 1, messageId, sentCount = part + 1 }, ct);
-
-    /// <summary>
-    /// Undoes <see cref="RecordIntentAsync"/> for a call that got a definite answer (Telegram refused or errored, not a
-    /// crash): the next attempt should look exactly like the first, not like an attempt whose outcome is unknown.
-    /// </summary>
-    public Task DropIntentAsync(string date, int part, CancellationToken ct) => ExecuteAsync(
-        """
-        update digests set sent_message_ids = sent_message_ids[1:@part]
-        where local_date = @date::date and array_length(sent_message_ids, 1) = @part + 1
-        """, new { date, part }, ct);
 
     public Task MarkSentAsync(string date, DateTimeOffset at, CancellationToken ct) => ExecuteAsync(
         "update digests set status = 'sent', sent_at = @at, error = null where local_date = @date::date",

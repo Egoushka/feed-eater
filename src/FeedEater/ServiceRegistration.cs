@@ -28,7 +28,7 @@ using FeedEater.Sources;
 using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Approvals;
-using FeedEater.Telegram;
+using FeedEater.Push;
 using FeedEater.Ui;
 using FeedEater.WeeklyIdeas;
 
@@ -80,12 +80,14 @@ public static class ServiceRegistration
             BaseAddress(http, o.BaseUrl);
             http.DefaultRequestHeaders.Add("X-Auth-Token", o.Token);
         });
-        services.AddHttpClient<TelegramClient>((sp, http) =>
+        services.AddHttpClient<NtfyClient>((sp, http) =>
         {
-            var o = Settings(sp).Telegram;
-            http.BaseAddress = new Uri($"{o.BaseUrl}bot{o.Token}/");
-            http.Timeout = TimeSpan.FromSeconds(70);   // above the 50 s long poll
+            var o = Settings(sp).Push;
+            BaseAddress(http, o.NtfyUrl.Length > 0 ? o.NtfyUrl.TrimEnd('/') + "/" : "");
+            Bearer(http, o.Token);
+            http.Timeout = TimeSpan.FromSeconds(10);
         });
+        services.AddSingleton<PushNotifier>();
         services.AddHttpClient<ApprovalsClient>((sp, http) =>
         {
             var o = Settings(sp).Approvals;
@@ -148,7 +150,7 @@ public static class ServiceRegistration
         services.AddSingleton<IdeaFiler>();
         services.AddSingleton<WeeklyIdeaStore>();
         services.AddHttpClient<BacklogClient>();
-        services.AddSingleton<CallbackHandler>();
+        services.AddSingleton<ItemActions>();
         services.AddSingleton<ArchiveSearch>();
         services.AddSingleton<PriorArtStore>();
         services.AddSingleton<IPriorArtEmbedder, LiteLlmEmbedder>();
@@ -172,9 +174,7 @@ public static class ServiceRegistration
         services.AddSingleton<StoryFollower>();
         services.AddSingleton<InboxStore>();
         services.AddSingleton<IInbox, InboxService>();
-        services.AddSingleton<ReplyHandler>();
         services.AddSingleton<TasteSwitch>();
-        services.AddSingleton<CommandHandler>();
         services.AddSingleton<DigestTrigger>();
         services.AddFeedSource(settings.Source);
 
@@ -197,12 +197,13 @@ public static class ServiceRegistration
                 services.AddHostedService<SignalJob>();
             }
 
-            var telegram = settings.Telegram.Token.Length > 0;
-            // Inbox entries reach the owner through Telegram or a swipe session.
-            var delivers = telegram || settings.Swipe.Enabled;
-            if (delivers)
+            services.AddHostedService<DigestJob>();
+            // Inbox entries reach the owner through a swipe session.
+            var delivers = settings.Swipe.Enabled;
+
+            if (settings.Push.Enabled)
             {
-                services.AddHostedService<DigestJob>();
+                services.AddHostedService<PushJob>();
             }
 
             if (settings.Hindsight.Enabled)
@@ -236,11 +237,6 @@ public static class ServiceRegistration
                 if (settings.Duel.Enabled)
                 {
                     services.AddHostedService<DuelJob>();
-                }
-
-                if (telegram)
-                {
-                    services.AddHostedService<TelegramPoller>();
                 }
 
                 if (settings.Follow.Enabled)

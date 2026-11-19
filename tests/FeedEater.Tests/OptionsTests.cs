@@ -32,13 +32,13 @@ public sealed class OptionsTests
         {
             ["FeedEater:DigestAt"] = "06:45:00",
             ["FeedEater:Caps:Read"] = "8",
-            ["FeedEater:Telegram:AllowedUserId"] = "123456789",
+            ["FeedEater:Push:Topic"] = "feed",
         }).Build();
 
         var o = config.GetSection(FeedEaterOptions.Section).Get<FeedEaterOptions>()!;
 
         Assert.Equal(new TimeSpan(6, 45, 0), o.DigestAt);
         Assert.Equal(8, o.Caps.Read);
-        Assert.Equal(123456789, o.Telegram.AllowedUserId);
+        Assert.Equal("feed", o.Push.Topic);
     }
 }

@@ -267,7 +267,7 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
     public async Task Undoing_a_swipe_save_of_an_item_saved_before_keeps_the_library_row()
     {
         var (session, position, item) = await ItemCardAsync();
-        await SqlAsync("insert into saved (item_id, source) values (@item, 'telegram')", new { item });
+        await SqlAsync("insert into saved (item_id, source) values (@item, 'import')", new { item });
         var id = Guid.NewGuid();
         var saved = await ActAsync(session, position, "save", id);
 
@@ -275,7 +275,7 @@ public sealed partial class SwipeActTests(PostgresFixture pg, SwipeActTests.Host
 
         Assert.Equal("Already saved", saved.Message);
         Assert.Equal(new ActResult(true, "Undone; it stays in your library"), undo);
-        Assert.Equal("telegram", await ScalarAsync<string>("select source from saved where item_id = @item", new { item }));
+        Assert.Equal("import", await ScalarAsync<string>("select source from saved where item_id = @item", new { item }));
     }
 
     [Fact]

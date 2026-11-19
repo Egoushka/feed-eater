@@ -3,7 +3,6 @@ using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Issues;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.WeeklyIdeas;
 
@@ -13,9 +12,9 @@ namespace FeedEater.WeeklyIdeas;
 /// Peer gaps stay with the weekly run.
 /// </summary>
 public sealed class DailyIdeasJob(
-    WeeklyIdeaStore store, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, InboxStore inboxStore, QuietHours quiet,
+    WeeklyIdeaStore store, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, InboxStore inboxStore, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<DailyIdeasJob> logger)
-    : IdeasJob(store, null, profiles, issues, backlog, llm, telegram, inboxStore, quiet, cursors, options, health, time, logger)
+    : IdeasJob(store, null, profiles, issues, backlog, llm, inboxStore, quiet, cursors, options, health, time, logger)
 {
     protected override string Name => "daily-ideas";
     protected override TimeSpan Window => TimeSpan.FromHours(24);

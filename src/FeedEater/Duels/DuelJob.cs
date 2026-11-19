@@ -8,7 +8,7 @@ using FeedEater.Storage;
 namespace FeedEater.Duels;
 
 /// <summary>
-/// At each of <c>Duel:Times</c>: two unvoted items from the middle of the ranking in one message, for the votes the learned ranking needs.
+/// At each of <c>Duel:Times</c>: two unvoted items from the middle of the ranking as one card, for the votes the learned ranking needs.
 /// A slot runs once; one missed while down runs at start only within two hours of its time. Quiet hours hold it.
 /// </summary>
 public sealed class DuelJob(
@@ -44,13 +44,12 @@ public sealed class DuelJob(
 
         var (first, second) = chosen;
 
-        // The buttons carry the duel id, so the row exists before the send. It stays when the send fails (Telegram may have delivered it
-        // anyway), marked failed so its pair is not picked again.
+        // The card carries the duel id, so the row exists before the entry. It stays when the entry fails, marked failed so its pair is not picked again.
         var id = await duels.CreateAsync(first.Id, second.Id, now, ct);
         try
         {
             await inbox.AddAsync(new InboxEntry($"duel:{id}", InboxKinds.Duel, RefId: id,
-                Payload: new JsonObject { ["a"] = first.Id, ["b"] = second.Id }, ExpiresAt: now.AddDays(7)), DuelFormatter.Message(id, first, second), ct);
+                Payload: new JsonObject { ["a"] = first.Id, ["b"] = second.Id }, ExpiresAt: now.AddDays(7)), ct);
         }
         catch
         {

@@ -15,7 +15,7 @@ public sealed record ImportResult(string? Error, int Added = 0, int Existing = 0
     public bool Ok => Error is null;
 }
 
-/// <summary>Subscribing, importing and exporting, shared by /ui/sources, the Telegram /feeds command and the import-opml CLI.</summary>
+/// <summary>Subscribing, importing and exporting, shared by /ui/sources and the import-opml CLI.</summary>
 public sealed class FeedManager(FeedStore feeds, FeedReader reader, FeedPoller poller, ItemStore items)
 {
     /// <summary>

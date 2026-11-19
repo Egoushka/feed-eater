@@ -7,7 +7,6 @@ using FeedEater.Library;
 using FeedEater.Loops;
 using FeedEater.Storage;
 using FeedEater.Swipe;
-using FeedEater.Telegram;
 using FeedEater.Ui;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -87,31 +86,25 @@ public sealed partial class ResurfaceTests(PostgresFixture pg, ResurfaceTests.Ho
     [GeneratedRegex("""<meta name="csrf" content="([^"]+)">""", RegexOptions.None, 1000)]
     private static partial Regex CsrfPattern();
 
-    private sealed record Rig(ResurfaceJob Job, FakeTimeProvider Time, List<string> Sent);
+    private sealed record Rig(ResurfaceJob Job, FakeTimeProvider Time, List<InboxEntry> Sent);
 
     private Rig Build(int perWeek = 3, DateTimeOffset? at = null)
     {
         var time = new FakeTimeProvider(at ?? Sunday);
-        var sent = new List<string>();
         var options = Options.Create(new FeedEaterOptions
         {
             TimeZone = "Europe/Kyiv",
-            Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 },
             Library = new LibraryOptions { ResurfacePerWeek = perWeek },
         });
-        var stub = new StubHandler((_, body) =>
-        {
-            sent.Add(body);
-            return StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""");
-        });
+        var inbox = new RecordingInbox(new InboxService(new InboxStore(pg.Db), time));
         var cursors = new CursorStore(pg.Db);
         var job = new ResurfaceJob(
-            new LibraryStore(pg.Db), new ItemStore(pg.Db), new InboxService(new InboxStore(pg.Db), new TelegramClient(stub.Client("http://tg/botT/")), options, time),
+            new LibraryStore(pg.Db), new ItemStore(pg.Db), inbox,
             new QuietHours(cursors, options, time), cursors, options, new LoopHealth(time), time, NullLogger<ResurfaceJob>.Instance);
-        return new Rig(job, time, sent);
+        return new Rig(job, time, inbox.Entries);
     }
 
-    private async Task<long> SavedAsync(string title, int daysAgo, bool read = false, string source = "telegram")
+    private async Task<long> SavedAsync(string title, int daysAgo, bool read = false, string source = "ui")
     {
         var id = await Seed.ItemAsync(pg, 1, title, TestVectors.OneHot(1), Sunday.UtcDateTime.AddDays(-daysAgo - 1));
         var store = new LibraryStore(pg.Db);
@@ -150,9 +143,8 @@ public sealed partial class ResurfaceTests(PostgresFixture pg, ResurfaceTests.Ho
 
         Assert.Equivalent(new[] { a, b }, await ItemIdsAsync());
         Assert.Equal(2, rig.Sent.Count);
-        Assert.Contains("still unread: Old", rig.Sent[0], StringComparison.Ordinal);
-        Assert.Contains("Saved 20 days ago", rig.Sent[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("reply_markup", rig.Sent[0], StringComparison.Ordinal);
+        Assert.Equal(["Old A", "Old B"], rig.Sent.Select(e => e.Payload!["title"]!.GetValue<string>()).Order());
+        Assert.All(rig.Sent, e => Assert.Equal(Sunday.AddDays(-20), DateTimeOffset.Parse(e.Payload!["savedAt"]!.GetValue<string>(), System.Globalization.CultureInfo.InvariantCulture)));
     }
 
     private async Task<long[]> ItemIdsAsync()

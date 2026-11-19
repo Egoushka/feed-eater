@@ -4,7 +4,6 @@ using FeedEater.Llm;
 using FeedEater.Loops;
 using FeedEater.Issues;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.WeeklyIdeas;
 
@@ -13,9 +12,9 @@ namespace FeedEater.WeeklyIdeas;
 /// of at most <c>WeeklyIdeas:MaxFiled</c> ideas. With the daily run on, sources a daily run already staged are left out.
 /// </summary>
 public sealed class WeeklyIdeasJob(
-    WeeklyIdeaStore store, IPeerGapSource gapSource, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, InboxStore inboxStore, QuietHours quiet,
+    WeeklyIdeaStore store, IPeerGapSource gapSource, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, InboxStore inboxStore, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<WeeklyIdeasJob> logger)
-    : IdeasJob(store, gapSource, profiles, issues, backlog, llm, telegram, inboxStore, quiet, cursors, options, health, time, logger)
+    : IdeasJob(store, gapSource, profiles, issues, backlog, llm, inboxStore, quiet, cursors, options, health, time, logger)
 {
     /// <summary>Set by /ideas: the next tick runs the shortlist now, window or not, once.</summary>
     public const string ForceCursor = "weekly-ideas:force";

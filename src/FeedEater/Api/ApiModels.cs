@@ -33,7 +33,7 @@ public sealed record AskResponse(string Answer, IReadOnlyList<AskCitation> Citat
 
 public sealed record ItemAskResponse(string Answer);
 
-/// <summary>An active follow as the API shows it: no Telegram message id, UTC times.</summary>
+/// <summary>An active follow as the API shows it: UTC times.</summary>
 public sealed record FollowResponse(long Id, long RootItemId, string Title, string? Url, DateTimeOffset StartedAt, DateTimeOffset EndsAt, int Sent);
 
 public sealed record StartFollowBody(long? ItemId);

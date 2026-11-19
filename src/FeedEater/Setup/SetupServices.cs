@@ -14,7 +14,6 @@ public static class SetupServices
         services.AddSingleton<IIntegrationCheck, DatabaseCheck>();
         services.AddSingleton<IIntegrationCheck, LlmChatCheck>();
         services.AddSingleton<IIntegrationCheck, LlmEmbeddingCheck>();
-        services.AddSingleton<IIntegrationCheck, TelegramCheck>();
         services.AddSingleton<IIntegrationCheck, FeedSourceCheck>();
         services.AddSingleton<IIntegrationCheck, ProfileCheck>();
         services.AddSingleton<IIntegrationCheck, MinifluxCheck>();

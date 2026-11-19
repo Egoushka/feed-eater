@@ -79,7 +79,7 @@ public static partial class UiPages
         ["save-missing"] = "That item no longer exists, so nothing was saved.",
         ["quiet-on"] = "Quiet mode is on.",
         ["quiet-off"] = "Quiet mode is off.",
-        ["digest-off"] = "The digest job is off: Telegram is not configured.",
+        ["digest-off"] = "The digest job is off: FeedEater:RunJobs is false.",
     };
 
     public static string Login(string? error)
@@ -571,7 +571,7 @@ public static partial class UiPages
             h.Append("<ul class=\"releases\">");
             foreach (var r in news)
             {
-                var how = r.AnnouncedAt is not null ? "sent on Telegram" : r.DigestDate is not null ? "in the digest of " + r.DigestDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "waiting for the next digest";
+                var how = r.AnnouncedAt is not null ? "announced in the inbox" : r.DigestDate is not null ? "in the digest of " + r.DigestDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "waiting for the next digest";
                 h.Append($"<li><strong>{External(r.Url, r.Repo + " " + r.Version)}</strong> <span class=\"badge {(r.Breaking == "yes" ? "bad" : r.Breaking == "no" ? "good" : "warn")}\">breaking: {E(r.Breaking ?? "unknown")}</span>")
                     .Append(r.Urgent ? " <span class=\"badge bad\">security or breaking</span>" : "")
                     .Append($"<p class=\"meta\">{E(Local(p, r.DetectedAt))} · {E(how)}</p>");
@@ -682,7 +682,7 @@ public static partial class UiPages
         h.Append("<section class=\"panel\" aria-labelledby=\"run-h\"><h2 id=\"run-h\">Run the digest</h2>");
         if (!run.Enabled)
         {
-            h.Append("<p class=\"muted\">The digest job is off: Telegram is not configured.</p></section>");
+            h.Append("<p class=\"muted\">The digest job is off: FeedEater:RunJobs is false.</p></section>");
             return;
         }
 
@@ -703,7 +703,7 @@ public static partial class UiPages
                 <details class="confirm"><summary>Send today's digest again</summary>
                   <form method="post" action="/ui/digest/run" class="stack">
                     <input type="hidden" name="_csrf" value="{E(p.Csrf)}"><input type="hidden" name="mode" value="resend">
-                    <p>Today's digest was already sent. This sends the same messages to Telegram a second time.</p>
+                    <p>Today's digest was already sent. This runs the send step a second time; the push message is not repeated.</p>
                     <button type="submit" class="danger">Yes, send it again</button>
                   </form></details>
                 """);

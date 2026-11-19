@@ -12,7 +12,7 @@ using FeedEater.Ranking;
 using FeedEater.Signals;
 using FeedEater.Sources;
 using FeedEater.Storage;
-using FeedEater.Telegram;
+using FeedEater.Push;
 using FeedEater.Text;
 
 namespace FeedEater.Digest;
@@ -22,13 +22,12 @@ public sealed record ForceOutcome(bool Sent, string Text);
 public sealed record Selection(int Candidates, int Triaged, IReadOnlyList<long> ItemIds, IReadOnlyList<string> Notes);
 
 /// <summary>
-/// One digest: rank candidates, triage the top N with the small model, read the top M with the strong one, send.
-/// Every step is stored, so a rerun resumes: results per item in triage/reads, delivered messages in sent_count and
-/// sent_message_ids (one send intent per part, with its Telegram message id once the send is confirmed).
+/// One digest: rank candidates, triage the top N with the small model, read the top M with the strong one, store it for the
+/// stack and the web UI, and push one ntfy message. Every step is stored, so a rerun resumes: results per item in triage/reads.
 /// </summary>
 public sealed class DigestRun(
-    ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests, UsageStore usage,
-    LiteLlmClient llm, ItemText itemText, GitHubStarsClient github, TelegramClient telegram, IInbox inbox, InboxStore inboxStore, LoopHealth health, TasteSwitch tasteSwitch,
+    ItemStore items, ReleaseStore releaseStore, ProfileStore profiles, FeedbackStore feedback, AnalysisStore analysis, DigestStore digests,
+    LiteLlmClient llm, ItemText itemText, GitHubStarsClient github, PushNotifier push, IInbox inbox, InboxStore inboxStore, LoopHealth health, TasteSwitch tasteSwitch,
     IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<DigestRun> logger, FeedPoller? feeds = null, ApprovalsClient? approvals = null)
 {
     private const int TriageMaxTokens = 200;
@@ -38,12 +37,6 @@ public sealed class DigestRun(
 
     public async Task RunAsync(string date, CancellationToken ct)
     {
-        if (options.Value.Telegram.Token.Length > 0 && options.Value.Telegram.AllowedUserId == 0)
-        {
-            // Before any model call: a digest that cannot be sent is not worth paying for.
-            throw new InvalidOperationException("FeedEater:Telegram:AllowedUserId is 0; send /start to the bot to get your id");
-        }
-
         await digests.CloseStaleAsync(date, ct);
         var digest = await digests.GetAsync(date, ct);
         if (digest?.Status == "sent" || (digest?.Status == "failed" && digest.ItemIds.Length == 0))
@@ -59,7 +52,7 @@ public sealed class DigestRun(
             {
                 var why = selection.Notes.Count > 0 ? string.Join("; ", selection.Notes) : $"none of {selection.Candidates} new items passed triage";
                 await inbox.AddAsync(new InboxEntry($"notice:digest:{date}:none", InboxKinds.Notice, Payload: new JsonObject { ["text"] = $"No digest today: {why}" },
-                    ExpiresAt: time.GetUtcNow().AddDays(2)), new OutMessage($"No digest today: {WebUtility.HtmlEncode(why)}"), ct);
+                    ExpiresAt: time.GetUtcNow().AddDays(2)), ct);
                 await digests.MarkFailedAsync(date, why, ct);
                 return;
             }
@@ -68,7 +61,7 @@ public sealed class DigestRun(
                 selection.Notes.Count == 0 ? null : string.Join('\n', selection.Notes), ct);
             if (selection.Notes.Count > 0)
             {
-                // The Telegram header carries the notes; the stack has no header, so they are stored as a card.
+                // The stack has no header, so the notes are stored as a card.
                 await inboxStore.AddAsync(new InboxEntry($"notice:digest:{date}:notes", InboxKinds.Notice,
                     Payload: new JsonObject { ["text"] = string.Join('\n', selection.Notes) }, ExpiresAt: time.GetUtcNow().AddDays(2)), time.GetUtcNow(), ct);
             }
@@ -325,49 +318,12 @@ public sealed class DigestRun(
 
     private async Task SendAsync(DigestRow digest, CancellationToken ct)
     {
-        if (options.Value.Telegram.Token.Length == 0)
-        {
-            // Delivered to the stack, which reads the digest's items itself.
-            await digests.SetSentCountAsync(digest.LocalDate, digest.ItemIds.Length, ct);
-            await digests.MarkSentAsync(digest.LocalDate, time.GetUtcNow(), ct);
-            await NotifyApprovalsAsync(digest, ct);
-            return;
-        }
-
-        var chat = options.Value.Telegram.AllowedUserId;
-        var messages = await BuildMessagesAsync(digest, ct);
-        var sentCount = digest.SentCount;
-        if (sentCount < messages.Count && digest.SentMessageIds.Length > sentCount)
-        {
-            // An earlier run recorded the intent to send this part but never got as far as storing its message id -
-            // it may have crashed before Telegram ever saw the call, or after Telegram sent it but before the id came
-            // back. Telegram's API gives no way to tell the two apart after the fact, and the point of this fix is
-            // to never send a part twice, so an unconfirmed attempt is treated as sent rather than retried.
-            sentCount++;
-            await digests.SetSentCountAsync(digest.LocalDate, sentCount, ct);
-        }
-
-        for (var i = sentCount; i < messages.Count; i++)
-        {
-            await digests.RecordIntentAsync(digest.LocalDate, i, ct);
-            long messageId;
-            try
-            {
-                messageId = await telegram.SendAsync(chat, messages[i], ct);
-            }
-            catch
-            {
-                // A definite answer (Telegram refused it, the request timed out, ...), not a crash: undo the intent so
-                // the retry this throw causes looks like a first attempt, not one this code cannot account for.
-                await digests.DropIntentAsync(digest.LocalDate, i, ct);
-                throw;
-            }
-
-            await digests.ConfirmSentAsync(digest.LocalDate, i, messageId, ct);
-        }
-
+        // Delivered to the stack, which reads the digest's items itself.
+        await digests.SetSentCountAsync(digest.LocalDate, digest.ItemIds.Length, ct);
         await digests.MarkSentAsync(digest.LocalDate, time.GetUtcNow(), ct);
+        await releaseStore.TakeForDigestAsync(digest.LocalDate, ct);
         await NotifyApprovalsAsync(digest, ct);
+        await push.NotifyDigestAsync(digest.LocalDate, digest.ItemIds.Length, ct);
     }
 
     /// <summary>One card in the approvals inbox, after the digest is marked sent (the stack already holds it); the same id on a resend rewrites the card.</summary>
@@ -387,28 +343,5 @@ public sealed class DigestRun(
         await approvals.NotifyAsync(new ApprovalsNote(
             $"{ApprovalsClient.Source}:digest:{digest.LocalDate}", $"Digest {digest.LocalDate}: {shown.Count} items", byProject, text,
             time.GetUtcNow().AddDays(2)), ct);
-    }
-
-    private async Task<List<OutMessage>> BuildMessagesAsync(DigestRow d, CancellationToken ct)
-    {
-        var shown = await items.DigestItemsAsync(d.ItemIds, ct);
-        var now = time.GetUtcNow();
-        var votes = await feedback.VotesSinceAsync(now.AddDays(-1), ct);
-        var week = await feedback.VotesSinceAsync(now.AddDays(-7), ct);
-        var weekUpRate = DigestStats.UpRate(week);
-        var monthStart = DigestStats.MonthStart(now, options.Value.Zone);
-        var spend = await usage.SpendSinceAsync(monthStart, ct);
-        var unpriced = await usage.UnpricedSinceAsync(monthStart, ct);
-        var byProject = shown
-            .GroupBy(v => v.Project ?? "other")
-            .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
-            .Select(g => (g.Key, g.Count()))
-            .ToList();
-        var header = DigestFormatter.Header(new DigestHeader(
-            DateOnly.ParseExact(d.LocalDate, "yyyy-MM-dd", CultureInfo.InvariantCulture), shown.Count, d.Candidates, byProject,
-            votes.Up, votes.Down, spend, weekUpRate, d.Note is null ? [] : d.Note.Split('\n'),
-            (await releaseStore.TakeForDigestAsync(d.LocalDate, ct)).Select(ReleaseLine).ToList(), unpriced));
-        var style = ButtonStyle.From(options.Value);
-        return [header, .. shown.Select(v => DigestFormatter.Item(v, null, null, style, options.Value.Follow.Enabled))];
     }
 }

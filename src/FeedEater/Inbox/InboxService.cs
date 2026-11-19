@@ -1,13 +1,11 @@
-using Microsoft.Extensions.Options;
 using FeedEater.Approvals;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Inbox;
 
-public sealed class InboxService(InboxStore store, TelegramClient telegram, IOptions<FeedEaterOptions> options, TimeProvider? time = null, ApprovalsClient? approvals = null) : IInbox
+public sealed class InboxService(InboxStore store, TimeProvider? time = null, ApprovalsClient? approvals = null) : IInbox
 {
-    public async Task<InboxPost> AddAsync(InboxEntry entry, OutMessage message, CancellationToken ct, long? replyToMessageId = null)
+    public async Task<InboxPost> AddAsync(InboxEntry entry, CancellationToken ct)
     {
         var now = (time ?? TimeProvider.System).GetUtcNow();
         var id = await store.AddAsync(entry, now, ct);
@@ -17,12 +15,6 @@ public sealed class InboxService(InboxStore store, TelegramClient telegram, IOpt
             await approvals.NotifyAsync(new ApprovalsNote($"{ApprovalsClient.Source}:{entry.Key}", text, "", text, entry.ExpiresAt ?? now.AddDays(2)), ct);
         }
 
-        var o = options.Value.Telegram;
-        if (o.Token.Length == 0)
-        {
-            return new InboxPost(id, null);
-        }
-
-        return new InboxPost(id, await telegram.SendAsync(o.AllowedUserId, message, ct, replyToMessageId));
+        return new InboxPost(id);
     }
 }

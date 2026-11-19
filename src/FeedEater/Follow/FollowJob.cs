@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Options;
 using FeedEater.Loops;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Follow;
 
@@ -35,8 +34,7 @@ public sealed class FollowJob(
                 var n = 0;
                 try
                 {
-                    // The follow row exists before its root message is sent; an update now would reply to nothing. With Telegram off there is no root.
-                    n = follow.RootMessageId is null && options.Value.Telegram.Token.Length > 0 ? 0 : await follower.SendNewAsync(follow, ct);   // also at the end, for what arrived since the last run
+                    n = await follower.SendNewAsync(follow, ct);   // also at the end, for what arrived since the last run
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
@@ -46,11 +44,11 @@ public sealed class FollowJob(
                 sent += n;
                 if (Time.GetUtcNow().UtcDateTime >= follow.EndsAt)
                 {
-                    await follower.CloseAsync(follow.Id, null, ct);
+                    await follower.CloseAsync(follow.Id, ct);
                 }
                 else if (follow.Sent + n >= max)
                 {
-                    await follower.CloseAsync(follow.Id, $"Closed at the limit of {max} messages.", ct);
+                    await follower.CloseAsync(follow.Id, ct);
                 }
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)

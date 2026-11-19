@@ -2,17 +2,16 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using FeedEater.Digest;
-using FeedEater.Telegram;
 
 namespace FeedEater.Hype;
 
-/// <summary>The monthly autopsy as one Telegram HTML message. Lists are capped so the visible text stays far under 4,096 characters.</summary>
+/// <summary>The monthly autopsy as one HTML fragment. Lists are capped so the visible text stays far under 4,096 characters.</summary>
 public static class AutopsyFormatter
 {
     private const int MaxItems = 8;
     private const int MaxFeeds = 5;
 
-    public static OutMessage Message(string month, AutopsyReport r)
+    public static string Message(string month, AutopsyReport r)
     {
         var h = new StringBuilder($"<b>Hype autopsy · {E(MonthName(month))}</b>\n");
         h.Append(CultureInfo.InvariantCulture, $"{r.Items.Count} 👍 items, a repo checked at least {AutopsyRules.MinAgeDays} days after: {Counts(r.Total)}");
@@ -58,7 +57,7 @@ public static class AutopsyFormatter
         }
 
         h.Append("\n\n<i>").Append(E(AutopsyRules.Legend)).Append("</i>");
-        return new OutMessage(h.ToString());
+        return h.ToString();
     }
 
     /// <summary>"grew 40% · alive 20% · quiet 40% · gone 0%"</summary>

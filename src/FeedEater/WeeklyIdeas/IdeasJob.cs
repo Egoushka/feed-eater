@@ -7,7 +7,6 @@ using FeedEater.Loops;
 using FeedEater.Inbox;
 using FeedEater.Issues;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 using FeedEater.Text;
 
 namespace FeedEater.WeeklyIdeas;
@@ -15,11 +14,11 @@ namespace FeedEater.WeeklyIdeas;
 /// <summary>
 /// The shortlist run behind <see cref="WeeklyIdeasJob"/> and <see cref="DailyIdeasJob"/>: what was liked, saved, bookmarked or marked improve
 /// inside the run's window becomes a ranked shortlist. Each idea waits in the inbox for Keep or Drop (Keep files it as a GitHub issue labelled
-/// triage in its project's repo); the top few go to Telegram. An idea whose source was filed before, or that repeats an issue or a backlog row,
+/// triage in its project's repo); the swipe stack shows them. An idea whose source was filed before, or that repeats an issue or a backlog row,
 /// is left out. A run with no leads asks the model nothing and sends nothing. Quiet hours hold it.
 /// </summary>
 public abstract class IdeasJob(
-    WeeklyIdeaStore store, IPeerGapSource? gapSource, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, TelegramClient telegram, InboxStore inboxStore, QuietHours quiet,
+    WeeklyIdeaStore store, IPeerGapSource? gapSource, ProfileStore profiles, GitHubIssues issues, BacklogClient backlog, LiteLlmClient llm, InboxStore inboxStore, QuietHours quiet,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger logger)
     : ScheduledJob(cursors, options, health, time, logger)
 {
@@ -36,7 +35,7 @@ public abstract class IdeasJob(
     /// <summary>The span the model is told it ranks ("week", "day").</summary>
     protected abstract string Span { get; }
 
-    /// <summary>The run's label from its key (2026-W43, 2026-10-19): the payload's week, the Telegram heading and the issue's source line.</summary>
+    /// <summary>The run's label from its key (2026-W43, 2026-10-19): the payload's week and the issue's source line.</summary>
     protected abstract string Label(string key);
 
     /// <summary>True to leave out sources already staged as ideas, kept, dropped or open, so a run offers only new ones.</summary>
@@ -139,11 +138,6 @@ public abstract class IdeasJob(
         {
             Logger.LogInformation("Peer-gap ideas staged ({Count}): {Urls}", stagedGaps.Count, string.Join(", ", stagedGaps));
         }
-
-        if (Settings.Telegram.Token.Length > 0)
-        {
-            await telegram.SendAsync(Settings.Telegram.AllowedUserId, Message(week, staged, settings.TopInMessage), ct);
-        }
     }
 
     private async Task<List<Lead>> LeadsAsync(DateTimeOffset since, IReadOnlySet<string> filed, CancellationToken ct)
@@ -190,32 +184,4 @@ public abstract class IdeasJob(
             : $"\n\nSource: {Markdown.Link(lead.Title, lead.Url)} ({Markdown.Text(lead.Signal)}, feed-eater ideas {week})");
         return body.ToString();
     }
-
-    internal static OutMessage Message(string week, IReadOnlyList<(ShortlistEntry Entry, Lead Lead, long InboxId)> staged, int detailed)
-    {
-        var html = new StringBuilder($"💡 <b>Ideas for {week}</b> ({staged.Count} waiting for Keep or Drop)\n");
-        for (var i = 0; i < staged.Count; i++)
-        {
-            var (e, lead, _) = staged[i];
-            if (i >= detailed)
-            {
-                html.Append($"\n{i + 1}. {E(e.Idea)}");
-                continue;
-            }
-
-            html.Append($"\n{i + 1}. <b>{E(e.Idea)}</b>\n   {E(e.Project)} · {E(e.Where)} · {e.Effort}");
-            if (e.Why.Length > 0)
-            {
-                html.Append($"\n   {E(e.Why)}");
-            }
-
-            html.Append(PeerGapLeads.IsGap(lead) ? $"\n   {E(lead.Title)} (peer gap)\n" : $"\n   <a href=\"{E(lead.Url)}\">{E(lead.Title)}</a>\n");
-        }
-
-        var keyboard = staged.Select((t, i) => (IReadOnlyList<Button>)
-            [new Button($"✅ {i + 1}", CallbackData.KeepIdea(t.InboxId)), new Button($"✖ {i + 1}", CallbackData.DropIdea(t.InboxId))]).ToList();
-        return new OutMessage(html.ToString(), keyboard);
-    }
-
-    private static string E(string text) => WebUtility.HtmlEncode(text);
 }

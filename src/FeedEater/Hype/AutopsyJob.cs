@@ -5,7 +5,6 @@ using FeedEater.Inbox;
 using FeedEater.Loops;
 using FeedEater.Signals;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Hype;
 
@@ -35,7 +34,7 @@ public sealed class AutopsyJob(
         }
 
         await inbox.AddAsync(new InboxEntry($"autopsy:{key}", InboxKinds.Autopsy, Payload: new JsonObject { ["html"] = html },
-            ExpiresAt: Time.GetUtcNow().AddDays(7)), new OutMessage(html), ct);
+            ExpiresAt: Time.GetUtcNow().AddDays(7)), ct);
         await store.MarkSentAsync(key, Time.GetUtcNow(), ct);
     }
 
@@ -47,7 +46,7 @@ public sealed class AutopsyJob(
             return null;
         }
 
-        var html = AutopsyFormatter.Message(key, report).Html;
+        var html = AutopsyFormatter.Message(key, report);
         await store.SaveAsync(key, at, report, html, ct);
         return html;
     }

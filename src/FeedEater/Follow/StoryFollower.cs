@@ -1,29 +1,21 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
-using FeedEater.Digest;
 using FeedEater.Inbox;
-using FeedEater.Llm;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Follow;
 
 public enum FollowOutcome { Started, AlreadyFollowing, TooMany, NoItem, Off }
 
 /// <summary>
-/// Follows a story: the root message, later items as replies to it, and the close with a summary. Everything goes to the allowed user's chat.
-/// The model only writes the summary; when it fails the close still sends the links.
+/// Follows a story: later items that match it arrive in the inbox as follow cards, until the follow ends or reaches its limit.
 /// </summary>
 public sealed class StoryFollower(
-    FollowStore follows, ItemStore items, TelegramClient telegram, IInbox inbox, LiteLlmClient llm, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<StoryFollower> logger)
+    FollowStore follows, ItemStore items, IInbox inbox, IOptions<FeedEaterOptions> options, TimeProvider time)
 {
     /// <summary>A story follows a little looser than a cluster, which is built on the strictest match.</summary>
     private const double Margin = 0.04;
     private const int PerRun = 10;
-    private const int Members = 12;
-    private const int SummaryMaxTokens = 300;
-    private const int MemberChars = 400;
 
     public bool Enabled => options.Value.Follow.Enabled;
 
@@ -56,26 +48,11 @@ public sealed class StoryFollower(
         }
 
         var now = time.GetUtcNow().UtcDateTime;
-        var id = await follows.StartAsync(itemId, now, now.AddDays(o.Days), ct);
-        if (options.Value.Telegram.Token.Length == 0)
-        {
-            return FollowOutcome.Started;   // the app shows the follow on its screen; there is no root message to reply to
-        }
-
-        try
-        {
-            await follows.SetRootMessageAsync(id, await telegram.SendAsync(options.Value.Telegram.AllowedUserId, FollowFormatter.Root(item.Title, item.Url, o.Days, id), ct), ct);
-        }
-        catch
-        {
-            await follows.DeleteAsync(id, default);   // a follow without its root message would reply to nothing
-            throw;
-        }
-
+        await follows.StartAsync(itemId, now, now.AddDays(o.Days), ct);
         return FollowOutcome.Started;
     }
 
-    /// <summary>Sends the items that matched since the last run, oldest first, one reply each; returns how many. Any other failed send ends the run for this follow and the item is tried again.</summary>
+    /// <summary>Adds the items that matched since the last run to the inbox, oldest first; returns how many. A failure ends the run for this follow and the item is tried again.</summary>
     public async Task<int> SendNewAsync(ActiveFollow follow, CancellationToken ct)
     {
         var o = options.Value;
@@ -85,74 +62,24 @@ public sealed class StoryFollower(
             return 0;
         }
 
-        var style = ButtonStyle.From(o);
         var sent = 0;
         foreach (var id in await follows.MatchesAsync(follow.Id, o.Cluster.Threshold - Margin, room, ct))
         {
-            if (await items.GetAsync(id, ct) is not { } item)
+            if (await items.GetAsync(id, ct) is null)
             {
                 continue;
             }
 
-            try
-            {
-                await inbox.AddAsync(new InboxEntry($"follow:{follow.Id}:{id}", InboxKinds.Follow, ItemId: id, RefId: follow.Id,
-                    Payload: new JsonObject { ["story"] = follow.Title }, ExpiresAt: time.GetUtcNow().AddDays(7)),
-                    FollowFormatter.Update(item, style), ct, follow.RootMessageId);
-                sent++;
-            }
-            catch (TelegramException ex) when (ex.Permanent)
-            {
-                logger.LogWarning(ex, "Telegram refused item {Item} of follow {Follow} for good; recorded as sent and skipped", id, follow.Id);   // else it blocks every later item
-            }
-
+            await inbox.AddAsync(new InboxEntry($"follow:{follow.Id}:{id}", InboxKinds.Follow, ItemId: id, RefId: follow.Id,
+                Payload: new JsonObject { ["story"] = follow.Title }, ExpiresAt: time.GetUtcNow().AddDays(7)), ct);
+            sent++;
             await follows.AddSentAsync(follow.Id, id, ct);
         }
 
         return sent;
     }
 
-    /// <summary>Closes an active follow with its summary and links; false when it was not active. A failed send leaves it active to be tried again.</summary>
-    public async Task<bool> CloseAsync(long followId, string? note, CancellationToken ct)
-    {
-        if (await follows.ActiveAsync(followId, ct) is not { } follow || !await follows.CloseAsync(followId, ct))
-        {
-            return false;
-        }
-
-        if (options.Value.Telegram.Token.Length == 0)
-        {
-            return true;
-        }
-
-        try
-        {
-            var members = await follows.MembersAsync(followId, Members, ct);
-            var summary = follow.Sent > 0 ? await SummaryAsync(followId, members, ct) : null;
-            await telegram.SendAsync(options.Value.Telegram.AllowedUserId, FollowFormatter.Closed(follow, summary, members, note), ct, follow.RootMessageId);
-        }
-        catch
-        {
-            await follows.ReopenAsync(followId, default);
-            throw;
-        }
-
-        return true;
-    }
-
-    private async Task<string?> SummaryAsync(long followId, IReadOnlyList<FollowMember> members, CancellationToken ct)
-    {
-        var (system, user) = Prompts.FollowSummary(members.Select(m => DigestFormatter.Clip($"{m.Title}: {m.Summary}", MemberChars)).ToList());
-        try
-        {
-            var reply = await llm.ChatAsync(options.Value.Llm.ReadModel, system, user, SummaryMaxTokens, "follow", ct);
-            return reply.Content.Trim() is { Length: > 0 } text ? text : null;
-        }
-        catch (Exception ex) when (ex is BudgetExceededException or HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException
-            || (ex is TaskCanceledException && !ct.IsCancellationRequested))
-        {
-            logger.LogWarning(ex, "Summary of follow {Follow} failed; sending the links only", followId);
-            return null;
-        }
-    }
+    /// <summary>Closes an active follow; false when it was not active.</summary>
+    public async Task<bool> CloseAsync(long followId, CancellationToken ct) =>
+        await follows.ActiveAsync(followId, ct) is not null && await follows.CloseAsync(followId, ct);
 }

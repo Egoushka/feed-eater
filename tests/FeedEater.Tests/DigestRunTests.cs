@@ -4,15 +4,14 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
-using Npgsql;
 using FeedEater.Digest;
 using FeedEater.Ingest;
 using FeedEater.Inbox;
 using FeedEater.Llm;
 using FeedEater.Signals;
 using FeedEater.Loops;
+using FeedEater.Push;
 using FeedEater.Storage;
-using FeedEater.Telegram;
 
 namespace FeedEater.Tests;
 
@@ -23,13 +22,10 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private static readonly DateTimeOffset Now = new(2026, 10, 5, 4, 30, 0, TimeSpan.Zero); // 07:30 Kyiv
     private static readonly string LongText = string.Join(' ', Enumerable.Repeat("Postgres async I/O details.", 80));
 
-    private readonly List<string> _sent = [];
+    private readonly List<(string Title, string? Click)> _pushes = [];
     private readonly LoopHealth _health = new(new FakeTimeProvider(Now));
-    private int _telegramCalls;
-    private int _failTelegramAt;
     private int _chatCalls;
     private bool _budgetOnB;
-    private bool _failAllTelegram;
     private bool _readThrows;
     private int _triageCalls;
     private bool _llmDown;
@@ -42,13 +38,9 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     private bool _learn;
     private string _profilePath = "Fixtures/profile.json";
     private bool _miniflux = true;
-    private long _allowedUser = 42;
-    private string _token = "T";
     private System.Net.HttpStatusCode _githubStatus = HttpStatusCode.NotFound;
     private readonly List<string> _readPrompts = [];
     private readonly List<string> _githubCalls = [];
-    private int _crashAfterTelegramCall;
-    private bool _crashed;
 
     public async Task InitializeAsync()
     {
@@ -121,46 +113,27 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
             : StubHandler.Json(Chat("""{"summary":"B is out.","why":"Context.","kind":"fyi","project":null,"suggestion":null}"""));
     }
 
-    private HttpResponseMessage Telegram(string body)
-    {
-        var n = Interlocked.Increment(ref _telegramCalls);
-        if (n == _failTelegramAt || _failAllTelegram)
-        {
-            return StubHandler.Json("""{"ok":false,"description":"Too Many Requests"}""");
-        }
-
-        _sent.Add(body);
-        if (n == _crashAfterTelegramCall && !_crashed)
-        {
-            // Telegram received and sent this message; simulate the process dying before DigestRun can record that,
-            // by making the write it is about to do fail (renaming the table it writes to back is step two).
-            _crashed = true;
-            using var c = new NpgsqlConnection(pg.ConnectionString);
-            c.Open();
-            using var cmd = new NpgsqlCommand("alter table digests rename to digests_away", c);
-            cmd.ExecuteNonQuery();
-        }
-
-        return StubHandler.Json($$$"""{"ok":true,"result":{"message_id":{{{n}}}}}""");
-    }
-
     private (DigestRun Run, DigestStore Digests, StubHandler Miniflux) Build()
     {
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Telegram = new TelegramOptions { Token = _token, AllowedUserId = _allowedUser }, Taste = new TasteOptions { Learn = _learn }, Caps = new CapsOptions { Read = _readCap } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = _profilePath, Miniflux = _miniflux ? new MinifluxOptions { BaseUrl = "http://miniflux/", Token = "t" } : new MinifluxOptions(), Push = new PushOptions { NtfyUrl = "http://ntfy/", Topic = "feed", BaseUrl = "https://feed.example" }, Taste = new TasteOptions { Learn = _learn }, Caps = new CapsOptions { Read = _readCap } });
         var time = new FakeTimeProvider(Now);
         var miniflux = new StubHandler((_, _) => StubHandler.Json(JsonSerializer.Serialize(new { content = $"<p>{LongText}</p>" })));
         var llm = new StubHandler((_, body) => body.Contains("\"input\"", StringComparison.Ordinal)
             ? StubHandler.Json(TestVectors.EmbeddingResponse(1))
             : Llm(body));
-        var telegram = new StubHandler((_, body) => Telegram(body));
+        var ntfy = new StubHandler((request, _) =>
+        {
+            _pushes.Add((request.Headers.GetValues("Title").Single(), request.Headers.TryGetValues("Click", out var click) ? click.Single() : null));
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
         var digests = new DigestStore(pg.Db);
         var run = new DigestRun(
-            new ItemStore(pg.Db), new ReleaseStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), digests, new UsageStore(pg.Db),
+            new ItemStore(pg.Db), new ReleaseStore(pg.Db), new ProfileStore(pg.Db), new FeedbackStore(pg.Db), new AnalysisStore(pg.Db), digests,
             new LiteLlmClient(llm.Client("http://llm/"), new UsageStore(pg.Db), options),
             new FeedEater.Sources.ItemText(new ItemStore(pg.Db), options, new MinifluxClient(miniflux.Client("http://miniflux/")), NullLogger<FeedEater.Sources.ItemText>.Instance),
             new GitHubStarsClient(new StubHandler((request, _) => GitHub(request)).Client("http://github/"), options),
-            new TelegramClient(telegram.Client("http://tg/botT/")),
-            new InboxService(new InboxStore(pg.Db), new TelegramClient(telegram.Client("http://tg/botT/")), options, time), new InboxStore(pg.Db),
+            PushKit.Notifier(pg, options, time, ntfy),
+            new InboxService(new InboxStore(pg.Db), time), new InboxStore(pg.Db),
             _health, new FeedEater.Ranking.TasteSwitch(new CursorStore(pg.Db), new FeedbackStore(pg.Db), options), options, time, NullLogger<DigestRun>.Instance);
         return (run, digests, miniflux);
     }
@@ -185,8 +158,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await c.ExecuteAsync("update items set content = @content where title = any(@titles)", new { content = LongText + " Source: https://github.com/acme/widget/issues/4", titles });
     }
 
-    private DigestJob BuildJob(DigestRun run, DigestStore digests, StubHandler notices, IOptions<FeedEaterOptions> options, FakeTimeProvider time) =>
-        new(run, digests, new InboxService(new InboxStore(pg.Db), new TelegramClient(notices.Client("http://tg/botT/")), options, time), new DigestTrigger(new CursorStore(pg.Db), options, time),
+    private DigestJob BuildJob(DigestRun run, DigestStore digests, IOptions<FeedEaterOptions> options, FakeTimeProvider time) =>
+        new(run, digests, new InboxService(new InboxStore(pg.Db), time), new DigestTrigger(new CursorStore(pg.Db), options, time),
             new QuietHours(new CursorStore(pg.Db), options, time), new CursorStore(pg.Db), options, new LoopHealth(time), time, NullLogger<DigestJob>.Instance);
 
     private async Task SeedAsync()
@@ -202,6 +175,23 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await Seed.ItemAsync(pg, 2, "Keep Old", TestVectors.OneHot(0), Now.UtcDateTime.AddDays(-30), hourAgo, LongText, 204);
     }
 
+    /// <summary>The titles of the digest's items, in the order the digest shows them.</summary>
+    private async Task<List<string>> ShownAsync()
+    {
+        var ids = (await new DigestStore(pg.Db).GetAsync(Today, default))?.ItemIds ?? [];
+        var titles = new List<string>();
+        foreach (var id in ids)
+        {
+            titles.Add((await ScalarAsync<string>("select title from items where id = @id", new { id }))!);
+        }
+
+        return titles;
+    }
+
+    private async Task<string> NoteAsync() => (await new DigestStore(pg.Db).GetAsync(Today, default))?.Note ?? "";
+
+    private Task<int> NoticesAsync(string like) => ScalarAsync<int>("select count(*)::int from inbox where kind = 'notice' and key like @like", new { like })!;
+
     private async Task<T?> ScalarAsync<T>(string sql, object args)
     {
         await using var c = await pg.Db.DataSource.OpenConnectionAsync();
@@ -209,10 +199,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Without_Telegram_the_digest_is_selected_and_marked_sent_without_sending()
+    public async Task The_digest_is_selected_and_marked_sent_for_the_stack()
     {
-        _token = "";
-        _allowedUser = 0;
         await SeedAsync();
         var (run, digests, _) = Build();
 
@@ -222,25 +210,35 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         Assert.Equal("sent", d!.Status);
         Assert.Equal(2, d.ItemIds.Length);
         Assert.Equal(d.ItemIds.Length, d.SentCount);
-        Assert.Empty(_sent);
     }
 
     [Fact]
-    public async Task No_digest_today_is_a_notice_card()
+    public async Task A_sent_digest_pushes_one_ntfy_message_linking_the_today_page()
     {
-        _token = "";
-        _allowedUser = 0;
+        await SeedAsync();
+        var (run, _, _) = Build();
+
+        await run.RunAsync(Today, default);
+        await run.RunAsync(Today, default);
+
+        Assert.Equal(("Today: 2 items", "https://feed.example/ui"), Assert.Single(_pushes));
+    }
+
+    [Fact]
+    public async Task No_digest_today_is_a_notice_card_and_no_push()
+    {
         var (run, digests, _) = Build();
 
+        await run.RunAsync(Today, default);
         await run.RunAsync(Today, default);
 
         Assert.Equal("notice", await ScalarAsync<string>("select kind from inbox where key = @k", new { k = $"notice:digest:{Today}:none" }));
         Assert.Equal("failed", (await digests.GetAsync(Today, default))!.Status);
-        Assert.Empty(_sent);
+        Assert.Empty(_pushes);
     }
 
     [Fact]
-    public async Task Selection_notes_are_stored_as_a_notice_and_still_in_the_Telegram_header()
+    public async Task Selection_notes_are_stored_on_the_digest_and_as_a_notice()
     {
         await SeedAsync();
         _health.Failed(Ingestor.LoopName, "refused");
@@ -249,11 +247,11 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await run.RunAsync(Today, default);
 
         Assert.Contains("unreachable", await ScalarAsync<string>("select payload->>'text' from inbox where key = @k", new { k = $"notice:digest:{Today}:notes" }), StringComparison.Ordinal);
-        Assert.Contains("unreachable", _sent[0], StringComparison.Ordinal);
+        Assert.Contains("unreachable", await NoteAsync(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Sends_the_header_then_ideas_first_and_runs_only_once()
+    public async Task Selects_ideas_first_and_runs_only_once()
     {
         await SeedAsync();
         var (run, digests, miniflux) = Build();
@@ -262,12 +260,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var chatCalls = _chatCalls;
         await run.RunAsync(Today, default);
 
-        Assert.Equal(3, _sent.Count);
-        Assert.Contains("2 of 3 new items", _sent[0], StringComparison.Ordinal);
-        Assert.Contains("Keep A", _sent[1], StringComparison.Ordinal);
-        Assert.Contains("Turn A on.", _sent[1], StringComparison.Ordinal);
-        Assert.Contains("Keep B", _sent[2], StringComparison.Ordinal);
-        Assert.DoesNotContain(_sent, s => s.Contains("Keep Old", StringComparison.Ordinal));
+        Assert.Equal(["Keep A", "Keep B"], await ShownAsync());
         Assert.Equal(chatCalls, _chatCalls);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
         Assert.Single(miniflux.Calls, c => c.Uri.Contains("/v1/entries/202/fetch-content", StringComparison.Ordinal));
@@ -283,8 +276,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         await run.RunAsync(Today, default);
 
-        Assert.DoesNotContain(_sent, s => s.Contains("Keep A", StringComparison.Ordinal));
-        Assert.Contains(_sent, s => s.Contains("Keep B", StringComparison.Ordinal));
+        Assert.Equal(["Keep B"], await ShownAsync());
     }
 
     [Fact]
@@ -296,13 +288,11 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         await run.RunAsync(Today, default);
 
-        Assert.Equal(3, _sent.Count);
-        Assert.Contains("Keep B", _sent[1], StringComparison.Ordinal);
-        Assert.Contains("Keep A", _sent[2], StringComparison.Ordinal);
+        Assert.Equal(["Keep B", "Keep A"], await ShownAsync());
     }
 
     [Fact]
-    public async Task When_the_reader_model_vetoes_every_item_the_no_digest_message_says_so()
+    public async Task When_the_reader_model_vetoes_every_item_the_no_digest_notice_says_so()
     {
         _vetoAll = true;
         await SeedAsync();
@@ -310,28 +300,13 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         await run.RunAsync(Today, default);
 
-        var message = Assert.Single(_sent);
-        Assert.Contains("No digest today", message, StringComparison.Ordinal);
-        Assert.Contains("the reader model rated all 2 items it read below 1", message, StringComparison.Ordinal);
+        var text = await ScalarAsync<string>("select payload->>'text' from inbox where key = @k", new { k = $"notice:digest:{Today}:none" });
+        Assert.Contains("No digest today", text, StringComparison.Ordinal);
+        Assert.Contains("the reader model rated all 2 items it read below 1", text, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Without_an_owner_id_the_digest_stops_before_any_model_call_and_sends_nothing()
-    {
-        _allowedUser = 0;
-        await SeedAsync();
-        var (run, digests, _) = Build();
-
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => run.RunAsync(Today, default));
-
-        Assert.Contains("AllowedUserId is 0", error.Message, StringComparison.Ordinal);
-        Assert.Equal(0, _chatCalls);
-        Assert.Equal(0, _telegramCalls);
-        Assert.Null(await digests.GetAsync(Today, default));
-    }
-
-    [Fact]
-    public async Task A_missing_profile_file_uses_the_example_interests_and_the_header_says_so()
+    public async Task A_missing_profile_file_uses_the_example_interests_and_the_note_says_so()
     {
         _profilePath = "/nope/profile.json";
         await SeedAsync();
@@ -340,18 +315,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await run.RunAsync(Today, default);
 
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
-        Assert.Contains("Using the example interests; edit /nope/profile.json", _sent[0], StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task The_header_says_spend_is_unknown_when_no_call_came_with_a_cost()
-    {
-        await SeedAsync();
-        var (run, _, _) = Build();   // the stub model sends no cost header and no price is set
-
-        await run.RunAsync(Today, default);
-
-        Assert.Contains("spend this month unknown", _sent[0], StringComparison.Ordinal);
+        Assert.Contains("Using the example interests; edit /nope/profile.json", await NoteAsync(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -364,7 +328,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await run.RunAsync(Today, default);
 
         Assert.Empty(miniflux.Calls);
-        Assert.Equal(3, _sent.Count);
+        Assert.Equal(2, (await ShownAsync()).Count);
     }
 
     [Fact]
@@ -375,8 +339,8 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var (run, _, _) = Build();
 
         await run.RunAsync(Today, default);
-        Assert.Contains("Embeddings were unavailable", _sent[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("Miniflux was unreachable", _sent[0], StringComparison.Ordinal);
+        Assert.Contains("Embeddings were unavailable", await NoteAsync(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Miniflux was unreachable", await NoteAsync(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -387,49 +351,27 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var (run, _, _) = Build();
 
         await run.RunAsync(Today, default);
-        Assert.Contains("Miniflux was unreachable", _sent[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("Embeddings were unavailable", _sent[0], StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task The_header_carries_the_seven_day_up_rate()
-    {
-        await SeedAsync();
-        var voted = await Seed.ItemAsync(pg, 3, "Voted", TestVectors.OneHot(5), Now.UtcDateTime.AddDays(-5), Now.UtcDateTime.AddDays(-5));
-        await new FeedbackStore(pg.Db).SetVoteAsync(voted, 1, default);
-        await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
-        {
-            await c.ExecuteAsync("update votes set at = @at", new { at = Now.UtcDateTime.AddDays(-3) });
-        }
-
-        var (run, _, _) = Build();
-
-        await run.RunAsync(Today, default);
-
-        Assert.Contains("7-day", _sent[0], StringComparison.Ordinal);
-        Assert.Contains("100%", _sent[0], StringComparison.Ordinal);
+        Assert.Contains("Miniflux was unreachable", await NoteAsync(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Embeddings were unavailable", await NoteAsync(), StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task A_failed_job_run_keeps_the_digest_retryable_and_reports_once()
     {
         await SeedAsync();
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json" });
         var (run, digests, _) = Build();
         var time = new FakeTimeProvider(Now);
-        var notices = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
-        var job = BuildJob(run, digests, notices, options, time);
-        _failAllTelegram = true;
+        var job = BuildJob(run, digests, options, time);
+        _readThrows = true;
 
-        await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
-        await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => job.TickAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => job.TickAsync(default));
 
         var row = (await digests.GetAsync(Today, default))!;
         Assert.NotEqual("failed", row.Status);
         Assert.NotNull(row.Error);
-        Assert.Single(notices.Calls);
-        await using var c = await pg.Db.DataSource.OpenConnectionAsync();
-        Assert.Equal(1, await c.ExecuteScalarAsync<int>("select count(*)::int from inbox where kind = 'notice' and key like 'notice:digest:%:failed'"));
+        Assert.Equal(1, await NoticesAsync("notice:digest:%:failed"));
     }
 
     [Fact]
@@ -478,54 +420,11 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await run.RunAsync(Today, default);
 
         Assert.Equal(triageCalls, _triageCalls);
-        Assert.Equal(3, _sent.Count);
-        Assert.Contains("2 of 3 new items", _sent[0], StringComparison.Ordinal);
+        Assert.Equal(["Keep A", "Keep B"], await ShownAsync());
     }
 
     [Fact]
-    public async Task Resumes_after_a_telegram_failure_without_paying_again()
-    {
-        await SeedAsync();
-        var (run, digests, _) = Build();
-        _failTelegramAt = 2;
-
-        await Assert.ThrowsAsync<TelegramException>(() => run.RunAsync(Today, default));
-        var afterFirst = _chatCalls;
-        Assert.Equal(1, (await digests.GetAsync(Today, default))!.SentCount);
-
-        await run.RunAsync(Today, default);
-
-        Assert.Equal(afterFirst, _chatCalls);
-        Assert.Equal(3, _sent.Count);
-        Assert.Single(_sent, s => s.Contains("Feed digest", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task A_crash_right_after_a_Telegram_send_and_before_recording_it_does_not_resend_that_part()
-    {
-        await SeedAsync();
-        var (run, digests, _) = Build();
-        _crashAfterTelegramCall = 2;   // the first item message, right after the header
-
-        try
-        {
-            await Assert.ThrowsAsync<PostgresException>(() => run.RunAsync(Today, default));
-            Assert.Equal(2, _sent.Count);   // the header and the crashed part both reached the fake Telegram client
-        }
-        finally
-        {
-            await using var c = await pg.Db.DataSource.OpenConnectionAsync();
-            await c.ExecuteAsync("alter table if exists digests_away rename to digests");
-        }
-
-        await run.RunAsync(Today, default);
-
-        Assert.Equal(3, _sent.Count);   // the crashed part was not sent again; only the remaining part went out
-        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
-    }
-
-    [Fact]
-    public async Task A_spent_budget_still_sends_what_was_read_with_a_note()
+    public async Task A_spent_budget_still_keeps_what_was_read_with_a_note()
     {
         await SeedAsync();
         _budgetOnB = true;
@@ -533,20 +432,20 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         await run.RunAsync(Today, default);
 
-        Assert.Equal(2, _sent.Count);
-        Assert.Contains("budget reached", _sent[0], StringComparison.Ordinal);
+        Assert.Equal(["Keep A"], await ShownAsync());
+        Assert.Contains("budget reached", await NoteAsync(), StringComparison.Ordinal);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
     }
 
     [Fact]
-    public async Task No_candidates_sends_one_explanation_and_returns()
+    public async Task No_candidates_leaves_one_explanation_and_returns()
     {
         var (run, digests, _) = Build();
 
         await run.RunAsync(Today, default);
         await run.RunAsync(Today, default);
 
-        Assert.Contains("No digest today", Assert.Single(_sent), StringComparison.Ordinal);
+        Assert.Equal(1, await NoticesAsync("notice:digest:%:none"));
         Assert.Equal("failed", (await digests.GetAsync(Today, default))!.Status);
     }
 
@@ -559,13 +458,13 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => run.RunAsync(Today, default));
 
-        Assert.Empty(_sent);
+        Assert.Empty(_pushes);
         Assert.NotEqual("failed", (await digests.GetAsync(Today, default))!.Status);
 
         _llmDown = false;
         await run.RunAsync(Today, default);
 
-        Assert.Equal(3, _sent.Count);
+        Assert.Equal(2, (await ShownAsync()).Count);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
     }
 
@@ -578,7 +477,6 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         await run.RunAsync(Today, default);
 
-        Assert.Equal(3, _sent.Count);
         var digest = (await digests.GetAsync(Today, default))!;
         Assert.Equal("sent", digest.Status);
         Assert.Contains("waited for the token limit to reset", digest.Note ?? "");
@@ -593,7 +491,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => run.RunAsync(Today, default));
 
-        Assert.Empty(_sent);
+        Assert.Empty(_pushes);
         Assert.NotEqual("failed", (await digests.GetAsync(Today, default))!.Status);
 
         _readsDown = false;
@@ -601,7 +499,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await run.RunAsync(Today, default);
 
         Assert.Equal(triageBefore, _triageCalls);
-        Assert.Equal(3, _sent.Count);
+        Assert.Equal(2, (await ShownAsync()).Count);
     }
 
     [Fact]
@@ -609,7 +507,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     {
         await using (var c = await pg.Db.DataSource.OpenConnectionAsync())
         {
-            await c.ExecuteAsync("insert into digests (local_date, status, error, note) values ('2026-10-04', 'building', 'Telegram 429', null), ('2026-10-03', 'sent', null, null), ('2026-10-02', 'building', null, 'a note')");
+            await c.ExecuteAsync("insert into digests (local_date, status, error, note) values ('2026-10-04', 'building', 'LLM 429', null), ('2026-10-03', 'sent', null, null), ('2026-10-02', 'building', null, 'a note')");
         }
 
         var (run, digests, _) = Build();
@@ -617,7 +515,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         var stale = (await digests.GetAsync("2026-10-04", default))!;
         Assert.Equal("failed", stale.Status);
-        Assert.Equal("Telegram 429", stale.Error);
+        Assert.Equal("LLM 429", stale.Error);
         Assert.Contains("not sent before 12:00", stale.Note, StringComparison.Ordinal);
         var noted = (await digests.GetAsync("2026-10-02", default))!;
         Assert.Equal("failed", noted.Status);
@@ -628,61 +526,62 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
     private static readonly DateTimeOffset Evening = Now.AddHours(10);   // 17:30 Kyiv: outside the window
 
-    private (DigestRun Run, DigestStore Digests, DigestJob Job, DigestTrigger Trigger, StubHandler Notices) BuildForced()
+    private (DigestRun Run, DigestStore Digests, DigestJob Job, DigestTrigger Trigger) BuildForced()
     {
         var (run, digests, _) = Build();
-        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json", Telegram = new TelegramOptions { Token = "T", AllowedUserId = 42 } });
+        var options = Options.Create(new FeedEaterOptions { TimeZone = "Europe/Kyiv", ProfilePath = "Fixtures/profile.json" });
         var time = new FakeTimeProvider(Evening);
-        var notices = new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}"""));
-        return (run, digests, BuildJob(run, digests, notices, options, time), new DigestTrigger(new CursorStore(pg.Db), options, time), notices);
+        return (run, digests, BuildJob(run, digests, options, time), new DigestTrigger(new CursorStore(pg.Db), options, time));
     }
 
+    private async Task<string?> NoticeTextAsync(string suffix) =>
+        await ScalarAsync<string>("select payload->>'text' from inbox where key = @k", new { k = $"notice:digest:{Today}:{suffix}" });
+
     [Fact]
-    public async Task A_forced_run_sends_outside_the_window_once_and_clears_the_request()
+    public async Task A_forced_run_builds_outside_the_window_once_and_clears_the_request()
     {
         await SeedAsync();
-        var (_, digests, job, trigger, _) = BuildForced();
+        var (_, digests, job, trigger) = BuildForced();
 
         await job.TickAsync(default);
-        Assert.Empty(_sent);
+        Assert.Null(await digests.GetAsync(Today, default));
 
         await trigger.RequestAsync(false, default);
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Equal(3, _sent.Count);
+        Assert.Equal(2, (await ShownAsync()).Count);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
         Assert.Null(await trigger.PendingAsync(default));
         Assert.Equal("Sent.", (await trigger.LastResultAsync(default))!.Text);
     }
 
     [Fact]
-    public async Task A_forced_run_after_a_sent_digest_says_so_and_only_resend_sends_again()
+    public async Task A_forced_run_after_a_sent_digest_says_so_and_only_resend_runs_the_send_again()
     {
         await SeedAsync();
-        var (run, _, job, trigger, notices) = BuildForced();
+        var (run, digests, job, trigger) = BuildForced();
         await run.RunAsync(Today, default);
-        Assert.Equal(3, _sent.Count);
 
         await trigger.RequestAsync(false, default);
         await job.TickAsync(default);
 
-        Assert.Equal(3, _sent.Count);
-        Assert.Contains("already sent", Assert.Single(notices.Calls).Body, StringComparison.Ordinal);
+        Assert.Contains("already sent", await NoticeTextAsync("notice"), StringComparison.Ordinal);
         Assert.Null(await trigger.PendingAsync(default));
 
         await trigger.RequestAsync(true, default);
         await job.TickAsync(default);
 
-        Assert.Equal(6, _sent.Count);
         Assert.Equal("Sent again.", (await trigger.LastResultAsync(default))!.Text);
+        Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+        Assert.Single(_pushes);   // the push message is once per digest, not per resend
     }
 
     [Fact]
     public async Task A_notice_that_cannot_be_stored_does_not_fail_the_forced_run()
     {
         await SeedAsync();
-        var (run, _, job, trigger, _) = BuildForced();
+        var (run, _, job, trigger) = BuildForced();
         await run.RunAsync(Today, default);
         await trigger.RequestAsync(false, default);
         await using var c = await pg.Db.DataSource.OpenConnectionAsync();
@@ -703,7 +602,7 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task A_forced_run_rebuilds_a_digest_that_failed_without_items()
     {
-        var (run, digests, job, trigger, _) = BuildForced();
+        var (run, digests, job, trigger) = BuildForced();
         await run.RunAsync(Today, default);
         Assert.Equal("failed", (await digests.GetAsync(Today, default))!.Status);
         await SeedAsync();
@@ -712,22 +611,22 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         await job.TickAsync(default);
 
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
-        Assert.Equal(4, _sent.Count);   // the "no digest" notice, then header and two items
+        Assert.Equal(2, (await ShownAsync()).Count);
     }
 
     [Fact]
     public async Task A_failed_forced_run_is_reported_and_cleared_instead_of_retried_forever()
     {
         await SeedAsync();
-        var (_, _, job, trigger, notices) = BuildForced();
-        _failAllTelegram = true;
+        var (_, _, job, trigger) = BuildForced();
+        _readThrows = true;
         await trigger.RequestAsync(false, default);
 
-        await Assert.ThrowsAsync<TelegramException>(() => job.TickAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => job.TickAsync(default));
 
         Assert.Null(await trigger.PendingAsync(default));
         Assert.StartsWith("Failed:", (await trigger.LastResultAsync(default))!.Text, StringComparison.Ordinal);
-        Assert.Single(notices.Calls);
+        Assert.Equal(1, await NoticesAsync("notice:digest:%:failed"));
     }
 
     [Fact]
@@ -807,27 +706,22 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_header_lists_releases_of_things_he_runs_and_a_resume_keeps_the_same_list()
+    public async Task A_sent_digest_claims_the_releases_of_things_he_runs_and_later_ones_wait()
     {
         await SeedAsync();
         var releases = new ReleaseStore(pg.Db);
-        await releases.AddAsync(new ReleaseRow { Repo = "juanfont/headscale", Tag = "v0.30.0", Version = "0.30.0", Title = "t", Url = "https://x", Newer = true, Summary = "<b>Fixes.</b>", Breaking = "no" }, default);
+        await releases.AddAsync(new ReleaseRow { Repo = "juanfont/headscale", Tag = "v0.30.0", Version = "0.30.0", Title = "t", Url = "https://x", Newer = true, Summary = "Fixes.", Breaking = "no" }, default);
         var (run, _, _) = Build();
-        _failTelegramAt = 2;
 
-        await Assert.ThrowsAsync<TelegramException>(() => run.RunAsync(Today, default));
-        await releases.AddAsync(new ReleaseRow { Repo = "late/arrival", Tag = "v1.0.0", Version = "1.0.0", Title = "t", Url = "https://x", Newer = true }, default);
         await run.RunAsync(Today, default);
+        await releases.AddAsync(new ReleaseRow { Repo = "late/arrival", Tag = "v1.0.0", Version = "1.0.0", Title = "t", Url = "https://x", Newer = true }, default);
 
-        var header = JsonSerializer.Deserialize<JsonElement>(_sent[0]).GetProperty("text").GetString()!;
-        Assert.Contains("Updates for what you run", header, StringComparison.Ordinal);
-        Assert.Contains("juanfont/headscale 0.30.0 is out (breaking: no): &lt;b&gt;Fixes.&lt;/b&gt;", header, StringComparison.Ordinal);
-        Assert.DoesNotContain("late/arrival", string.Concat(_sent), StringComparison.Ordinal);
+        Assert.Equal(["juanfont/headscale"], (await releases.TakeForDigestAsync(Today, default)).Select(r => r.Repo));
         Assert.Equal(["late/arrival"], (await releases.TakeForDigestAsync("2026-10-06", default)).Select(r => r.Repo));
     }
 
     [Fact]
-    public async Task Switching_the_learned_taste_on_with_too_few_votes_is_refused_in_the_header_and_ranking_stays_default()
+    public async Task Switching_the_learned_taste_on_with_too_few_votes_is_refused_in_the_note_and_ranking_stays_default()
     {
         await SeedAsync();
         _learn = true;
@@ -835,27 +729,25 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
 
         await run.RunAsync(Today, default);
 
-        var header = JsonSerializer.Deserialize<JsonElement>(_sent[0]).GetProperty("text").GetString()!;
-        Assert.Contains("Learned taste is switched on but needs 100 votes", header, StringComparison.Ordinal);
-        Assert.Equal(3, _sent.Count);   // the digest still went out with the default ranking
+        Assert.Contains("Learned taste is switched on but needs 100 votes", await NoteAsync(), StringComparison.Ordinal);
+        Assert.Equal(2, (await ShownAsync()).Count);   // the digest still went out with the default ranking
     }
 
     [Fact]
-    public async Task Without_the_flag_the_header_says_nothing_about_learned_taste()
+    public async Task Without_the_flag_the_note_says_nothing_about_learned_taste()
     {
         await SeedAsync();
         var (run, _, _) = Build();
 
         await run.RunAsync(Today, default);
 
-        Assert.DoesNotContain("Learned taste", _sent[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("Learned taste", await NoteAsync(), StringComparison.Ordinal);
     }
 
     private static IOptions<FeedEaterOptions> QuietOptions() => Options.Create(new FeedEaterOptions
     {
         TimeZone = "Europe/Kyiv",
         ProfilePath = "Fixtures/profile.json",
-        Telegram = new TelegramOptions { AllowedUserId = 42 },
         Quiet = new FeedEater.QuietOptions { From = new TimeSpan(22, 0, 0), To = new TimeSpan(8, 0, 0) },
     });
 
@@ -866,19 +758,20 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var (run, digests, _) = Build();
         var options = QuietOptions();
         var time = new FakeTimeProvider(Now);   // 07:30 Kyiv, inside 22:00 to 08:00
-        var job = BuildJob(run, digests, new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""")), options, time);
+        var job = BuildJob(run, digests, options, time);
 
         await job.TickAsync(default);
         await job.TickAsync(default);
-        Assert.Empty(_sent);
+        Assert.Empty(_pushes);
         Assert.Null(await digests.GetAsync(Today, default));
 
         time.Advance(TimeSpan.FromMinutes(35));   // 08:05
         await job.TickAsync(default);
         await job.TickAsync(default);
 
-        Assert.Equal(3, _sent.Count);
+        Assert.Equal(2, (await ShownAsync()).Count);
         Assert.Equal("sent", (await digests.GetAsync(Today, default))!.Status);
+        Assert.Single(_pushes);
     }
 
     [Fact]
@@ -888,11 +781,11 @@ public sealed class DigestRunTests(PostgresFixture pg) : IAsyncLifetime
         var (run, digests, _) = Build();
         var options = QuietOptions();
         var time = new FakeTimeProvider(Now);
-        var job = BuildJob(run, digests, new StubHandler((_, _) => StubHandler.Json("""{"ok":true,"result":{"message_id":1}}""")), options, time);
+        var job = BuildJob(run, digests, options, time);
         await new DigestTrigger(new CursorStore(pg.Db), options, time).RequestAsync(false, default);
 
         await job.TickAsync(default);
 
-        Assert.Equal(3, _sent.Count);
+        Assert.Equal(2, (await ShownAsync()).Count);
     }
 }

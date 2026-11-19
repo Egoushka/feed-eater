@@ -17,7 +17,6 @@ public static class SourceRegistration
         services.AddSingleton<FeedReader>();
         services.AddSingleton<FeedPoller>();
         services.AddSingleton<FeedManager>();
-        services.AddSingleton<FeedsCommand>();
         services.AddSingleton<ArticleText>();
         services.AddSingleton<SourcesUi>();
         return services;

@@ -7,7 +7,7 @@ using FeedEater.Storage;
 
 namespace FeedEater.Review;
 
-/// <summary>Sundays at 18:30 local time: the week's figures to Telegram and into /ui/weekly. Runs once per Sunday; a missed one runs at start.</summary>
+/// <summary>Sundays at 18:30 local time: the week's figures into the inbox and /ui/weekly. Runs once per Sunday; a missed one runs at start.</summary>
 public sealed class WeeklyReview(
     WeeklyStore weekly, IInbox inbox, QuietHours quiet, TasteSwitch taste,
     CursorStore cursors, IOptions<FeedEaterOptions> options, LoopHealth health, TimeProvider time, ILogger<WeeklyReview> logger)
@@ -31,9 +31,9 @@ public sealed class WeeklyReview(
         }
 
         var message = WeeklyFormatter.Message(key, report, zone, await taste.SuggestionAsync(ct));
-        await weekly.SaveAsync(key, until, report, message.Html, ct);
-        await inbox.AddAsync(new InboxEntry($"review:{key}", InboxKinds.Review, Payload: new JsonObject { ["html"] = message.Html },
-            ExpiresAt: Time.GetUtcNow().AddDays(7)), message, ct);
+        await weekly.SaveAsync(key, until, report, message, ct);
+        await inbox.AddAsync(new InboxEntry($"review:{key}", InboxKinds.Review, Payload: new JsonObject { ["html"] = message },
+            ExpiresAt: Time.GetUtcNow().AddDays(7)), ct);
         await weekly.MarkSentAsync(key, Time.GetUtcNow(), ct);
     }
 }

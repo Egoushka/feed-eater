@@ -48,13 +48,13 @@ public sealed class ConfigTests
     public void Print_config_masks_secrets_but_still_shows_that_they_are_set()
     {
         var lines = ConfigPrinter.Lines(Config(
-            ("FeedEater:Llm:ApiKey", "sk-very-secret"), ("FeedEater:Telegram:Token", "123:abc"), ("FeedEater:Hindsight:Token", ""),
+            ("FeedEater:Llm:ApiKey", "sk-very-secret"), ("FeedEater:Push:Token", "tk_abc"), ("FeedEater:Hindsight:Token", ""),
             ("FeedEater:Watch:Source", "https://example.com/pins?access_token=SECRET"), ("FeedEater:Watch:Token", "wt"), ("FeedEater:GitHub:Token", "gh-secret-token"),
             ("FeedEater:Karakeep:BaseUrl", "https://user:pw@karakeep.example/"),
             ("ConnectionStrings:FeedEater", "Host=db;Database=feed;Username=u;Password=hunter2;Pooling=true"), ("Mcp:Token", "mcp-secret")));
 
         Assert.Contains("FeedEater:Llm:ApiKey=***", lines);
-        Assert.Contains("FeedEater:Telegram:Token=***", lines);
+        Assert.Contains("FeedEater:Push:Token=***", lines);
         Assert.Contains("FeedEater:Watch:Token=***", lines);
         Assert.Contains("FeedEater:GitHub:Token=***", lines);
         Assert.Contains("FeedEater:Hindsight:Token=", lines);   // unset stays visibly unset
@@ -184,10 +184,11 @@ internal static class ConfigDocs
         ("GitHub issues", "`GitHub:Token` and `GitHub:FallbackRepo`", "Ideas go to the local list (see `Ideas:Sink`); open issues are not read into project vectors and there is no weekly ideas shortlist."),
         ("Karakeep", "`Karakeep:BaseUrl` and `Karakeep:Token`", "No 📌 button and no bookmark import."),
         ("GitHub stars", "`GitHub:User`", "No stars import."),
-        ("Hype autopsy", "`GitHub:User` and `Telegram:Token`", "No repo snapshots and no monthly autopsy; `GitHub:Token` is optional and lifts the 60 requests an hour limit."),
+        ("Hype autopsy", "`GitHub:User` and `Swipe:Enabled`", "No repo snapshots and no monthly autopsy; `GitHub:Token` is optional and lifts the 60 requests an hour limit."),
         ("Hindsight", "`Hindsight:BaseUrl`", "No weekly summary is sent."),
         ("Release watch", "`Watch:Source` or `Watch:FallbackPath`", "No release watch and no release alerts."),
         ("Linked pages", "`Fetch:MaxPerDay` above 0", "No linked page or Hacker News comment is fetched."),
+        ("Push (ntfy)", "`Push:NtfyUrl` and `Push:Topic`", "No push message after the digest."),
     ];
 
     public static string Render()

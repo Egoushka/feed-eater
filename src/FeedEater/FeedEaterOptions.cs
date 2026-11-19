@@ -12,7 +12,7 @@ public sealed class FeedEaterOptions
 {
     public const string Section = "FeedEater";
 
-    [Description("IANA time zone for the digest time, quiet hours and the dates shown in the UI and Telegram, e.g. Europe/Berlin.")]
+    [Description("IANA time zone for the digest time, quiet hours and the dates shown in the UI, e.g. Europe/Berlin.")]
     public string TimeZone { get; set; } = "UTC";
 
     /// <summary>False in tests that boot the host, so nothing polls real services.</summary>
@@ -33,7 +33,7 @@ public sealed class FeedEaterOptions
     public LlmOptions Llm { get; set; } = new();
     public CapsOptions Caps { get; set; } = new();
     public WeightsOptions Weights { get; set; } = new();
-    public TelegramOptions Telegram { get; set; } = new();
+    public PushOptions Push { get; set; } = new();
     public ApprovalsOptions Approvals { get; set; } = new();
     public IdeasOptions Ideas { get; set; } = new();
     public WeeklyIdeasOptions WeeklyIdeas { get; set; } = new();
@@ -154,13 +154,13 @@ public sealed class QuietOptions
     public TimeSpan? To { get; set; }
 
     /// <summary>How long a manual "quiet on" lasts.</summary>
-    [Description("Hours a manual /quiet on lasts.")]
+    [Description("Hours a manual quiet mode lasts.")]
     public int ManualHours { get; set; } = 12;
 }
 
 public sealed class DuelOptions
 {
-    [Description("False turns the twice-daily duel off: two unvoted items in one message, one tap picks the one you would rather read. Needs the Telegram bot.")]
+    [Description("False turns the twice-daily duel off: two unvoted items as one card, one tap picks the one you would rather read. Needs Swipe:Enabled.")]
     public bool Enabled { get; set; } = true;
 
     /// <summary>A string, not a list: the configuration binder appends to a list default instead of replacing it.</summary>
@@ -279,7 +279,7 @@ public sealed class TasteOptions
     /// Adds a learned (logistic regression on embeddings) term to the ranking. Off by default; with fewer than <see cref="MinVotes"/>
     /// votes it refuses to switch on and the digest header says so. Run <c>dotnet FeedEater.dll taste</c> first.
     /// </summary>
-    [Description("Adds a learned term to the ranking. With fewer than MinVotes votes it refuses to switch on. /learn on|off overrides this.")]
+    [Description("Adds a learned term to the ranking. With fewer than MinVotes votes it refuses to switch on. The switch in the web UI settings overrides this.")]
     public bool Learn { get; set; }
 
     [Description("Votes needed (and 10 of each kind) before the learned term can be switched on.")]
@@ -403,18 +403,22 @@ public sealed class WeightsOptions
     public double Learned { get; set; } = 0.3;
 }
 
-public sealed class TelegramOptions
+public sealed class PushOptions
 {
-    [Description("Telegram Bot API URL.")]
-    public string BaseUrl { get; set; } = "https://api.telegram.org/";
+    public bool Enabled => NtfyUrl.Length > 0 && Topic.Length > 0;
+
+    [Description("ntfy server address, e.g. https://ntfy.sh/ or your own. With the topic it turns on one push message per digest; empty turns it off.")]
+    public string NtfyUrl { get; set; } = "";
+
+    [Description("ntfy topic the digest message is published to.")]
+    public string Topic { get; set; } = "";
 
     [Secret]
-    [Description("Bot token from @BotFather. Without it the Telegram poller is off; the digest and the inbox jobs (duels, follows, the weekly review, ideas, the autopsy) still run when Swipe:Enabled is true, and wait in the swipe stack.")]
+    [Description("ntfy access token, sent as a bearer token; empty for a topic that needs none.")]
     public string Token { get; set; } = "";
 
-    /// <summary>The owner's Telegram user id: the only sender whose button presses count, and the chat digests go to.</summary>
-    [Description("Your numeric Telegram user id: the only sender the bot answers, and the chat digests go to.")]
-    public long AllowedUserId { get; set; }
+    [Description("Public address of this web UI; the push message links to its Today page. Empty uses Api:BaseUrl.")]
+    public string BaseUrl { get; set; } = "";
 }
 
 public sealed class ApprovalsOptions
@@ -429,7 +433,7 @@ public sealed class ApprovalsOptions
 
 public sealed class WeeklyIdeasOptions
 {
-    [Description("Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, with the top few on Telegram. Ideas are filed as GitHub issues labelled triage only after Keep (Telegram button, swipe card). Needs GitHub issues (GitHub:Token and GitHub:FallbackRepo), and Telegram or Swipe. False turns the job off.")]
+    [Description("Mondays: the week's improve items and what you liked or saved, ranked into a shortlist, waiting in the swipe stack. Ideas are filed as GitHub issues labelled triage only after Keep (swipe card). Needs GitHub issues (GitHub:Token and GitHub:FallbackRepo), and Swipe. False turns the job off.")]
     public bool Enabled { get; set; } = true;
 
     [Description("Local time of day on Monday the shortlist runs. A run missed while the service was down happens at start.")]
@@ -437,9 +441,6 @@ public sealed class WeeklyIdeasOptions
 
     [Description("Most ideas filed as GitHub issues per week.")]
     public int MaxFiled { get; set; } = 5;
-
-    [Description("Ideas listed in the Telegram message, best first.")]
-    public int TopInMessage { get; set; } = 3;
 
     [Description("GitHub contents API URL of the backlog file, to keep the shortlist from repeating a row. Empty means the backlog is not checked; GitHub issues and earlier shortlists still are.")]
     public string BacklogUrl { get; set; } = "";

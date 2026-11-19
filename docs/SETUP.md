@@ -1,13 +1,12 @@
 # Setup
 
 feed-eater runs as two containers: itself and Postgres with pgvector. It needs three things from outside: an OpenAI-compatible key
-(chat and embeddings), a Telegram bot, and feeds (an OPML file or a first feed URL). Nothing else is required. Every setting is
+(chat and embeddings), and feeds (an OPML file or a first feed URL). Nothing else is required. Every setting is
 listed in [CONFIG.md](CONFIG.md).
 
 ## Quick start (about 10 minutes)
 
-You need Docker with the compose plugin, an [OpenAI API key](https://platform.openai.com/api-keys) with a few dollars of credit, and
-a Telegram account.
+You need Docker with the compose plugin and an [OpenAI API key](https://platform.openai.com/api-keys) with a few dollars of credit.
 
 **1. Get the two files.** In an empty directory:
 
@@ -17,40 +16,27 @@ curl -fsSL https://raw.githubusercontent.com/Egoushka/feed-eater/main/.env.examp
 mkdir config
 ```
 
-**2. Create the Telegram bot.** In Telegram open [@BotFather](https://t.me/BotFather), send `/newbot`, pick a name and a username,
-and copy the token it gives you (it looks like `123456789:AAH...`).
-
-**3. Fill in `.env`.** Open it and set five values; each has a comment:
+**2. Fill in `.env`.** Open it and set four values; each has a comment:
 
 | Key | Put here |
 |---|---|
 | `POSTGRES_PASSWORD` | any password of letters and digits |
 | `Mcp__Token` | a password for the web UI, e.g. the output of `openssl rand -hex 32` |
 | `FeedEater__Llm__ApiKey` | your OpenAI key |
-| `FeedEater__Telegram__Token` | the BotFather token |
 | `FeedEater__TimeZone` | your IANA time zone, e.g. `Europe/Berlin` (default `UTC`); the digest goes out at 07:30 in it |
 
-Leave `FeedEater__Telegram__AllowedUserId=0` for now.
+Optional: for a push message on your phone after each digest, install the [ntfy](https://ntfy.sh) app, pick a topic name nobody can guess, and set `FeedEater__Push__NtfyUrl` (`https://ntfy.sh/`), `FeedEater__Push__Topic` and `FeedEater__Push__BaseUrl` (the public address of this web UI; the message links to its Today page). The push waits out quiet hours and is retried at most once an hour.
 
-**4. Add your feeds.** Export an OPML file from your current reader and save it as `config/feeds.opml`. No file yet? Skip this and
-add a first feed at `http://localhost:8080/ui/sources` in step 7.
+**3. Add your feeds.** Export an OPML file from your current reader and save it as `config/feeds.opml`. No file yet? Skip this and
+add a first feed at `http://localhost:8080/ui/sources` in step 5.
 
-**5. Start it.**
-
-```bash
-docker compose up -d
-```
-
-**6. Tell it who you are.** Send `/start` to your bot in Telegram. It answers with your numeric user id and the exact line to
-set. Put that value in `.env` (`FeedEater__Telegram__AllowedUserId=<your id>`) and apply it:
+**4. Start it.**
 
 ```bash
 docker compose up -d
 ```
 
-Until the id is set the bot answers only `/start`, and nothing is ever sent to a chat that is not yours.
-
-**7. Import the feeds** (if you have an OPML file):
+**5. Import the feeds** (if you have an OPML file):
 
 ```bash
 docker compose run --rm feed-eater import-opml /config/feeds.opml
@@ -59,19 +45,19 @@ docker compose run --rm feed-eater import-opml /config/feeds.opml
 To add feeds one by one instead, open `http://localhost:8080/ui/sources`, sign in with the `Mcp__Token` value, and paste a feed URL
 or a site address. A new instance embeds only the last 14 days of entries, so the first run costs cents.
 
-**8. Check everything.**
+**6. Check everything.**
 
 ```bash
 docker compose run --rm feed-eater doctor
 ```
 
 `doctor` prints one line per integration: `ok`, `off` (not configured, which is fine for an optional one) or `FAIL` with the reason
-and the fix. It exits with code 1 when a required item fails: database, `llm chat`, `llm embeddings`, `telegram` or `feed source`.
+and the fix. It exits with code 1 when a required item fails: database, `llm chat`, `llm embeddings` or `feed source`.
 `profile` shows `warn` while the example interests are in use (see below); that is not a failure. The same table is at
 `http://localhost:8080/ui/setup`.
 
-**9. Get a digest.** Send `/digest` to the bot. The digest starts within a minute and arrives within about 15 minutes of the first start; after that one
-arrives every morning. `http://localhost:8080/ui/usage` shows what the first run cost.
+**7. Get a digest.** Open `http://localhost:8080/ui`, sign in with the `Mcp__Token` value and press Run the digest. It is ready within about 15 minutes of the first start; after that one
+is built every morning. `http://localhost:8080/ui/usage` shows what the first run cost.
 
 ### Your interests
 
@@ -151,7 +137,7 @@ Anonymous requests are rate limited. The machine-readable description is at `/ap
 
 ## Library
 
-Saving an item (swipe right, 📌 in Telegram, Save in `/ui`) puts it in your own library (read it through the API, `GET /api/v1/library`, or the phone app) and counts as a like in
+Saving an item (swipe right, Save in `/ui`) puts it in your own library (read it through the API, `GET /api/v1/library`, or the phone app) and counts as a like in
 the ranking. The library needs no other service. It holds links and articles; a note can be added to a saved item.
 
 **From the phone.** Share a link to the paired app, or call `POST /api/v1/library` with `{"url": "...", "title": "...", "text": "..."}`
@@ -197,11 +183,11 @@ is an optional mirror of those saves, and your Karakeep bookmarks count as liked
 **GitHub stars.** Set `FeedEater__GitHub__User`. The public stars of that user count as liked items. A token is optional
 (`FeedEater__GitHub__Token`, no scopes needed for this): without it GitHub allows 60 requests an hour, which is enough for the stars.
 
-**Hype autopsy.** Needs no setting of its own: with `FeedEater__GitHub__User` and a Telegram token set, a daily job records the GitHub
-repo of every 👍 item and a monthly report (`/ui/autopsy`, and Telegram) says what those repos did since; the README has the rules.
+**Hype autopsy.** Needs no setting of its own: with `FeedEater__GitHub__User` and `FeedEater__Swipe__Enabled` set, a daily job records the GitHub
+repo of every 👍 item and a monthly report (`/ui/autopsy` and the swipe stack) says what those repos did since; the README has the rules.
 Without `FeedEater__GitHub__Token` the snapshot job stops at 40 requests a run and carries on the next day; set the token to lift that.
 
-**Duel and Follow this story.** Both are on by default, need only the Telegram bot and have no keys to fill; `FeedEater__Duel__Enabled=false`
+**Duel and Follow this story.** Both are on by default, need only the swipe page (`FeedEater__Swipe__Enabled=true`) and have no keys to fill; `FeedEater__Duel__Enabled=false`
 and `FeedEater__Follow__Enabled=false` turn them off. The README describes each.
 
 **Hindsight (memory).** Set `FeedEater__Hindsight__BaseUrl` (and `__Token` if the server needs a key). On Sundays at 18:00 a plain
@@ -229,8 +215,8 @@ needs a dump and restore; changing the image tag is not enough.
 ### To a release with duels, follows, the autopsy and vote weights
 
 Migrations 0012 (vote weight), 0014 (duels), 0015 (follows), 0016 (autopsy), 0018 (snapshot failures) and 0019 (duel send failures) run on
-the first start and need no action; there is no 0013 or 0017 on purpose. Existing votes keep weight 1. Duels, follows and the autopsy start on their own once the Telegram bot (and, for the
-autopsy, `FeedEater__GitHub__User`) is set, so a running install begins sending duels at the next 12:30 or 20:30; set
+the first start and need no action; there is no 0013 or 0017 on purpose. Existing votes keep weight 1. Duels, follows and the autopsy start on their own once the swipe page (and, for the
+autopsy, `FeedEater__GitHub__User`) is set, so a running install begins adding duels at the next 12:30 or 20:30; set
 `FeedEater__Duel__Enabled=false` to avoid that.
 
 ### From v0.6

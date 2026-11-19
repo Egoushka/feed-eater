@@ -12,7 +12,6 @@ using FeedEater.Profiles;
 using FeedEater.Signals;
 using FeedEater.Storage;
 using FeedEater.Swipe;
-using FeedEater.Telegram;
 using FeedEater.Watch;
 
 namespace FeedEater.Setup;
@@ -130,44 +129,6 @@ internal static class LlmFix
             $"The model name is probably unknown to {Hints.Host(baseUrl)}: check {Hints.Env(modelKey)}. {Hints.Env("Llm:BaseUrl")} must end in the version path, such as https://api.openai.com/v1/.",
         _ => Hints.Http(ex, "Llm:BaseUrl", "Llm:ApiKey"),
     };
-}
-
-/// <summary>The bot token works (<c>getMe</c>) and an owner is set; while it is not, only <c>/start</c> is answered.</summary>
-internal sealed class TelegramCheck(IServiceProvider services, IOptions<FeedEaterOptions> options) : IIntegrationCheck
-{
-    public string Name => "telegram";
-    public bool Required => true;
-
-    public async Task<CheckResult> RunAsync(CancellationToken ct)
-    {
-        var telegram = options.Value.Telegram;
-        if (telegram.Token.Length == 0)
-        {
-            return CheckResult.Fail("no bot token", $"Create a bot with @BotFather in Telegram and set {Hints.Env("Telegram:Token")} to the token it gives you.");
-        }
-
-        string? bot;
-        try
-        {
-            bot = await services.GetRequiredService<TelegramClient>().GetMeAsync(ct);
-        }
-        catch (TelegramException ex)
-        {
-            return CheckResult.Fail(ex.Message, $"Telegram refused the token: copy it again from @BotFather (/mybots, then API Token) into {Hints.Env("Telegram:Token")}.");
-        }
-        catch (Exception ex) when (!ct.IsCancellationRequested)
-        {
-            return CheckResult.Fail(Hints.Describe(ex), Hints.Http(ex, "Telegram:BaseUrl", "Telegram:Token"));
-        }
-
-        if (telegram.AllowedUserId == 0)
-        {
-            return CheckResult.Fail($"bot @{bot} works, but no owner is set",
-                $"Send /start to @{bot} in Telegram; it answers with your numeric id. Set {Hints.Env("Telegram:AllowedUserId")} to it and restart.");
-        }
-
-        return CheckResult.Ok($"bot @{bot}, owner id {telegram.AllowedUserId.ToString(CultureInfo.InvariantCulture)}");
-    }
 }
 
 /// <summary>The profile file is valid, or the built-in example is in use (a warning: it works, but it is not your interests).</summary>

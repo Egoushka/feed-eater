@@ -131,7 +131,7 @@ public sealed partial class ContractTests(PostgresFixture pg) : IAsyncLifetime
         var inbox = App.Services.GetRequiredService<FeedEater.Storage.InboxStore>();
         var now = DateTimeOffset.UtcNow;
         var expires = now.AddDays(7);
-        await inbox.AddAsync(new InboxEntry("notice:x", InboxKinds.Notice, Payload: new JsonObject { ["text"] = "Telegram is down." }, ExpiresAt: expires), now.AddMinutes(-5), default);
+        await inbox.AddAsync(new InboxEntry("notice:x", InboxKinds.Notice, Payload: new JsonObject { ["text"] = "The model is down." }, ExpiresAt: expires), now.AddMinutes(-5), default);
         await inbox.AddAsync(new InboxEntry("follow:x", InboxKinds.Follow, ItemId: a, Payload: new JsonObject { ["story"] = "Quokkas" }, ExpiresAt: expires), now.AddMinutes(-4), default);
         await inbox.AddAsync(new InboxEntry("duel:x", InboxKinds.Duel, Payload: new JsonObject { ["a"] = a, ["b"] = b }, ExpiresAt: expires), now.AddMinutes(-3), default);
         await inbox.AddAsync(new InboxEntry("idea:x", InboxKinds.Idea, Payload: new JsonObject
