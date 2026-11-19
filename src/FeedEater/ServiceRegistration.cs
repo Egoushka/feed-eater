@@ -29,6 +29,7 @@ using FeedEater.Storage;
 using FeedEater.Swipe;
 using FeedEater.Approvals;
 using FeedEater.Cards;
+using FeedEater.Trials;
 using FeedEater.Push;
 using FeedEater.Ui;
 using FeedEater.WeeklyIdeas;
@@ -140,6 +141,10 @@ public static class ServiceRegistration
         });
 
         services.AddSingleton<CardStore>();
+        services.AddSingleton<TrialStore>();
+        services.AddSingleton<TrialQueue>();
+        services.AddSingleton<TrialRunner>();
+        services.AddHttpClient<ITrialExecutor, ChargehandTrialExecutor>();
         services.AddSingleton<InventoryCollector>();
         services.AddHttpClient<HnSearch>((sp, http) =>
         {
@@ -217,6 +222,11 @@ public static class ServiceRegistration
             if (settings.Cards.Enabled && settings.Cards.Root.Length > 0)
             {
                 services.AddHostedService<CardsJob>();
+            }
+
+            if (settings.Trials.Enabled)
+            {
+                services.AddHostedService<TrialsJob>();
             }
 
             services.AddHostedService<DigestJob>();

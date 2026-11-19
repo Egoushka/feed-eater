@@ -103,6 +103,7 @@ public static class UiEndpoints
         secured.MapGet("/cards", cardsUi.ListAsync);
         secured.MapGet("/cards/{id:long}", cardsUi.DetailAsync);
         secured.MapPost("/cards/{id:long}/state", cardsUi.SetStateAsync);
+        secured.MapPost("/cards/{id:long}/trial", cardsUi.QueueTrialAsync);
         var pairing = app.ServiceProvider.GetRequiredService<PairingHandler>();
         secured.MapPost("/setup/pair", pairing.PairAsync);
         secured.MapPost("/setup/revoke", pairing.RevokeAsync);

@@ -3,12 +3,13 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using FeedEater.Cards;
 using FeedEater.Digest;
+using FeedEater.Trials;
 using static FeedEater.Ui.Html;
 
 namespace FeedEater.Ui;
 
 /// <summary><c>/ui/cards</c>: the adoption cards by state, a card with its evidence, and the buttons that move it.</summary>
-public sealed class CardsHandler(CardStore cards, UiSession session, IOptions<FeedEaterOptions> options)
+public sealed class CardsHandler(CardStore cards, TrialStore trials, TrialQueue queue, UiSession session, IOptions<FeedEaterOptions> options)
 {
     private const int ListLimit = 200;
 
@@ -27,7 +28,7 @@ public sealed class CardsHandler(CardStore cards, UiSession session, IOptions<Fe
 
     public async Task<IResult> DetailAsync(long id, HttpContext ctx, CancellationToken ct) =>
         await cards.GetAsync(id, ct) is { } card
-            ? UiHandlers.Html(UiPages.CardDetail(Page(ctx), card))
+            ? UiHandlers.Html(UiPages.CardDetail(Page(ctx), card, await trials.ListAsync(id, null, 20, ct), options.Value.Trials.Enabled))
             : UiHandlers.Html(UiPages.Message(Page(ctx), "Not found", "There is no such card."), StatusCodes.Status404NotFound);
 
     public async Task<IResult> SetStateAsync(long id, HttpContext ctx, CancellationToken ct)
@@ -41,6 +42,17 @@ public sealed class CardsHandler(CardStore cards, UiSession session, IOptions<Fe
         return await cards.SetStateAsync(id, form["state"].ToString(), form["reason"], ct)
             ? UiHandlers.SeeOther(ctx, $"/ui/cards/{id.ToString(CultureInfo.InvariantCulture)}")
             : UiHandlers.Html(UiPages.Message(Page(ctx), "Not found", "There is no such card."), StatusCodes.Status404NotFound);
+    }
+
+    public async Task<IResult> QueueTrialAsync(long id, HttpContext ctx, CancellationToken ct)
+    {
+        var result = await queue.QueueAsync(id, ct);
+        return result.Outcome switch
+        {
+            QueueOutcome.Queued or QueueOutcome.AlreadyActive => UiHandlers.SeeOther(ctx, $"/ui/cards/{id.ToString(CultureInfo.InvariantCulture)}"),
+            QueueOutcome.NoSuchCard => UiHandlers.Html(UiPages.Message(Page(ctx), "Not found", "There is no such card."), StatusCodes.Status404NotFound),
+            _ => UiHandlers.Html(UiPages.Message(Page(ctx), "Not queued", result.Message), StatusCodes.Status409Conflict),
+        };
     }
 }
 
@@ -80,7 +92,7 @@ public static partial class UiPages
         return Layout(p, "Cards", "/ui/cards", h.ToString());
     }
 
-    public static string CardDetail(PageContext p, CardRow c)
+    public static string CardDetail(PageContext p, CardRow c, IReadOnlyList<TrialRow> trials, bool trialsOn)
     {
         var h = new StringBuilder($"<p class=\"meta\"><a href=\"/ui/cards\">Cards</a></p><h1>{E(c.Title)}</h1>");
         h.Append($"<p class=\"meta\"><span class=\"badge {StateClass(c.State)}\">{E(c.State)}</span> {E(c.Repo)} · <time datetime=\"{c.CreatedAt.ToString("O", CultureInfo.InvariantCulture)}\">{E(Local(p, c.CreatedAt))}</time></p>");
@@ -111,6 +123,55 @@ public static partial class UiPages
         }
 
         h.Append("</div></form>");
+        Trials(h, p, c, trials, trialsOn);
         return Layout(p, c.Title, "/ui/cards", h.ToString());
+    }
+
+    private static string TrialClass(string status) => status switch { "passed" => "good", "failed" or "blocked" => "bad", "running" or "queued" => "warn", _ => "" };
+
+    private static void Trials(StringBuilder h, PageContext p, CardRow c, IReadOnlyList<TrialRow> trials, bool trialsOn)
+    {
+        h.Append("<h2>Trials</h2>");
+        var active = trials.Any(t => t.Status is "queued" or "running");
+        if (c.State == "trial" && c.StateChangedAt is not null && trialsOn && !active)
+        {
+            h.Append($"<form method=\"post\" action=\"/ui/cards/{N(c.Id)}/trial\" class=\"stack\"><input type=\"hidden\" name=\"_csrf\" value=\"{E(p.Csrf)}\"><div class=\"actions\"><button type=\"submit\">Queue trial</button></div></form>");
+        }
+        else if (c.State == "trial" && !trialsOn)
+        {
+            h.Append("<p class=\"meta\">Trials are off. Set Trials:Enabled to run this card.</p>");
+        }
+
+        if (trials.Count == 0)
+        {
+            h.Append("<p class=\"empty\">No trial has run for this card.</p>");
+            return;
+        }
+
+        foreach (var t in trials)
+        {
+            h.Append($"<section class=\"trial\"><p class=\"meta\"><span class=\"badge {TrialClass(t.Status)}\">{E(t.Status)}</span> <code>{E(t.Branch)}</code> · <time datetime=\"{t.RequestedAt.ToString("O", CultureInfo.InvariantCulture)}\">{E(Local(p, t.RequestedAt))}</time></p>");
+            if (t.DiffStat.Length > 0)
+            {
+                h.Append($"<p>Diff: {E(t.DiffStat)}</p>");
+            }
+
+            if (t.Benchmark.Length > 0)
+            {
+                h.Append($"<p>Measured: {E(t.Benchmark)}</p>");
+            }
+
+            if (t.Tests.Length > 0)
+            {
+                h.Append($"<h3>Tests</h3><pre class=\"content\">{E(t.Tests)}</pre>");
+            }
+
+            if (t.ResultMd.Length > 0)
+            {
+                h.Append($"<pre class=\"content\">{E(t.ResultMd)}</pre>");
+            }
+
+            h.Append("</section>");
+        }
     }
 }

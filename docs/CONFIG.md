@@ -278,6 +278,18 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Taste:Learn` | `false` | Adds a learned term to the ranking. With fewer than MinVotes votes it refuses to switch on. The switch in the web UI settings overrides this. |
 | `FeedEater:Taste:MinVotes` | `100` | Votes needed (and 10 of each kind) before the learned term can be switched on. |
 
+## Trials
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Trials:BudgetUsd` | `1` | Most one trial may spend, in USD (request/v1 budget_usd). |
+| `FeedEater:Trials:ChargehandKey` | (empty) | Bearer key of the chargehand account the trials are charged to. |
+| `FeedEater:Trials:ChargehandUrl` | (empty) | Base URL of the chargehand HTTP server that runs a trial (POST /v1/runs). |
+| `FeedEater:Trials:Enabled` | `false` | Adoption trials: run the cards you moved to the trial state, one at a time, through chargehand on a throwaway branch. Needs Trials:ChargehandUrl and Trials:Repos. Off by default; nothing runs unless you queue a card. |
+| `FeedEater:Trials:Preset` | `code` | Chargehand preset a trial runs with. It must write code on a branch and run the tests. |
+| `FeedEater:Trials:Repos` | (empty) | Repos a trial may touch, as comma separated name=path pairs: the card's repo name and where the chargehand host has its checkout. A card whose repo is not listed cannot be queued. |
+| `FeedEater:Trials:TimeoutMinutes` | `30` | Longest a single trial may take before it is cancelled and marked failed, in minutes. |
+
 ## Watch
 
 | Key | Default | Description |
