@@ -235,6 +235,15 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Quiet:ManualHours` | `12` | Hours a manual quiet mode lasts. |
 | `FeedEater:Quiet:To` | (empty) | Local time at which quiet hours end. |
 
+## Radar
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Radar:Branch` | `radar/export` | Branch the export commits to; the pull request is opened from it and reused while it is open. |
+| `FeedEater:Radar:Enabled` | `false` | Tech radar export: turn your cards in the assess, trial, adopt and hold states, for repos of kind personal only, into radar.json and open or update a pull request with it in Radar:Repo. Needs Cards:Root, Cards:DenyTermsFile and GitHub:Token (write access to the repo). Off by default; it runs only when you call feed_radar_export. |
+| `FeedEater:Radar:Path` | `content/radar.json` | Path of the radar file inside Radar:Repo. |
+| `FeedEater:Radar:Repo` | `Egoushka/personal-website` | The site repo the radar.json pull request goes to (owner/name). |
+
 ## Source
 
 | Key | Default | Description |

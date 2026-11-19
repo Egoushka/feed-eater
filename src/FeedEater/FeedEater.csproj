@@ -21,6 +21,7 @@
     <!-- Embedded as FeedEater.Migrations.<file>; DatabaseMigrator filters on ".Migrations." -->
     <EmbeddedResource Include="../../db/migrations/*.sql" LinkBase="Migrations" />
     <EmbeddedResource Include="Ui/assets/app.css" LogicalName="FeedEater.Ui.app.css" />
+    <EmbeddedResource Include="Radar/radar.schema.json" LogicalName="FeedEater.Radar.schema.json" />
     <EmbeddedResource Include="Ui/assets/swipe.js" LogicalName="FeedEater.Ui.swipe.js" />
     <EmbeddedResource Include="Ui/assets/swipe.css" LogicalName="FeedEater.Ui.swipe.css" />
     <EmbeddedResource Include="Ui/assets/swipe.webmanifest" LogicalName="FeedEater.Ui.swipe.webmanifest" />
