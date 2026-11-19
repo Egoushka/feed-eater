@@ -86,7 +86,7 @@ public static class ServiceRegistration
             BaseAddress(http, o.NtfyUrl.Length > 0 ? o.NtfyUrl.TrimEnd('/') + "/" : "");
             Bearer(http, o.Token);
             http.Timeout = TimeSpan.FromSeconds(10);
-        });
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddSingleton<PushNotifier>();
         services.AddHttpClient<ApprovalsClient>((sp, http) =>
         {

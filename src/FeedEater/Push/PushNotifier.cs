@@ -15,8 +15,6 @@ public sealed class PushNotifier(
 {
     internal static readonly TimeSpan RetryAfter = TimeSpan.FromHours(1);
 
-    public bool Enabled => options.Value.Push.Enabled;
-
     /// <summary>True when the message for this digest has gone out (now or before).</summary>
     public async Task<bool> NotifyDigestAsync(string date, int items, CancellationToken ct)
     {
@@ -34,7 +32,7 @@ public sealed class PushNotifier(
 
         if (await quiet.IsQuietAsync(ct))
         {
-            logger.LogInformation("ntfy held for digest {Date}: quiet hours", date);
+            logger.LogDebug("ntfy held for digest {Date}: quiet hours", date);
             return false;
         }
 
@@ -66,7 +64,8 @@ public sealed class PushNotifier(
     {
         var o = options.Value;
         var b = o.Push.BaseUrl.Length > 0 ? o.Push.BaseUrl : o.Api.BaseUrl;
-        return b.Length > 0 ? b.TrimEnd('/') + "/ui" : null;
+        // Only an absolute http(s) address is sent as the click target; anything else leaves the message without one.
+        return b.Length > 0 && Uri.TryCreate(b.TrimEnd('/') + "/ui", UriKind.Absolute, out var url) && url.Scheme is "http" or "https" ? url.AbsoluteUri : null;
     }
 
     /// <summary>Today's digest, if it is sent but its message is held or failed: tries again (quiet hours and the hourly limit still apply).</summary>

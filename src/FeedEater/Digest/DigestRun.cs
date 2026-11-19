@@ -323,7 +323,15 @@ public sealed class DigestRun(
         await digests.MarkSentAsync(digest.LocalDate, time.GetUtcNow(), ct);
         await releaseStore.TakeForDigestAsync(digest.LocalDate, ct);
         await NotifyApprovalsAsync(digest, ct);
-        await push.NotifyDigestAsync(digest.LocalDate, digest.ItemIds.Length, ct);
+        try
+        {
+            await push.NotifyDigestAsync(digest.LocalDate, digest.ItemIds.Length, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            // The digest is already stored and sent; a push problem must not fail the run. PushJob tries again.
+            logger.LogWarning("ntfy push for digest {Date} failed: {Type}", digest.LocalDate, ex.GetType().Name);
+        }
     }
 
     /// <summary>One card in the approvals inbox, after the digest is marked sent (the stack already holds it); the same id on a resend rewrites the card.</summary>

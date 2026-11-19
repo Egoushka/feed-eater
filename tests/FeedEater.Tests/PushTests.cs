@@ -73,6 +73,16 @@ public sealed class PushTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_click_address_that_is_not_http_is_left_off()
+    {
+        var push = Build(o => o.Push = new PushOptions { NtfyUrl = "http://ntfy/", Topic = "feed", BaseUrl = "javascript:alert(1)//" });
+
+        Assert.True(await push.NotifyDigestAsync(Date, 3, default));
+
+        Assert.Null(Assert.Single(_posts).Click);
+    }
+
+    [Fact]
     public async Task Push_does_nothing_without_a_server_and_topic()
     {
         var push = Build(o => o.Push = new PushOptions());
