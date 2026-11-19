@@ -1,5 +1,5 @@
 # Lints new migrations only (.github/workflows/squawk.yml). Existing ones are applied history and stay as they are.
-pg_version = "17.0"
+pg_version = "18.0"
 # Style and timeout rules fire on every file; the lock and rewrite rules are what the check is for.
 excluded_rules = [
   "prefer-robust-stmts",

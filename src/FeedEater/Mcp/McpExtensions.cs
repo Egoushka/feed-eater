@@ -7,7 +7,7 @@ public static class McpExtensions
     public static IServiceCollection AddFeedEaterMcp(this IServiceCollection services)
     {
         // Stateless: no session, no GET stream.
-        services.AddMcpServer().WithHttpTransport(options => options.Stateless = true).WithTools<FeedTools>().WithTools<PriorArtTools>().WithTools<PeerHarvestTools>();
+        services.AddMcpServer().WithHttpTransport(options => options.Stateless = true).WithTools<FeedTools>().WithTools<PriorArtTools>().WithTools<PeerHarvestTools>().WithTools<CardTools>();
         return services;
     }
 

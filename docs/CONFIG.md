@@ -65,6 +65,23 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Caps:Triage` | `400` | Candidates the small model triages per digest. |
 | `FeedEater:Caps:TriageChars` | `2000` | Characters of an item given to triage. |
 
+## Cards
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Cards:At` | `03:00:00` | Local time of day the cards job runs. |
+| `FeedEater:Cards:DenyTermsFile` | (empty) | Terms that must never reach the board: a text file, one literal string per line, case-insensitive, # comments (the workspace leak-guard terms file). A skills and servers row, an inventory item or a search term that contains one is dropped before anything is stored, queried or logged. Required for Cards:InventoryToml: without a readable file that file is skipped. |
+| `FeedEater:Cards:DepsDevBase` | `https://api.deps.dev/v3/` | deps.dev API base URL; empty turns the advisory lookup off. |
+| `FeedEater:Cards:Enabled` | `false` | Adoption cards: once a day read the repos of your manifest, match what they run against ranked items and outside signals, and write proposal cards. Needs Cards:Root. The /ui/cards page and the card MCP tools work either way. |
+| `FeedEater:Cards:HnMinPoints` | `20` | Fewest points a Hacker News story needs to count as a signal. |
+| `FeedEater:Cards:InventoryToml` | `context/ai-setup/inventory.toml` | TOML file with [[mcp]] and [[skill]] rows, relative to Cards:Root; empty to skip it. |
+| `FeedEater:Cards:LookbackDays` | `30` | How many days back an item or a Hacker News story can be and still count as a signal. |
+| `FeedEater:Cards:Manifest` | `repos.toml` | The repo manifest (TOML with [[repo]] rows of name, path, kind, status), relative to Cards:Root. |
+| `FeedEater:Cards:MaxLookups` | `120` | Most outside lookups (Hacker News, deps.dev) one run makes. |
+| `FeedEater:Cards:MaxNewCards` | `30` | Most new cards one run writes, the strongest signals first. |
+| `FeedEater:Cards:MinRelevance` | `2` | Lowest triage relevance (0 to 3) of a feed item that counts as a signal. |
+| `FeedEater:Cards:Root` | (empty) | Directory that holds your checkouts (your workspace root, mounted read-only). Only repos of kind personal or infra in the manifest are read; a path that leaves this directory is skipped. |
+
 ## Cluster
 
 | Key | Default | Description |
