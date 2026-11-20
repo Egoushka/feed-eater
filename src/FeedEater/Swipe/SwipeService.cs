@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using FeedEater.Inbox;
+using FeedEater.Issues;
 using FeedEater.Library;
 using Microsoft.Extensions.Options;
 using FeedEater.Ranking;
@@ -30,12 +31,14 @@ internal sealed record Queued(string Kind, long RefId, string? Category, string 
 /// <summary>Starts, resumes and ends sessions, hands out the cards and applies what the owner does with them. Every id the client names is a position in the session's own queue.</summary>
 public sealed class SwipeService(
     SwipeStore store, RecallStore recall, CategoryStore categories, SwipeYield yield, ProfileStore profiles, FeedbackStore feedback, TasteSwitch tasteSwitch, ItemStore items,
-    InboxStore inbox, InboxCards inboxCards, SwipeActStore acts, FollowStore follows, WeeklyIdeaStore ideas, ItemActions callbacks, LibraryService library, LibraryStore libraryStore, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
+    InboxStore inbox, InboxCards inboxCards, SwipeActStore acts, LabelStore labels, IdeaStore ideaItems, IIdeaSink ideaSink, FollowStore follows, WeeklyIdeaStore ideas, ItemActions callbacks, LibraryService library, LibraryStore libraryStore, IOptions<FeedEaterOptions> options, TimeProvider time, ILogger<SwipeService> logger)
 {
     public static readonly string[] Acts = ["idea", "save", "share", "like", "dislike", "open"];
     private static readonly string[] RecallActs = ["good", "again"];
     private static readonly string[] SeedActs = ["send", "dismiss"];
-    private static readonly string[] Strongest = [.. Acts, .. RecallActs, .. SeedActs];
+    private static readonly string[] IdeaActs = ["idea_keep", "idea_archive", "idea_later", "idea_promote"];
+    private static readonly string[] Strongest = [.. Acts, .. RecallActs, .. SeedActs, .. IdeaActs];
+    public const string LostIdea = "lost_idea";
     private static readonly string[] Directions = ["up", "down", "left", "right", "none"];
     private const int MaxDwellMs = 3_600_000;
     private static readonly TimeSpan UndoWindow = TimeSpan.FromHours(24);
@@ -165,6 +168,10 @@ public sealed class SwipeService(
         {
             view = new CardView(s.Id, position, total, seed.Angle, "post seed", Blank(category), "From: " + source.Title, Html.SafeUrl(source.Url), Age(source.PublishedAt, now), false, "seed");
         }
+        else if (kind == LostIdea && await ideaItems.GetAsync(s.QueueItems[position], ct) is { Status: "active" } idea)
+        {
+            view = new CardView(s.Id, position, total, idea.Body, "idea", Blank(category), $"You said this on {idea.SourceDate:d MMM yyyy}", null, "", false, LostIdea);
+        }
         else if (IsInbox(kind) && await inbox.GetAsync(s.QueueItems[position], ct) is { } row)
         {
             view = await inboxCards.ViewAsync(row, s, position, total, now, markShown, ct);
@@ -220,9 +227,28 @@ public sealed class SwipeService(
             special.AddRange((await recall.NewSeedsAsync(Math.Min(o.Seeds.PerSession, room - special.Count), ct)).Select(x => new QueuedCard(x.Id, x.Category, "seed", null, "seed")));
         }
 
+        if (o.Ideas.Enabled && room - special.Count > 0)
+        {
+            special.AddRange(await LostIdeasAsync(Math.Min(o.Ideas.PerSession, room - special.Count), now, ct));
+        }
+
         var rest = await BuildItemQueueAsync(Math.Max(0, room - special.Count), digest, now, ct);
         var random = new Random();
         return [.. head, .. rest.Concat(special).OrderBy(_ => random.Next())];
+    }
+
+    /// <summary>Due ideas, lowest retrievability first, within the per-session and per-day caps. Once per stack; archived and promoted ideas are never due.</summary>
+    private async Task<IReadOnlyList<QueuedCard>> LostIdeasAsync(int slots, DateTimeOffset now, CancellationToken ct)
+    {
+        var left = Math.Min(slots, Settings.Swipe.Ideas.PerDay - await ideaItems.QueuedSinceAsync(DayStart(now), ct));
+        var picked = IdeaPicker.Pick(await ideaItems.DueAsync(now, ct), now, left);
+        if (picked.Count == 0)
+        {
+            return [];
+        }
+
+        await ideaItems.MarkQueuedAsync([.. picked.Select(i => i.Id)], now, ct);
+        return [.. picked.Select(i => new QueuedCard(i.Id, null, "due", null, LostIdea))];
     }
 
     private async Task<IReadOnlyList<QueuedCard>> BuildItemQueueAsync(int slots, IReadOnlyCollection<long> exclude, DateTimeOffset now, CancellationToken ct)
@@ -320,6 +346,7 @@ public sealed class SwipeService(
         {
             "recall" => await RecallActAsync(queued.RefId, sessionId, act, ct),
             "seed" => await SeedActAsync(queued.RefId, act, ct),
+            LostIdea => await IdeaActAsync(queued.RefId, act, ct),
             _ => await ItemActAsync(queued.RefId, act, ct),
         };
         if (message is null)
@@ -436,6 +463,7 @@ public sealed class SwipeService(
     {
         ("recall", _) => "the card was already reviewed.",
         ("seed", _) => "the post seed was already handled.",
+        (LostIdea, _) => "the idea was already reviewed.",
         (_, "idea") or (InboxKinds.Idea, "keep") => "the idea was filed.",
         (_, "pick_a" or "pick_b") => "the duel was answered.",
         _ => null,
@@ -485,19 +513,25 @@ public sealed class SwipeService(
 
     private async Task RecordActAsync(long sessionId, int position, Queued queued, string act, CancellationToken ct)
     {
+        if (Labels.Of(act) is { } label)
+        {
+            await labels.AddAsync(queued.Kind, queued.RefId.ToString(), label, ct);
+        }
+
         var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
         var acts = existing.Acts.Append(act).Distinct(StringComparer.Ordinal).ToArray();
         await store.SaveEventAsync(existing with { Acts = acts, Action = Primary(acts, existing.Direction) }, ct);
     }
 
     /// <summary>Every queue kind but these names an inbox entry.</summary>
-    private static bool IsInbox(string kind) => kind is not ("item" or "digest" or "recall" or "seed");
+    private static bool IsInbox(string kind) => kind is not ("item" or "digest" or "recall" or "seed" or LostIdea);
 
     private static string[] ActsFor(string kind) => kind switch
     {
         "item" or "digest" => Acts,
         "recall" => RecallActs,
         "seed" => SeedActs,
+        LostIdea => IdeaActs,
         _ => InboxCards.ActsFor(kind),
     };
 
@@ -513,6 +547,57 @@ public sealed class SwipeService(
 
         await recall.ReviewAsync(card, sessionId, act == "good", time.GetUtcNow(), ct);
         return act == "good" ? "Good" : "Again tomorrow";
+    }
+
+    /// <summary>A swipe on a lost idea is its FSRS review: keep is Good, later is Again, archive and promote end it.</summary>
+    private async Task<string?> IdeaActAsync(long ideaId, string act, CancellationToken ct)
+    {
+        if (await ideaItems.GetAsync(ideaId, ct) is not { Status: "active" } idea)
+        {
+            return null;
+        }
+
+        var now = time.GetUtcNow();
+        switch (act)
+        {
+            case "idea_keep":
+                await ideaItems.ReviewAsync(idea, Fsrs.Good, now, ct);
+                return "Kept";
+            case "idea_later":
+                await ideaItems.ReviewAsync(idea, Fsrs.Again, now, ct);
+                return "Back later";
+            case "idea_archive":
+                await ideaItems.SetStatusAsync(idea.Id, "archived", null, ct);
+                return "Archived";
+            default:
+                return await PromoteIdeaAsync(idea, ct);
+        }
+    }
+
+    /// <summary>Files the idea as an issue in its repo (else the sink's fallback); the value hypothesis and the cheapest test are left for the owner.</summary>
+    private async Task<string?> PromoteIdeaAsync(IdeaItem idea, CancellationToken ct)
+    {
+        var project = idea.Repo ?? ideaSink.FallbackProject;
+        if (project is null)
+        {
+            logger.LogWarning("Promoting idea {Idea} failed: no repo and no fallback repo", idea.Id);
+            return null;
+        }
+
+        var title = idea.Body.Length <= 80 ? idea.Body : idea.Body[..79] + "…";
+        var body = string.Join("\n\n", $"> {Markdown.Text(idea.Body)}", $"Source: session {idea.SourceSession}, {idea.SourceDate:yyyy-MM-dd} (feed-eater idea {idea.Id})",
+            "## Value hypothesis", "## Cheapest test");
+        try
+        {
+            var number = await ideaSink.FileAsync(new IdeaDraft(project, title, body), ct);
+            await ideaItems.SetStatusAsync(idea.Id, "promoted", number, ct);
+            return ideaSink.Filed(project);
+        }
+        catch (Exception e) when (e is InvalidOperationException or HttpRequestException)
+        {
+            logger.LogWarning(e, "Promoting idea {Idea} failed", idea.Id);
+            return null;
+        }
     }
 
     private async Task<string?> SeedActAsync(long seedId, string act, CancellationToken ct)
@@ -582,7 +667,14 @@ public sealed class SwipeService(
             await inboxCards.ViewAsync(entry, session, position, Math.Min(session.CardCap, session.QueueItems.Length), now, true, ct);
         }
 
-        var existing = await store.EventAsync(sessionId, position, ct) ?? NewEvent(sessionId, position, queued);
+        var stored = await store.EventAsync(sessionId, position, ct);
+        if (stored is null)
+        {
+            // The first event of a card with no act: it was left alone. Later events (idempotent, last wins) add nothing.
+            await labels.AddAsync(queued.Kind, queued.RefId.ToString(), Labels.Ignored, ct);
+        }
+
+        var existing = stored ?? NewEvent(sessionId, position, queued);
         var dir = direction is not null && Directions.Contains(direction, StringComparer.Ordinal) ? direction : "none";
         await store.SaveEventAsync(existing with
         {
@@ -651,7 +743,8 @@ public sealed class SwipeService(
     {
         var data = await store.SummaryAsync(s, time.GetUtcNow(), ct);
         return new NextResult("summary", Summary: new SummaryView(
-            s.Id, s.EndReason ?? "user", data.CardsShown, (int)Math.Round(data.Minutes), data.Acts, data.Categories.Select(c => c.Category).ToList(), s.FeltAt is not null));
+            s.Id, s.EndReason ?? "user", data.CardsShown, (int)Math.Round(data.Minutes),
+            data.Acts.Where(a => !a.Key.StartsWith("idea_", StringComparison.Ordinal)).ToDictionary(a => a.Key, a => a.Value), data.Categories.Select(c => c.Category).ToList(), s.FeltAt is not null));
     }
 
     /// <summary>The strongest thing done with the card, else where it was swiped.</summary>

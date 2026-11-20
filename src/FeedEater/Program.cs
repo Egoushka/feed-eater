@@ -99,6 +99,7 @@ if (feedEater.Source.KindProblem is { } kindProblem)
 }
 
 app.Services.GetRequiredService<DatabaseMigrator>().Run();
+await app.Services.GetRequiredService<FeedEater.Swipe.IdeaStore>().SeedAsync(FeedEater.Swipe.LostIdeaSeed.All, CancellationToken.None);
 await app.Services.GetRequiredService<FeedEater.PriorArt.PriorArtStore>().EnsureReadyAsync(CancellationToken.None);
 
 var token = app.Configuration["Mcp:Token"];

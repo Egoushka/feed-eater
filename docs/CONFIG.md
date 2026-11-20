@@ -266,6 +266,9 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Swipe:CooldownMinutes` | `180` | Minutes after a session ends before the next one can start. |
 | `FeedEater:Swipe:Enabled` | `false` | Swipe mode: a phone page at /swipe showing one card per screen, with a hard cap per session. Off by default; needs Mcp:Token for the sign-in. |
 | `FeedEater:Swipe:Epsilon` | `0.2` | Share of cards chosen for exploration: a random item from outside the best-ranked part that is unlike the rest of the session. Its yield is the only honest test of the ranking. |
+| `FeedEater:Swipe:Ideas:Enabled` | `true` | Lost ideas: ideas that existed only in a transcript come back in the swipe stack when you are about to forget them (FSRS). Never a push, never a count. False keeps them out of the stack. |
+| `FeedEater:Swipe:Ideas:PerDay` | `2` | Most lost ideas put into stacks per local day. |
+| `FeedEater:Swipe:Ideas:PerSession` | `1` | Most lost ideas in one session. |
 | `FeedEater:Swipe:Minutes` | `15` | Minutes after which a session ends with the summary card, whatever the card count. |
 | `FeedEater:Swipe:Notes:BaseUrl` | (empty) | Server that lists your notes at GET /api/v1/notes (items with id, topic, points, createdAt), for recall cards. Empty means no notes. |
 | `FeedEater:Swipe:Notes:Token` | (empty) | Bearer token for the notes server. |
