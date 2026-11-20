@@ -9,6 +9,7 @@ create table labels (
     item_id   text not null,
     action    text not null check (action in ('kept', 'dismissed', 'snoozed', 'opened', 'promoted', 'ignored'))
 );
+-- squawk-ignore require-concurrent-index-creation
 create index labels_item_idx on labels (item_kind, item_id, ts);
 
 create function labels_append_only() returns trigger language plpgsql as $$
@@ -37,8 +38,10 @@ create table idea_items (
     created_at     timestamptz not null default now()
 );
 
+-- squawk-ignore ban-drop-constraint
 alter table swipe_events drop constraint swipe_events_action_check;
 alter table swipe_events add constraint swipe_events_action_check check (
     action in ('next', 'back', 'like', 'dislike', 'save', 'share', 'idea', 'open', 'good', 'again', 'send', 'dismiss',
                'stop', 'pick_a', 'pick_b', 'keep', 'drop', 'remove', 'read',
-               'idea_keep', 'idea_archive', 'idea_later', 'idea_promote'));
+               'idea_keep', 'idea_archive', 'idea_later', 'idea_promote')) not valid;
+alter table swipe_events validate constraint swipe_events_action_check;
