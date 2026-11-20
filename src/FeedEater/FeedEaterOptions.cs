@@ -235,6 +235,7 @@ public sealed class SwipeOptions
 
     public SwipeRecallOptions Recall { get; set; } = new();
     public SwipeSeedOptions Seeds { get; set; } = new();
+    public SwipeIdeasOptions Ideas { get; set; } = new();
     public SwipeNotesOptions Notes { get; set; } = new();
 
     public TimeSpan Cap => TimeSpan.FromMinutes(Minutes);
@@ -250,6 +251,21 @@ public sealed class SwipeRecallOptions
 
     [Description("Most liked or saved items turned into questions per local day (one small-model call each).")]
     public int PerDay { get; set; } = 10;
+}
+
+public sealed class SwipeIdeasOptions
+{
+    [Description("Lost ideas: ideas that existed only in a transcript come back in the swipe stack when you are about to forget them (FSRS). Never a push, never a count. False keeps them out of the stack.")]
+    public bool Enabled { get; set; } = true;
+
+    [Description("JSON file of ideas to seed (an array of key, body, session, date, repo); read at startup, ideas already there are left alone. Empty seeds nothing.")]
+    public string SeedPath { get; set; } = "";
+
+    [Description("Most lost ideas in one session.")]
+    public int PerSession { get; set; } = 1;
+
+    [Description("Most lost ideas put into stacks per local day.")]
+    public int PerDay { get; set; } = 2;
 }
 
 public sealed class SwipeSeedOptions

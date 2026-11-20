@@ -299,6 +299,8 @@ public static class ServiceRegistration
         services.AddSingleton<SwipeStore>();
         services.AddSingleton<SwipeActStore>();
         services.AddSingleton<RecallStore>();
+        services.AddSingleton<LabelStore>();
+        services.AddSingleton<IdeaStore>();
         services.AddSingleton<CategoryStore>();
         services.AddSingleton<SwipeYield>();
         services.AddSingleton<InboxCards>();

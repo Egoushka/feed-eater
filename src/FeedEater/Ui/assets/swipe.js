@@ -225,6 +225,8 @@
       await act(right ? 'save' : 'stop', true);
     } else if (card.kind === 'idea') {
       await act(right ? 'keep' : 'drop', true);
+    } else if (card.kind === 'lost_idea') {
+      await act(right ? 'idea_keep' : 'idea_archive', true);
     } else if (card.kind === 'resurface') {
       await act(right ? 'keep' : 'remove', true);
     } else if (card.kind === 'duel' || setFor(card.kind) === 'info') {
@@ -241,6 +243,9 @@
     if (name === 'pick_a' || name === 'pick_b') return (await act(name, true)) && advance('right');
     if (name === 'share') return share();
     if (name === 'reveal') return reveal();
+    if (name === 'idea_later' || name === 'idea_promote') return (await act(name, true)) && advance('right');
+    if (name === 'idea_keep') return swipeAction(true);
+    if (name === 'idea_archive') return swipeAction(false);
     if (name === 'good' || name === 'send') return swipeAction(true);
     if (name === 'again' || name === 'dismiss') return swipeAction(false);
     if (name === 'open') {

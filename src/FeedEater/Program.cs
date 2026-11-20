@@ -99,6 +99,10 @@ if (feedEater.Source.KindProblem is { } kindProblem)
 }
 
 app.Services.GetRequiredService<DatabaseMigrator>().Run();
+if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<FeedEater.FeedEaterOptions>>().Value.Swipe.Ideas.SeedPath is { Length: > 0 } seedPath)
+{
+    await app.Services.GetRequiredService<FeedEater.Swipe.IdeaStore>().SeedAsync(FeedEater.Swipe.IdeaSeedFile.Read(seedPath), CancellationToken.None);
+}
 await app.Services.GetRequiredService<FeedEater.PriorArt.PriorArtStore>().EnsureReadyAsync(CancellationToken.None);
 
 var token = app.Configuration["Mcp:Token"];

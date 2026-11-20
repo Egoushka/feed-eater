@@ -1,0 +1,65 @@
+[
+  {
+    "key": "2026-11-11/4b27c0b6",
+    "body": "i'm thinking about new approaches, filesystems, system tools, maybe another linux distro that will give full controll over everything so we can controll every step of memory taking and cut in down as much as we can",
+    "session": "4b27c0b6",
+    "date": "2026-11-11",
+    "repo": "Egoushka/homelab"
+  },
+  {
+    "key": "2026-11-11/8198e678-cache",
+    "body": "we need to have cache and one on our side, cause agents cannot have common context and this cache should be more agent proactive, idk and should be part of collector, sink i think",
+    "session": "8198e678",
+    "date": "2026-11-11",
+    "repo": "Egoushka/chargehand"
+  },
+  {
+    "key": "2026-11-11/8198e678-optimize",
+    "body": "i wanna come down and maybe reinvent something and optimize. so basically i have next constructs: cpu, ram, memory  all of those could be optimized without quality and retrieve quality somehow",
+    "session": "8198e678",
+    "date": "2026-11-11",
+    "repo": null
+  },
+  {
+    "key": "2026-11-12/36d4c50f",
+    "body": "my initial will was to make AI basically do everything with my screen and being \"with me\"",
+    "session": "36d4c50f",
+    "date": "2026-11-12",
+    "repo": "Egoushka/wheelhouse"
+  },
+  {
+    "key": "2026-11-12/a6df575a",
+    "body": "i think we could also add some step, that haiku also can do - determine what's needed to be done and if needed - that will remove cost for session that will do nothing with a result of run",
+    "session": "a6df575a",
+    "date": "2026-11-12",
+    "repo": "Egoushka/chargehand"
+  },
+  {
+    "key": "2026-11-11/d99bff7c",
+    "body": "oura-platform - need to make it more usable to people, like, that was random and 100% people that use oura and are tech a bi...",
+    "session": "d99bff7c",
+    "date": "2026-11-11",
+    "repo": "Egoushka/oura-platform"
+  },
+  {
+    "key": "2026-11-02/18af8793",
+    "body": "i wanna have some better secret management tool ... which relates to some app, how many those, how many programs refer to it ... this program should give it's own keys and that program talk to real service",
+    "session": "18af8793",
+    "date": "2026-11-02",
+    "repo": "Egoushka/homelab"
+  },
+  {
+    "key": "2026-11-07/2a685036",
+    "body": "okay record them + cached code idea",
+    "session": "2a685036",
+    "date": "2026-11-07",
+    "repo": "Egoushka/chargehand"
+  },
+  {
+    "key": "2026-11-10/48a93860",
+    "body": "i wanna have statistics over my github over all my projects cause i need to click every repo to see visits, stars, forks and all other ego-feeding info",
+    "session": "48a93860",
+    "date": "2026-11-10",
+    "repo": "Egoushka/senses"
+  }
+]
