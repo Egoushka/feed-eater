@@ -258,6 +258,9 @@ public sealed class SwipeIdeasOptions
     [Description("Lost ideas: ideas that existed only in a transcript come back in the swipe stack when you are about to forget them (FSRS). Never a push, never a count. False keeps them out of the stack.")]
     public bool Enabled { get; set; } = true;
 
+    [Description("JSON file of ideas to seed (an array of key, body, session, date, repo); read at startup, ideas already there are left alone. Empty seeds nothing.")]
+    public string SeedPath { get; set; } = "";
+
     [Description("Most lost ideas in one session.")]
     public int PerSession { get; set; } = 1;
 

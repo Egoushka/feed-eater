@@ -20,7 +20,7 @@ public sealed class SwipeIdeaTests(PostgresFixture pg) : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await pg.ResetAsync();
-        await new IdeaStore(pg.Db).SeedAsync(LostIdeaSeed.All, default);
+        await new IdeaStore(pg.Db).SeedAsync(IdeaSeedFile.Read(RepoRoot.File("docs/seeds/lost-ideas.json")), default);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -98,10 +98,10 @@ public sealed class SwipeIdeaTests(PostgresFixture pg) : IAsyncLifetime
     {
         var store = new IdeaStore(pg.Db);
 
-        Assert.Equal(0, await store.SeedAsync(LostIdeaSeed.All, default));
+        Assert.Equal(0, await store.SeedAsync(IdeaSeedFile.Read(RepoRoot.File("docs/seeds/lost-ideas.json")), default));
 
         Assert.Equal(9, await ScalarAsync<long>("select count(*) from idea_items"));
-        Assert.Equal(LostIdeaSeed.All.Select(s => s.Body).Order(), (await ScalarAsync<string[]>("select array_agg(body) from idea_items")).Order());
+        Assert.Equal(IdeaSeedFile.Read(RepoRoot.File("docs/seeds/lost-ideas.json")).Select(s => s.Body).Order(), (await ScalarAsync<string[]>("select array_agg(body) from idea_items")).Order());
     }
 
     [Fact]

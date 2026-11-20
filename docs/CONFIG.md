@@ -269,6 +269,7 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Swipe:Ideas:Enabled` | `true` | Lost ideas: ideas that existed only in a transcript come back in the swipe stack when you are about to forget them (FSRS). Never a push, never a count. False keeps them out of the stack. |
 | `FeedEater:Swipe:Ideas:PerDay` | `2` | Most lost ideas put into stacks per local day. |
 | `FeedEater:Swipe:Ideas:PerSession` | `1` | Most lost ideas in one session. |
+| `FeedEater:Swipe:Ideas:SeedPath` | (empty) | JSON file of ideas to seed (an array of key, body, session, date, repo); read at startup, ideas already there are left alone. Empty seeds nothing. |
 | `FeedEater:Swipe:Minutes` | `15` | Minutes after which a session ends with the summary card, whatever the card count. |
 | `FeedEater:Swipe:Notes:BaseUrl` | (empty) | Server that lists your notes at GET /api/v1/notes (items with id, topic, points, createdAt), for recall cards. Empty means no notes. |
 | `FeedEater:Swipe:Notes:Token` | (empty) | Bearer token for the notes server. |

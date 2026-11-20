@@ -17,7 +17,7 @@ Cheapest test: after 3 weeks, at least 3 of the 9 seeded ideas are kept or promo
   read are `dismissed`; again and later are `snoozed`; open is `opened`; idea, send, share, promote are `promoted`. A card left with no act writes `ignored` once, on its first
   event. Undo does not delete a label (append-only); the vote it undid is restored as before.
 - **L3 Ideas.** Table `idea_items`: his exact words, source session, source date, repo guess, status (`active | archived | promoted`) and the FSRS memory state.
-  The 9 lost ideas are seeded by `seed_key` (insert, do nothing on conflict), so a restart or a second run adds nothing.
+  The 9 lost ideas live in `docs/seeds/lost-ideas.json` (not in `src/`: nothing shipped in the image names the owner, `OwnerTermsTests`). `Swipe:Ideas:SeedPath` points at the file; startup seeds by `seed_key` (insert, do nothing on conflict), so a restart or a second run adds nothing. An empty path seeds nothing.
 - **L4 FSRS.** A C# port of the FSRS-6 memory model (default weights, request retention 0.9, no fuzz, no intra-day learning steps), checked against
   ts-fsrs 6.0.0 (MIT) with golden values in the tests. A .NET NuGet port was not used: none is maintained by the FSRS project, and the model is about 60 lines.
   `ts-fsrs` itself is TypeScript, and this repo is .NET.

@@ -100,19 +100,15 @@ public static class IdeaPicker
             : Fsrs.Retrievability((now - new DateTimeOffset(DateTime.SpecifyKind(idea.LastReviewAt.Value, DateTimeKind.Utc))).TotalDays, idea.Stability);
 }
 
-/// <summary>The 9 ideas that existed only in a transcript (docs/specs/2026-11-20-labels-and-idea-resurfacing.md), in his words.</summary>
-public static class LostIdeaSeed
+/// <summary>Reads seed ideas from a JSON file: an array of objects with key, body, session, date (yyyy-MM-dd) and repo (or null).</summary>
+public static class IdeaSeedFile
 {
-    public static readonly IReadOnlyList<IdeaSeed> All =
-    [
-        new("2026-11-11/4b27c0b6", "i'm thinking about new approaches, filesystems, system tools, maybe another linux distro that will give full controll over everything so we can controll every step of memory taking and cut in down as much as we can", "4b27c0b6", new(2026, 11, 11), "Egoushka/homelab"),
-        new("2026-11-11/8198e678-cache", "we need to have cache and one on our side, cause agents cannot have common context and this cache should be more agent proactive, idk and should be part of collector, sink i think", "8198e678", new(2026, 11, 11), "Egoushka/chargehand"),
-        new("2026-11-11/8198e678-optimize", "i wanna come down and maybe reinvent something and optimize. so basically i have next constructs: cpu, ram, memory  all of those could be optimized without quality and retrieve quality somehow", "8198e678", new(2026, 11, 11), null),
-        new("2026-11-12/36d4c50f", "my initial will was to make AI basically do everything with my screen and being \"with me\"", "36d4c50f", new(2026, 11, 12), "Egoushka/wheelhouse"),
-        new("2026-11-12/a6df575a", "i think we could also add some step, that haiku also can do - determine what's needed to be done and if needed - that will remove cost for session that will do nothing with a result of run", "a6df575a", new(2026, 11, 12), "Egoushka/chargehand"),
-        new("2026-11-11/d99bff7c", "oura-platform - need to make it more usable to people, like, that was random and 100% people that use oura and are tech a bi...", "d99bff7c", new(2026, 11, 11), "Egoushka/oura-platform"),
-        new("2026-11-02/18af8793", "i wanna have some better secret management tool ... which relates to some app, how many those, how many programs refer to it ... this program should give it's own keys and that program talk to real service", "18af8793", new(2026, 11, 2), "Egoushka/homelab"),
-        new("2026-11-07/2a685036", "okay record them + cached code idea", "2a685036", new(2026, 11, 7), "Egoushka/chargehand"),
-        new("2026-11-10/48a93860", "i wanna have statistics over my github over all my projects cause i need to click every repo to see visits, stars, forks and all other ego-feeding info", "48a93860", new(2026, 11, 10), "Egoushka/senses"),
-    ];
+    public static IReadOnlyList<IdeaSeed> Read(string path)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+        return [.. doc.RootElement.EnumerateArray().Select(e => new IdeaSeed(
+            e.GetProperty("key").GetString()!, e.GetProperty("body").GetString()!, e.GetProperty("session").GetString()!,
+            DateOnly.Parse(e.GetProperty("date").GetString()!, System.Globalization.CultureInfo.InvariantCulture),
+            e.TryGetProperty("repo", out var repo) && repo.ValueKind == System.Text.Json.JsonValueKind.String ? repo.GetString() : null))];
+    }
 }

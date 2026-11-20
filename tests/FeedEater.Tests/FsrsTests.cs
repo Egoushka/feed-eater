@@ -114,8 +114,8 @@ public sealed class IdeaPickerTests
     [Fact]
     public void The_seed_holds_nine_distinct_ideas_in_his_words()
     {
-        Assert.Equal(9, LostIdeaSeed.All.Count);
-        Assert.Equal(9, LostIdeaSeed.All.Select(s => s.Key).Distinct().Count());
-        Assert.Contains(LostIdeaSeed.All, s => s.Body == "okay record them + cached code idea" && s.Session == "2a685036");
+        Assert.Equal(9, IdeaSeedFile.Read(RepoRoot.File("docs/seeds/lost-ideas.json")).Count);
+        Assert.Equal(9, IdeaSeedFile.Read(RepoRoot.File("docs/seeds/lost-ideas.json")).Select(s => s.Key).Distinct().Count());
+        Assert.Contains(IdeaSeedFile.Read(RepoRoot.File("docs/seeds/lost-ideas.json")), s => s.Body == "okay record them + cached code idea" && s.Session == "2a685036");
     }
 }
