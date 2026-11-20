@@ -1,3 +1,19 @@
+# Handoff, feed-eater labels + FSRS lost ideas (2026-11-20)
+
+"continue" means: read this section, check it against git and `lab`, carry on. The sections below are history; the adoption-board open items still stand.
+
+## State
+- #80 merged (612f92e7), released as v0.13.0 (image digest `sha256:7a48c93f79b02b89462b51bbf6b678e67ddd29d8bcf519f826306eb99943a437`), deployed to nickel by homelab #668 (bc7c6c6). Migration 0040 applied, 9 seed ideas loaded from `/config/lost-ideas.json` (copy kept in homelab `stacks/feed-eater/config/`; update both when `docs/seeds/lost-ideas.json` changes).
+- Worktree and branch of #80 removed.
+
+## Open
+1. `FeedEater__Swipe__Enabled` is not set on the box (default off), so no lost idea can surface yet. Turning it on is Yehor's call (a homelab PR adding the env line).
+2. UI gate only partly done: static 375 px render of the new button row; no live page, no dark-mode shot. Needs Swipe enabled first.
+
+- Checked 2026-11-20 15:07Z with `lab`: nickel at bc7c6c6, feed-eater 0.13.0 healthy (digest above), `FeedEater__Swipe__Enabled` absent from the env.
+
+---
+
 # Handoff, feed-eater adoption board (2026-11-19, v0.12.0 live)
 
 "continue" means: read this section, check it against git and `lab`, carry on. The older sections below are history.
