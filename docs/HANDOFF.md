@@ -7,8 +7,8 @@
 - Worktree and branch of #80 removed.
 
 ## Open
-1. `FeedEater__Swipe__Enabled` is not set on the box (default off), so no lost idea can surface yet. Turning it on is Yehor's call (a homelab PR adding the env line).
-2. UI gate only partly done: static 375 px render of the new button row; no live page, no dark-mode shot. Needs Swipe enabled first.
+1. DONE 2026-11-20: Yehor decided "Swipe yes"; homelab #669 (eee3883) set `FeedEater__Swipe__Enabled=true`, deployed. 9 ideas due, 0 queued; the first lost idea shows when a session is started in /swipe (sign in with Mcp:Token; cap 1 per session, 2 per day).
+2. UI gate only partly done: static 375 px render of the new button row; no live page, no dark-mode shot. Swipe is on now, so a live shot is possible.
 
 - Checked 2026-11-20 15:07Z with `lab`: nickel at bc7c6c6, feed-eater 0.13.0 healthy (digest above), `FeedEater__Swipe__Enabled` absent from the env.
 
