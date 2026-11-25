@@ -133,16 +133,16 @@ public sealed class ConfigTests
     }
 
     [Fact]
-    public void The_idea_sink_is_the_configured_one_else_GitHub_when_it_is_on_else_local()
+    public void The_idea_sink_is_the_configured_one_else_the_board()
     {
         var github = new GitHubOptions { Token = "t", FallbackRepo = "o/r" };
 
-        Assert.Equal("local", new FeedEaterOptions().IdeaSink);
-        Assert.Equal("github", new FeedEaterOptions { GitHub = github }.IdeaSink);
+        Assert.Equal("board", new FeedEaterOptions().IdeaSink);
+        Assert.Equal("board", new FeedEaterOptions { GitHub = github }.IdeaSink);
         Assert.Equal("local", new FeedEaterOptions { GitHub = github, Ideas = new IdeasOptions { Sink = "local" } }.IdeaSink);
         Assert.Equal("github", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "github" } }.IdeaSink);
-        Assert.Equal("local", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "plane" } }.IdeaSink);   // Plane is gone: the default
-        Assert.Equal("local", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "webhook" } }.IdeaSink);   // unknown: the always-on default
+        Assert.Equal("board", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "plane" } }.IdeaSink);   // Plane is gone: the default
+        Assert.Equal("board", new FeedEaterOptions { Ideas = new IdeasOptions { Sink = "webhook" } }.IdeaSink);   // unknown: the always-on default
     }
 }
 

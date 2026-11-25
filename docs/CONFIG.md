@@ -50,6 +50,14 @@ An integration is off until its required settings are filled. An off integration
 | `FeedEater:Approvals:BaseUrl` | (empty) | Address of the approvals server (the phone shell's inbox). The digest and the notices arrive there as cards. Empty, or an empty token, turns it off. |
 | `FeedEater:Approvals:Token` | (empty) | Source token for `feed-eater`: the approvals server's APPROVALS_SOURCE_TOKENS entry, at least 32 characters. |
 
+## Board
+
+| Key | Default | Description |
+|---|---|---|
+| `FeedEater:Board:Command` | `wh` | The wheelhouse CLI the board sink runs (wh board add). |
+| `FeedEater:Board:KeyFile` | (empty) | File holding the wheelhouse intake key (WHEELHOUSE_SESSIONS_KEY_FILE for the wh call); empty keeps the environment's. |
+| `FeedEater:Board:Url` | (empty) | The wheelhouse daemon URL (WHEELHOUSE_URL for the wh call); empty keeps the environment's. |
+
 ## Caps
 
 | Key | Default | Description |
@@ -148,7 +156,7 @@ An integration is off until its required settings are filled. An off integration
 
 | Key | Default | Description |
 |---|---|---|
-| `FeedEater:Ideas:Sink` | `auto` | Where 💡 ideas go: github, local, or auto (github when GitHub issues are configured, else local). GitHub opens an issue labelled triage in the project's repo; local keeps them on /ui/ideas and in the feed_ideas MCP tool. |
+| `FeedEater:Ideas:Sink` | `auto` | Where 💡 ideas go: board, github, local, or auto (board). Board adds a wheelhouse board item (work feature, source feed:<item id>) through the wh CLI; GitHub opens an issue labelled triage in the project's repo; local keeps them on /ui/ideas and in the feed_ideas MCP tool. |
 
 ## Karakeep
 

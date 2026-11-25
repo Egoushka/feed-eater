@@ -31,7 +31,7 @@ public sealed class IdeaFiler(
             ?? throw new InvalidOperationException("this item matches no project and no fallback repo is set (GitHub:FallbackRepo)");
         var title = idea.Length <= MaxTitle ? idea : idea[..(MaxTitle - 1)] + "…";
         var body = $"{Markdown.Text(idea)}\n\n{Markdown.Text(item.Why ?? "")}\n\nSource: {Markdown.Link(item.Title, item.Url)} ({Markdown.Text(item.Feed)}, feed-eater item {item.Id})";
-        var number = await sink.FileAsync(new IdeaDraft(project, title, body), ct);
+        var number = await sink.FileAsync(new IdeaDraft(project, title, body, itemId), ct);
         await feedback.AddIdeaAsync(new Idea { ItemId = itemId, Project = project, IssueNumber = number, Title = title, At = time.GetUtcNow().UtcDateTime }, ct);
         return project;
     }
