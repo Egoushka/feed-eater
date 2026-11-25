@@ -168,9 +168,14 @@ public static class ServiceRegistration
         services.AddSingleton<DigestRun>();
         services.AddSingleton<GitHubIdeaSink>();
         services.AddSingleton<LocalIdeaSink>();
-        services.AddSingleton<IIdeaSink>(sp => Settings(sp).IdeaSink == IdeasOptions.GitHubSink
-            ? sp.GetRequiredService<GitHubIdeaSink>()
-            : sp.GetRequiredService<LocalIdeaSink>());
+        services.AddSingleton<IBoardRunner, WhProcessRunner>();
+        services.AddSingleton<BoardIdeaSink>();
+        services.AddSingleton<IIdeaSink>(sp => Settings(sp).IdeaSink switch
+        {
+            IdeasOptions.GitHubSink => sp.GetRequiredService<GitHubIdeaSink>(),
+            IdeasOptions.LocalSink => sp.GetRequiredService<LocalIdeaSink>(),
+            _ => sp.GetRequiredService<BoardIdeaSink>(),
+        });
         services.AddSingleton<IdeaFiler>();
         services.AddSingleton<WeeklyIdeaStore>();
         services.AddHttpClient<BacklogClient>();

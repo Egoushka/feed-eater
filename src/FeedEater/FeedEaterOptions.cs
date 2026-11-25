@@ -36,6 +36,7 @@ public sealed class FeedEaterOptions
     public PushOptions Push { get; set; } = new();
     public ApprovalsOptions Approvals { get; set; } = new();
     public IdeasOptions Ideas { get; set; } = new();
+    public BoardOptions Board { get; set; } = new();
     public WeeklyIdeasOptions WeeklyIdeas { get; set; } = new();
     public DailyIdeasOptions DailyIdeas { get; set; } = new();
     public KarakeepOptions Karakeep { get; set; } = new();
@@ -59,16 +60,17 @@ public sealed class FeedEaterOptions
 
     public TimeZoneInfo Zone => TimeZoneInfo.FindSystemTimeZoneById(TimeZone);
 
-    /// <summary>Where 💡 ideas go: the configured sink, else GitHub issues when they are configured, else the local list.</summary>
-    public string IdeaSink => Ideas.Sink is IdeasOptions.GitHubSink or IdeasOptions.LocalSink ? Ideas.Sink : GitHub.IssuesEnabled ? IdeasOptions.GitHubSink : IdeasOptions.LocalSink;
+    /// <summary>Where 💡 ideas go: the configured sink, else the wheelhouse board.</summary>
+    public string IdeaSink => Ideas.Sink is IdeasOptions.GitHubSink or IdeasOptions.LocalSink ? Ideas.Sink : IdeasOptions.BoardSink;
 }
 
 public sealed class IdeasOptions
 {
     public const string GitHubSink = "github";
     public const string LocalSink = "local";
+    public const string BoardSink = "board";
 
-    [Description("Where 💡 ideas go: github, local, or auto (github when GitHub issues are configured, else local). GitHub opens an issue labelled triage in the project's repo; local keeps them on /ui/ideas and in the feed_ideas MCP tool.")]
+    [Description("Where 💡 ideas go: board, github, local, or auto (board). Board adds a wheelhouse board item (work feature, source feed:<item id>) through the wh CLI; GitHub opens an issue labelled triage in the project's repo; local keeps them on /ui/ideas and in the feed_ideas MCP tool.")]
     public string Sink { get; set; } = "auto";
 }
 
@@ -702,4 +704,16 @@ public sealed class RadarOptions
 
     [Description("Branch the export commits to; the pull request is opened from it and reused while it is open.")]
     public string Branch { get; set; } = "radar/export";
+}
+
+public sealed class BoardOptions
+{
+    [Description("The wheelhouse CLI the board sink runs (wh board add).")]
+    public string Command { get; set; } = "wh";
+
+    [Description("File holding the wheelhouse intake key (WHEELHOUSE_SESSIONS_KEY_FILE for the wh call); empty keeps the environment's.")]
+    public string KeyFile { get; set; } = "";
+
+    [Description("The wheelhouse daemon URL (WHEELHOUSE_URL for the wh call); empty keeps the environment's.")]
+    public string Url { get; set; } = "";
 }

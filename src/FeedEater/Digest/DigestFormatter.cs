@@ -25,7 +25,7 @@ public sealed record ButtonStyle(bool CanSave, bool ToGitHub)
 {
     public static readonly ButtonStyle Default = new(true, true);
 
-    public static ButtonStyle From(FeedEaterOptions o) => new(true, o.IdeaSink == IdeasOptions.GitHubSink);
+    public static ButtonStyle From(FeedEaterOptions o) => new(true, o.IdeaSink != IdeasOptions.LocalSink);
 }
 
 /// <summary>Text helpers for titles and links.</summary>

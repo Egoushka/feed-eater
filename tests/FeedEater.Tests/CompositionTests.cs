@@ -148,15 +148,17 @@ public sealed class CompositionTests
     }
 
     [Fact]
-    public void The_idea_sink_is_local_without_GitHub_issues_and_GitHub_once_they_are_configured()
+    public void The_idea_sink_is_the_board_by_default_and_GitHub_or_local_when_chosen()
     {
         using var without = Build(runJobs: false);
         using var with = Build(runJobs: false, extra: AllIntegrations);
         using var forced = Build(runJobs: false, extra: new Dictionary<string, string?>(AllIntegrations) { ["FeedEater:Ideas:Sink"] = "local" });
+        using var github = Build(runJobs: false, extra: new Dictionary<string, string?>(AllIntegrations) { ["FeedEater:Ideas:Sink"] = "github" });
 
-        Assert.IsType<LocalIdeaSink>(without.Services.GetRequiredService<IIdeaSink>());
-        Assert.IsType<GitHubIdeaSink>(with.Services.GetRequiredService<IIdeaSink>());
+        Assert.IsType<BoardIdeaSink>(without.Services.GetRequiredService<IIdeaSink>());
+        Assert.IsType<BoardIdeaSink>(with.Services.GetRequiredService<IIdeaSink>());
         Assert.IsType<LocalIdeaSink>(forced.Services.GetRequiredService<IIdeaSink>());
+        Assert.IsType<GitHubIdeaSink>(github.Services.GetRequiredService<IIdeaSink>());
     }
 
     [Fact]
