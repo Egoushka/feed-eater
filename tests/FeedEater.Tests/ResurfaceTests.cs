@@ -24,8 +24,15 @@ public sealed partial class ResurfaceTests(PostgresFixture pg, ResurfaceTests.Ho
 {
     private const string Token = "resurface-token";
 
-    // Sunday 2026-10-25 10:30 in Kyiv (UTC+2): the weekly run is due.
-    private static readonly DateTimeOffset Sunday = new(2026, 10, 25, 8, 30, 0, TimeSpan.Zero);
+    // The latest Sunday 08:30 UTC: the dedup query reads the database clock (now() - 30 days), so a fixed date goes stale a month on.
+    private static readonly DateTimeOffset Sunday = LatestSunday(DateTimeOffset.UtcNow);
+
+    private static DateTimeOffset LatestSunday(DateTimeOffset now)
+    {
+        var day = new DateTimeOffset(now.Year, now.Month, now.Day, 8, 30, 0, TimeSpan.Zero);
+        day = day.AddDays(-(int)day.DayOfWeek);
+        return day > now ? day.AddDays(-7) : day;
+    }
 
     public Task InitializeAsync() => pg.ResetAsync();
 

@@ -1,17 +1,23 @@
 name: ci
 
+# Pull requests and release tags: a squash merge lands the tree the pull request already tested, so a push run on main
+# only repeated it. The tag run gates the image job.
 on:
   push:
-    branches: [main]
     tags: ['v*']
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
