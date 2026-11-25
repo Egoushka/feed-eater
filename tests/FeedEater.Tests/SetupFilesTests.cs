@@ -117,7 +117,7 @@ public sealed partial class SetupFilesTests
         Assert.Contains("platforms: linux/amd64,linux/arm64", ci, StringComparison.Ordinal);
         Assert.Contains("docker/setup-qemu-action@", ci, StringComparison.Ordinal);
         Assert.Contains("ghcr.io/egoushka/feed-eater:${{ steps.v.outputs.version }}", ci, StringComparison.Ordinal);
-        var uses = Regex.Matches(ci, @"uses: (\S+)", RegexOptions.None, TimeSpan.FromSeconds(1)).Select(m => m.Groups[1].Value);
+        var uses = Regex.Matches(ci, @"\buses: (\S+)", RegexOptions.None, TimeSpan.FromSeconds(1)).Select(m => m.Groups[1].Value);
         Assert.All(uses, u => Assert.Matches(@"@[0-9a-f]{40}$", u));
     }
 }
