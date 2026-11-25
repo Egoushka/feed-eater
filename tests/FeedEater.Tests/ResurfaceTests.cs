@@ -24,7 +24,6 @@ public sealed partial class ResurfaceTests(PostgresFixture pg, ResurfaceTests.Ho
 {
     private const string Token = "resurface-token";
 
-    // Sunday 2026-10-25 10:30 in Kyiv (UTC+2): the weekly run is due.
     // The latest Sunday 08:30 UTC: the dedup query reads the database clock (now() - 30 days), so a fixed date goes stale a month on.
     private static readonly DateTimeOffset Sunday = LatestSunday(DateTimeOffset.UtcNow);
 
